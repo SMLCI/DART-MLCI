@@ -1,0 +1,6 @@
+ultralytics
+tifffile
+opencv-python
+kornia
+shapely
+rasterio
