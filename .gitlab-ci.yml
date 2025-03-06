@@ -1,0 +1,69 @@
+# This file is a template, and might need editing before it works on your project.
+# To contribute improvements to CI/CD templates, please follow the Development guide at:
+# https://docs.gitlab.com/ee/development/cicd/templates.html
+# This specific template is located at:
+# https://gitlab.com/gitlab-org/gitlab/-/blob/master/lib/gitlab/ci/templates/Python.gitlab-ci.yml
+
+# Official language image. Look for the different tagged releases at:
+# https://hub.docker.com/r/library/python/tags/
+image: python:3.10
+
+stages:
+  - build
+  - test
+  - deploy
+
+test:
+  stage: test
+  script:
+    - pip install .
+    - pip install pytest pytest-cov
+    - pytest -v --cov=dmc_masking/ --junitxml=./test_report.xml tests/
+    - coverage xml
+  coverage: '/.*TOTAL.*\s+(\d+%)$/'
+  artifacts:
+    reports:
+      coverage_report:
+        coverage_format: cobertura
+        path: coverage.xml
+      junit: test_report.xml
+
+build:
+  image: python:3.10
+  stage: build
+  script:
+    - python setup.py bdist_wheel
+  artifacts:
+    paths:
+      - dist/*.whl
+
+.deploy_common:
+  # common config
+  rules:
+    - if: "$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH"
+
+
+#upload_package:
+#  image: python:3.10
+#  stage: deploy
+#  # dot pass artifacts from other stages
+#  dependencies: []
+#  cache: []
+#  extends: .deploy_common
+#  script:
+#    - set -e
+#    - pip install twine bump2version
+#    - git config --global user.email "${GITLAB_USER_EMAIL}"
+#    - git config --global user.name "${GITLAB_USER_NAME}"
+#    - git log
+#    # list tags
+#    - git tag
+#    - bump2version patch
+#    - python setup.py sdist bdist_wheel
+#    - ls -all dist/
+#    - TWINE_PASSWORD=${CI_JOB_TOKEN} TWINE_USERNAME=gitlab-ci-token python -m twine upload --repository-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi dist/*
+#    - git remote set-url origin "https://${CI_PUSH_NAME}:${CI_PUSH_TOKEN}@jugit.fz-juelich.de/${CI_PROJECT_NAMESPACE}/${CI_PROJECT_NAME}.git"
+#    - git push -o ci.skip --tags origin HEAD:${CI_COMMIT_REF_NAME}
+#  artifacts:
+#    paths:
+#      - dist/
