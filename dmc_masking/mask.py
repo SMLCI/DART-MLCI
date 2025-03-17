@@ -47,6 +47,7 @@ def apply_mask(
     marker_group_pixels,
     roi_polygon,
     rotated_image,
+    return_uncropped=False,
 ):
     """Compute and apply mask to image
 
@@ -102,6 +103,10 @@ def apply_mask(
 
     mask = masks[0]
     polygon: RoIPolygon = polygons[0]
+
+    if return_uncropped:
+        # return uncropped image and mask
+        return rotated_image, mask
 
     # 8. Cropping
 
