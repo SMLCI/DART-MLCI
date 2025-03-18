@@ -16,6 +16,7 @@ stages:
 test:
   stage: test
   script:
+    - apt-get update && apt-get install -y libgl1-mesa-glx
     - pip install .
     - pip install pytest pytest-cov
     - pytest -v --cov=dmc_masking/ --junitxml=./test_report.xml tests/
