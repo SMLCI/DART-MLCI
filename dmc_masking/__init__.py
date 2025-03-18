@@ -28,7 +28,6 @@ def extract_data(result, image: np.ndarray):
         _type_: marker information
     """
 
-    mask_data = result.masks.cpu().numpy()
     boxes_data = result.boxes.cpu().numpy()
 
     data = []
@@ -38,19 +37,21 @@ def extract_data(result, image: np.ndarray):
 
         data.append({"bbox_center": np.array((x, y)), "label": result.names[label]})
 
-    for i, mask in enumerate(mask_data.data):
-        x, y = center_of_mask_mass(mask.astype(np.uint8))
+    if result.masks is not None:
+        mask_data = result.masks.cpu().numpy()
+        for i, mask in enumerate(mask_data.data):
+            x, y = center_of_mask_mass(mask.astype(np.uint8))
 
-        _, mask_width = mask.shape
-        _, image_width = image.shape[:2]
+            _, mask_width = mask.shape
+            _, image_width = image.shape[:2]
 
-        # correct for image scaling
-        scale = image_width / mask_width
-        x *= scale
-        y *= scale
+            # correct for image scaling
+            scale = image_width / mask_width
+            x *= scale
+            y *= scale
 
-        data[i]["mask_center"] = np.array((x, y))
-        data[i]["mask_size"] = np.sum(mask.astype(np.uint8)) * scale
+            data[i]["mask_center"] = np.array((x, y))
+            data[i]["mask_size"] = np.sum(mask.astype(np.uint8)) * scale
 
     return data
 
@@ -104,7 +105,11 @@ class RoIMasker:
         self.detection_model = MarkerDetectionModel(self.model_path)
 
     def __call__(
-        self, image: np.ndarray, roi_polygon: RoIPolygon = None, marker_group_pixel=None
+        self,
+        image: np.ndarray,
+        roi_polygon: RoIPolygon = None,
+        marker_group_pixel=None,
+        return_uncropped=False,
     ):
         """_summary_
 
@@ -136,12 +141,12 @@ class RoIMasker:
         # 2. match markers
 
         matched_marker_indices = match_markers(
-            markers, marker_group=self.marker_group_pixel, tolerance=60
+            markers, marker_group=marker_group_pixel, tolerance=60
         )
 
         # 3. compute angle
         angles = compute_marker_group_angles(
-            markers, matched_marker_indices, self.marker_group_pixel
+            markers, matched_marker_indices, marker_group_pixel
         )
         mean_angle = np.mean(angles)
 
@@ -155,9 +160,26 @@ class RoIMasker:
         cropped_image, cropped_mask = apply_mask(
             matched_marker_indices=matched_marker_indices,
             rotated_markers=rotated_markers,
-            marker_group_pixels=self.marker_group_pixel,
+            marker_group_pixels=marker_group_pixel,
             roi_polygon=roi_polygon,
             rotated_image=rotated_image,
+            return_uncropped=return_uncropped,
         )
 
         return cropped_image, cropped_mask
+
+
+def compute_marker_angles(markers, marker_group_pixel):
+    # 2. match markers
+
+    matched_marker_indices = match_markers(
+        markers, marker_group=marker_group_pixel, tolerance=60
+    )
+
+    # 3. compute angle
+    angles = compute_marker_group_angles(
+        markers, matched_marker_indices, marker_group_pixel
+    )
+    mean_angle = np.mean(angles)
+
+    return mean_angle
