@@ -1,11 +1,14 @@
 """Implementation of masking operations"""
 
+import re
 from copy import deepcopy
 
 import numpy as np
 from rasterio.features import rasterize
 from shapely import affinity
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, shape
+
+from .io import load_roi_structures
 
 
 class RoIPolygon:
@@ -115,3 +118,82 @@ def apply_mask(
     cropped_mask = mask[miny:maxy, minx:maxx]
 
     return cropped_image, cropped_mask
+
+
+def gen_pattern(start_c: int, array: int):
+    return "|".join([rf"({c}{array}\d\d)" for c in range(start_c, 8, 2)])
+
+
+class SAKRoIStructureLibrary:
+    """Library for SAK roi structures"""
+
+    def __init__(self, lookup_path):
+
+        # load structural information of the polygon library
+        roi_structures = load_roi_structures(lookup_path)
+        self.polygon_library = {}
+        for structure_name, serialized_polygon in roi_structures.items():
+            self.polygon_library[structure_name] = shape(serialized_polygon)
+
+        # load pattern matchin of id to structure name
+        self.patterns = {
+            "NormaleBox-inner": gen_pattern(0, 0),
+            "BigBox-inner": gen_pattern(0, 1),
+            "OpenBox-inner": gen_pattern(0, 2),
+            "Mothermachine-inner": gen_pattern(0, 3),
+            "NormaleBox-pillar-inner": gen_pattern(1, 0),
+            "BigBox-pillar-inner": gen_pattern(1, 1),
+            "OpenBox-collector-inner": gen_pattern(1, 2),
+            "Mothermachine-2x-inner": gen_pattern(1, 3),
+        }
+
+        self.marker_group_configs = {
+            "NormaleBox-pillar-inner": {
+                "cross": np.array((4, 8), dtype=float),
+                "circle": np.array((56, 8), dtype=float),
+            },
+            "BigBox-pillar-inner": {
+                "cross": np.array((4, 8), dtype=float),
+                "circle": np.array((56, 8), dtype=float),
+            },
+            "OpenBox-inner": {
+                "cross": np.array((14, 8), dtype=float),
+                "circle": np.array((66, 8), dtype=float),
+            },
+            "OpenBox-collector-inner": {
+                "cross": np.array((14, 8), dtype=float),
+                "circle": np.array((66, 8), dtype=float),
+            },
+            "BigBox-inner": {
+                "cross": np.array((4, 8), dtype=float),
+                "circle": np.array((56, 8), dtype=float),
+            },
+            "NormaleBox-inner": {
+                "cross": np.array((4, 8), dtype=float),
+                "circle": np.array((56, 8), dtype=float),
+            },
+            "Mothermachine-2x-inner": {
+                "cross": np.array((14, 8), dtype=float),
+                "circle": np.array((66, 8), dtype=float),
+            },
+            "Mothermachine-inner": {
+                "cross": np.array((14, 8), dtype=float),
+                "circle": np.array((66, 8), dtype=float),
+            },
+        }
+
+    def __call__(self, roi_id: str) -> Polygon:
+
+        # match id with structure patterns
+        structure_name = None
+
+        for sn, structure_pattern in self.patterns.items():
+            if re.match(structure_pattern, roi_id) is not None:
+                structure_name = sn
+
+        if structure_name is None:
+            raise ValueError(
+                f"No structure found corresponding to the roi id {roi_id}!"
+            )
+
+        return structure_name, self.polygon_library[structure_name]
