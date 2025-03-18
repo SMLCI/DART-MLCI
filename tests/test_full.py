@@ -1,13 +1,17 @@
 """ Testcases for full masking pipeline """
 
 import unittest
+from pathlib import Path
 
+import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-import tifffile
-from shapely.geometry import Point, Polygon
+from shapely.geometry import Point, Polygon, shape
+from tqdm.auto import tqdm
 
+import dmc_masking
 from dmc_masking import MarkerDetectionModel, RoIMasker
+from dmc_masking.io import load_roi_structures
 from dmc_masking.mask import RoIPolygon
 from dmc_masking.match import marker_group_to_pixel_coordinates, match_markers
 from dmc_masking.rotation import (
@@ -15,10 +19,9 @@ from dmc_masking.rotation import (
     rotate_image,
     rotate_markers,
 )
-from dmc_masking.utils import load_tiff
 
 
-def build_polygon():
+def build_polygon(pixel_size):
     chamber_width = 60
     chamber_height = 60
 
@@ -33,7 +36,15 @@ def build_polygon():
         ]
     ).difference(interior)
 
-    return RoIPolygon(chamber_polygon)
+    rp = RoIPolygon(chamber_polygon)
+
+    rp = rp.scale(1.0 / pixel_size)
+    xmin, ymin, _, _ = rp.roi_polygon.bounds
+
+    # move polygon into positive coordinates
+    rp = rp.translate(x=-xmin, y=-ymin)
+
+    return rp
 
 
 class TestFullPipeline(unittest.TestCase):
@@ -50,29 +61,30 @@ class TestFullPipeline(unittest.TestCase):
             "circle": np.array((56, 8), dtype=float),
         }
 
-        roi_polygon = build_polygon().scale(1.0 / pixel_size)
-        xmin, ymin, xmax, ymax = roi_polygon.roi_polygon.bounds
+        marker_group_pixels = marker_group_to_pixel_coordinates(
+            marker_group, pixel_size
+        )
 
-        # move polygon into positive coordinates
-        roi_polygon = roi_polygon.translate(x=-xmin, y=-ymin)
+        roi_polygon = build_polygon(pixel_size)
 
         # 1. Load yolo model
 
-        model = MarkerDetectionModel("./artifacts/models/best34.pt")
+        model = MarkerDetectionModel(
+            "/home/seiffarth_l/projects/DMC/dmc-masking/artifacts/models/best34.pt"
+        )  # "./artifacts/models/best34.pt")
 
         # 2. Load image
-        image = load_tiff("./artifacts/images/00150d6e-cecf-48f9-8b2d-a37a687ec0db.tif")
+        # image = load_tiff("/home/seiffarth_l/projects/DMC/dmc-masking/artifacts/images/00150d6e-cecf-48f9-8b2d-a37a687ec0db.tif")
+        # image = np.stack((image,) * 3, axis=-1)
 
-        image = np.stack((image,) * 3, axis=-1)
+        image = cv2.imread(
+            "/home/seiffarth_l/projects/DMC/dmc-training/yolo_datasets/dmc_phase_seg/images/test2017/0008.png"
+        )
 
         # 3. Detect markers
         markers = model.predict_markers(image)
 
         print(markers)
-
-        marker_group_pixels = marker_group_to_pixel_coordinates(
-            marker_group, pixel_size
-        )
 
         # 4. Match markers
         matched_marker_indices = match_markers(
@@ -172,29 +184,172 @@ class TestFullPipeline(unittest.TestCase):
 
         # convert info to pixel coordinates
         marker_group_pixel = marker_group_to_pixel_coordinates(marker_group, pixel_size)
-        roi_polygon = build_polygon().scale(1.0 / pixel_size)
+        roi_polygon = build_polygon(pixel_size)
 
         # create the masker
         rm = RoIMasker(
-            model_path="./artifacts/models/best34.pt",
+            # model_path="./artifacts/models/best34.pt",
+            model_path="/home/seiffarth_l/projects/DMC/dmc-masking/artifacts/models/best34.pt",
             roi_polygon=roi_polygon,
             marker_group_pixel=marker_group_pixel,
         )
 
         # load the image
-        image = tifffile.imread(
-            "./artifacts/images/00150d6e-cecf-48f9-8b2d-a37a687ec0db.tif"
+        # image = tifffile.imread(
+        #    "./artifacts/images/00150d6e-cecf-48f9-8b2d-a37a687ec0db.tif"
+        # )
+
+        image = cv2.imread(
+            "/home/seiffarth_l/projects/DMC/dmc-training/yolo_datasets/dmc_phase_seg/images/test2017/0008.png"
         )
 
         # apply the masker
         cropped_image, cropped_mask = rm(image)
 
         # plot
-        plt.figure(figsize=(10, 10))
-        plt.imshow(cropped_image)
-        plt.imshow(cropped_mask, alpha=0.25)
+        _, axes = plt.subplots(1, 2, figsize=(10, 10))
+        axes[0].imshow(cropped_image)
+        axes[0].imshow(cropped_mask, alpha=0.25)
+        axes[1].imshow(image)
 
         plt.savefig("test2.jpg")
+
+    @staticmethod
+    def test_sak_chip():
+        configs = [
+            {
+                "file_name": "0000.png",
+                "chamber_type": "NormaleBox-pillar-inner",
+            },
+            {
+                "file_name": "0001.png",
+                "chamber_type": "BigBox-pillar-inner",
+            },
+            {
+                "file_name": "0003.png",
+                "chamber_type": "OpenBox-inner",
+            },
+            {
+                "file_name": "0004.png",
+                "chamber_type": "NormaleBox-pillar-inner",
+            },
+            {
+                "file_name": "0005.png",
+                "chamber_type": "OpenBox-collector-inner",
+            },
+            {
+                "file_name": "0006.png",
+                "chamber_type": "BigBox-inner",
+            },
+            {
+                "file_name": "0007.png",
+                "chamber_type": "NormaleBox-inner",
+            },
+            {
+                "file_name": "0008.png",
+                "chamber_type": "Mothermachine-2x-inner",
+            },
+        ]
+
+        marker_group_configs = {
+            "NormaleBox-pillar-inner": {
+                "cross": np.array((4, 8), dtype=float),
+                "circle": np.array((56, 8), dtype=float),
+            },
+            "BigBox-pillar-inner": {
+                "cross": np.array((4, 8), dtype=float),
+                "circle": np.array((56, 8), dtype=float),
+            },
+            "OpenBox-inner": {
+                "cross": np.array((14, 8), dtype=float),
+                "circle": np.array((66, 8), dtype=float),
+            },
+            "OpenBox-collector-inner": {
+                "cross": np.array((14, 8), dtype=float),
+                "circle": np.array((66, 8), dtype=float),
+            },
+            "BigBox-inner": {
+                "cross": np.array((4, 8), dtype=float),
+                "circle": np.array((56, 8), dtype=float),
+            },
+            "NormaleBox-inner": {
+                "cross": np.array((4, 8), dtype=float),
+                "circle": np.array((56, 8), dtype=float),
+            },
+            "Mothermachine-2x-inner": {
+                "cross": np.array((14, 8), dtype=float),
+                "circle": np.array((66, 8), dtype=float),
+            },
+            "Mothermachine-inner": {
+                "cross": np.array((14, 8), dtype=float),
+                "circle": np.array((66, 8), dtype=float),
+            },
+        }
+
+        # load structures
+        roi_structures = load_roi_structures(
+            Path(dmc_masking.__file__).parent.parent
+            / "artifacts/chamber_structure.json"
+        )
+
+        # general information
+        pixel_size = 0.065789
+
+        # create the masker
+        rm = RoIMasker(
+            # model_path="./artifacts/models/best34.pt",
+            model_path="/home/seiffarth_l/projects/DMC/dmc-masking/artifacts/models/best34.pt",
+            roi_polygon=None,
+            marker_group_pixel=None,
+        )
+
+        for i, conf in enumerate(tqdm(configs)):
+            image_file = (
+                Path("/home/seiffarth_l/projects/DMC/dmc-masking/artifacts/images/sak")
+                / conf["file_name"]
+            )
+            chamber_type = conf["chamber_type"]
+
+            marker_group = marker_group_configs[chamber_type]
+            marker_group_pixel = marker_group_to_pixel_coordinates(
+                marker_group, pixel_size
+            )
+
+            rp = RoIPolygon(shape(roi_structures[chamber_type]))
+
+            rp = rp.scale(1.0 / pixel_size)
+            xmin, ymin, _, _ = rp.roi_polygon.bounds
+
+            # move polygon into positive coordinates
+            rp = rp.translate(x=-xmin, y=-ymin)
+
+            image = cv2.imread(image_file)
+
+            # apply the masker
+            cropped_image, cropped_mask = rm(
+                image,
+                roi_polygon=rp,
+                marker_group_pixel=marker_group_pixel,
+                return_uncropped=False,
+            )
+            rotated_image, rotated_mask = rm(
+                image,
+                roi_polygon=rp,
+                marker_group_pixel=marker_group_pixel,
+                return_uncropped=True,
+            )
+
+            # plot
+            _, axes = plt.subplots(1, 3, figsize=(20, 10))
+            axes[0].imshow(image)
+            axes[1].imshow(rotated_image)
+            axes[1].imshow(rotated_mask, alpha=0.2)
+            axes[2].imshow(cropped_image)
+            axes[2].imshow(cropped_mask, alpha=0.2)
+
+            plt.tight_layout()
+
+            plt.savefig(f"test_{i}.jpg")
 
 
 if __name__ == "__main__":
