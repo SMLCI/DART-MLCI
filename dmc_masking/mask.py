@@ -127,7 +127,9 @@ def gen_pattern(start_c: int, array: int):
 class SAKRoIStructureLibrary:
     """Library for SAK roi structures"""
 
-    def __init__(self, lookup_path):
+    def __init__(self, lookup_path, pixel_size):
+
+        self.pixel_size = pixel_size
 
         # load structural information of the polygon library
         roi_structures = load_roi_structures(lookup_path)
@@ -182,7 +184,23 @@ class SAKRoIStructureLibrary:
             },
         }
 
-    def __call__(self, roi_id: str) -> Polygon:
+        for sn, sp in self.polygon_library.items():
+
+            rp = RoIPolygon(sp)
+
+            rp = rp.scale(1.0 / pixel_size)
+            xmin, ymin, _, _ = rp.roi_polygon.bounds
+
+            # move polygon into positive coordinates
+            rp = rp.translate(x=-xmin, y=-ymin)
+
+            self.polygon_library[sn] = rp
+
+        for sn, sc in self.marker_group_configs.items():
+            for mn, mc in sc.items():
+                sc[mn] = mc * 1.0 / pixel_size
+
+    def __call__(self, roi_id: str) -> tuple[str, RoIPolygon, dict]:
 
         # match id with structure patterns
         structure_name = None
@@ -196,4 +214,8 @@ class SAKRoIStructureLibrary:
                 f"No structure found corresponding to the roi id {roi_id}!"
             )
 
-        return structure_name, self.polygon_library[structure_name]
+        return (
+            structure_name,
+            self.polygon_library[structure_name],
+            self.marker_group_configs[structure_name],
+        )

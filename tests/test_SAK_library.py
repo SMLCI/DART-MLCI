@@ -18,45 +18,46 @@ class TestMask(unittest.TestCase):
         # load the sak library
         sakl = SAKRoIStructureLibrary(
             Path(dmc_masking.__file__).parent.parent
-            / "artifacts/chamber_structure.json"
+            / "artifacts/chamber_structure.json",
+            1,
         )
 
-        sn, sp = sakl("0000")
+        sn, sp, _ = sakl("0000")
 
         self.assertEqual(sn, "NormaleBox-inner")
         self.assertEqual(sp.area, 60 * 60)
 
-        sn, sp = sakl("0100")
+        sn, sp, _ = sakl("0100")
 
         self.assertEqual(sn, "BigBox-inner")
         self.assertEqual(sp.area, 60 * 100)
 
-        sn, sp = sakl("0200")
+        sn, sp, _ = sakl("0200")
 
         self.assertEqual(sn, "OpenBox-inner")
         self.assertEqual(sp.area, 60 * 80)
 
-        sn, sp = sakl("0300")
+        sn, sp, _ = sakl("0300")
 
         self.assertEqual(sn, "Mothermachine-inner")
         np.testing.assert_almost_equal(sp.area, 1378.28, decimal=1)
 
-        sn, sp = sakl("1000")
+        sn, sp, _ = sakl("1000")
 
         self.assertEqual(sn, "NormaleBox-pillar-inner")
         np.testing.assert_almost_equal(sp.area, 3521.55, decimal=1)
 
-        sn, sp = sakl("1100")
+        sn, sp, _ = sakl("1100")
 
         self.assertEqual(sn, "BigBox-pillar-inner")
         np.testing.assert_almost_equal(sp.area, 5843.11, decimal=1)
 
-        sn, sp = sakl("1200")
+        sn, sp, _ = sakl("1200")
 
         self.assertEqual(sn, "OpenBox-collector-inner")
         np.testing.assert_almost_equal(sp.area, 4509.11, decimal=1)
 
-        sn, sp = sakl("1300")
+        sn, sp, _ = sakl("1300")
 
         self.assertEqual(sn, "Mothermachine-2x-inner")
         np.testing.assert_almost_equal(sp.area, 1298.59, decimal=1)

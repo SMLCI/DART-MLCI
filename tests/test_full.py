@@ -12,7 +12,7 @@ from tqdm.auto import tqdm
 import dmc_masking
 from dmc_masking import MarkerDetectionModel, RoIMasker
 from dmc_masking.io import load_roi_structures
-from dmc_masking.mask import RoIPolygon
+from dmc_masking.mask import RoIPolygon, SAKRoIStructureLibrary
 from dmc_masking.match import marker_group_to_pixel_coordinates, match_markers
 from dmc_masking.rotation import (
     compute_marker_group_angles,
@@ -70,15 +70,12 @@ class TestFullPipeline(unittest.TestCase):
         # 1. Load yolo model
 
         model = MarkerDetectionModel(
-            "/home/seiffarth_l/projects/DMC/dmc-masking/artifacts/models/best34.pt"
+            Path(dmc_masking.__file__).parent.parent / "artifacts/models/best34.pt"
         )  # "./artifacts/models/best34.pt")
 
         # 2. Load image
-        # image = load_tiff("/home/seiffarth_l/projects/DMC/dmc-masking/artifacts/images/00150d6e-cecf-48f9-8b2d-a37a687ec0db.tif")
-        # image = np.stack((image,) * 3, axis=-1)
-
         image = cv2.imread(
-            "/home/seiffarth_l/projects/DMC/dmc-training/yolo_datasets/dmc_phase_seg/images/test2017/0008.png"
+            Path(dmc_masking.__file__).parent.parent / "artifacts/images/sak/0007.png"
         )
 
         # 3. Detect markers
@@ -189,18 +186,14 @@ class TestFullPipeline(unittest.TestCase):
         # create the masker
         rm = RoIMasker(
             # model_path="./artifacts/models/best34.pt",
-            model_path="/home/seiffarth_l/projects/DMC/dmc-masking/artifacts/models/best34.pt",
+            model_path=Path(dmc_masking.__file__).parent.parent
+            / "artifacts/models/best34.pt",
             roi_polygon=roi_polygon,
             marker_group_pixel=marker_group_pixel,
         )
 
-        # load the image
-        # image = tifffile.imread(
-        #    "./artifacts/images/00150d6e-cecf-48f9-8b2d-a37a687ec0db.tif"
-        # )
-
         image = cv2.imread(
-            "/home/seiffarth_l/projects/DMC/dmc-training/yolo_datasets/dmc_phase_seg/images/test2017/0008.png"
+            Path(dmc_masking.__file__).parent.parent / "artifacts/images/sak/0007.png"
         )
 
         # apply the masker
@@ -213,6 +206,47 @@ class TestFullPipeline(unittest.TestCase):
         axes[1].imshow(image)
 
         plt.savefig("test2.jpg")
+
+    @staticmethod
+    def test_roi_masker_sak():
+        """testing the roi masker class."""
+
+        # general information
+        pixel_size = 0.065789
+
+        # pylint: disable=too-many-function-args
+        sakl = SAKRoIStructureLibrary(
+            Path(dmc_masking.__file__).parent.parent
+            / "artifacts/chamber_structure.json",
+            pixel_size,
+        )
+
+        # create the masker
+        rm = RoIMasker(
+            # model_path="./artifacts/models/best34.pt",
+            model_path=Path(dmc_masking.__file__).parent.parent
+            / "artifacts/models/best34.pt",
+            roi_polygon=None,
+            marker_group_pixel=None,
+        )
+
+        image = cv2.imread(
+            Path(dmc_masking.__file__).parent.parent / "artifacts/images/sak/0007.png"
+        )
+
+        # pylint: disable=unbalanced-tuple-unpacking
+        _, sp, sc = sakl("0000")
+
+        # apply the masker
+        cropped_image, cropped_mask = rm(image, roi_polygon=sp, marker_group_pixel=sc)
+
+        # plot
+        _, axes = plt.subplots(1, 2, figsize=(10, 10))
+        axes[0].imshow(cropped_image)
+        axes[0].imshow(cropped_mask, alpha=0.25)
+        axes[1].imshow(image)
+
+        plt.savefig("test_rm2.jpg")
 
     @staticmethod
     def test_sak_chip():
@@ -298,14 +332,16 @@ class TestFullPipeline(unittest.TestCase):
         # create the masker
         rm = RoIMasker(
             # model_path="./artifacts/models/best34.pt",
-            model_path="/home/seiffarth_l/projects/DMC/dmc-masking/artifacts/models/best34.pt",
+            model_path=Path(dmc_masking.__file__).parent.parent
+            / "artifacts/models/best34.pt",
             roi_polygon=None,
             marker_group_pixel=None,
         )
 
         for i, conf in enumerate(tqdm(configs)):
             image_file = (
-                Path("/home/seiffarth_l/projects/DMC/dmc-masking/artifacts/images/sak")
+                Path(dmc_masking.__file__).parent.parent
+                / "artifacts/images/sak"
                 / conf["file_name"]
             )
             chamber_type = conf["chamber_type"]
