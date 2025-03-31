@@ -219,3 +219,27 @@ class SAKRoIStructureLibrary:
             self.polygon_library[structure_name],
             self.marker_group_configs[structure_name],
         )
+
+
+class SingleRoIStructureLibrary(SAKRoIStructureLibrary):
+    """Library for a single type of roi structure."""
+
+    def __init__(self, lookup_path, pixel_size, structure_name: str):
+        super().__init__(lookup_path, pixel_size)
+
+        self.structure_name = structure_name
+
+        if self.structure_name not in self.polygon_library:
+            raise ValueError(
+                f"Structure {self.structure_name} is not in the polygon libarary. Only {[self.polygon_library.keys()]} names are available!"
+            )
+
+    def __call__(self, roi_id: str) -> tuple[str, RoIPolygon, dict]:
+
+        structure_name = self.structure_name
+
+        return (
+            structure_name,
+            self.polygon_library[structure_name],
+            self.marker_group_configs[structure_name],
+        )
