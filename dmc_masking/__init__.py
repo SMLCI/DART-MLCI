@@ -179,6 +179,20 @@ class RoIMasker:
             result_images.append(cropped_image)
             result_masks.append(cropped_mask)
 
+        # Homogenize cropped image sizes (should be not more than 1 pixel)
+        shapes = np.stack([np.array(im.shape) for im in result_images], axis=0)
+        max_height = np.max(shapes[:, 1])
+        max_width = np.max(shapes[:, 2])
+
+        for i, im in enumerate(result_images):
+            im_height, im_width = im.shape[-2:]
+
+            ph = max_height - im_height
+            pw = max_width - im_width
+
+            result_images[i] = np.pad(im, [(0, 0), (0, ph), (0, pw)])
+            result_masks[i] = np.pad(result_masks[i], [(0, ph), (0, pw)])
+
         return np.stack(result_images, axis=0), np.stack(result_masks, axis=0)
 
 
