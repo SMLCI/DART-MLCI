@@ -13,6 +13,7 @@ from dmc_masking.rotation import (
 )
 from dmc_masking.utils import normalize_image
 
+from .mask import SingleRoIStructureLibrary
 from .utils import center_of_mask_mass
 
 
@@ -195,3 +196,57 @@ def compute_marker_angles(markers, marker_group_pixel):
     mean_angle = np.mean(angles)
 
     return mean_angle
+
+
+class SingleStructureRoIMasker:
+    """Masker for a chip with a single structure"""
+
+    def __init__(
+        self,
+        model_path: Path = None,
+        structure_library: Path = None,
+        structure_name="OpenBox-inner",
+        pixel_size: float = 0.065789,
+    ):
+        """_summary_
+
+        Args:
+            model_path (Path, optional): Path to the yolo model. Defaults to None.
+            structure_library (Path, optional): Path to the structure library. Defaults to None.
+            structure_name (str, optional): Name of the structure. Defaults to "OpenBox-inner".
+            pixel_size (float, optional): size of a pixel in micrometer. Defaults to 0.065789.
+        """
+
+        if structure_library is None:
+            structure_library = (
+                Path(__file__).parent.parent / "artifacts/chamber_structure.json"
+            )
+        if model_path is None:
+            model_path = Path(__file__).parent.parent / "artifacts/models/best34.pt"
+
+        self.rm = RoIMasker(
+            model_path=model_path, roi_polygon=None, marker_group_pixel=None
+        )
+
+        self.structure_library = SingleRoIStructureLibrary(
+            lookup_path=structure_library,
+            structure_name=structure_name,
+            pixel_size=pixel_size,
+        )
+
+    def __call__(self, image_stack: np.ndarray, roi_id: str):
+        """mask the structures
+
+        Args:
+            image_stack (np.ndarray): TxCxHxW image stack
+            roi_id (str): the id of the roi
+
+        Returns:
+            tuple[np.ndarray, np.ndarray]: Cropped image (TxCxH*xW*) and mask (TxCxH*xW*)
+        """
+
+        _, rp, mgp = self.structure_library(roi_id)
+
+        cropped_image, cropped_mask = self.rm(image_stack, rp, mgp)
+
+        return cropped_image, cropped_mask

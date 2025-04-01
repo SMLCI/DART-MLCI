@@ -10,7 +10,7 @@ from shapely.geometry import Point, Polygon, shape
 from tqdm.auto import tqdm
 
 import dmc_masking
-from dmc_masking import MarkerDetectionModel, RoIMasker
+from dmc_masking import MarkerDetectionModel, RoIMasker, SingleStructureRoIMasker
 from dmc_masking.io import load_roi_structures
 from dmc_masking.mask import RoIPolygon, SAKRoIStructureLibrary
 from dmc_masking.match import marker_group_to_pixel_coordinates, match_markers
@@ -398,6 +398,36 @@ class TestFullPipeline(unittest.TestCase):
             plt.tight_layout()
 
             plt.savefig(f"test_{i}.jpg")
+
+    def test_ssrm(self):
+        """test cropping of an image stack with a single structure masker"""
+        ssrm = SingleStructureRoIMasker()
+
+        image_path = (
+            Path(dmc_masking.__file__).parent.parent
+            / "artifacts/images/sak"
+            / "0003.png"
+        )
+
+        image = cv2.imread(image_path)
+
+        image_stack = np.stack((np.moveaxis(image, [0, 1, 2], [1, 2, 0]),) * 10, axis=0)
+
+        cropped_images, _ = ssrm(image_stack=image_stack, roi_id="0000")
+
+        self.assertEqual(len(cropped_images), 10)
+
+        cropped_images = np.moveaxis(cropped_images, [1, 2, 3], [3, 1, 2])
+
+        # plot
+        _, axes = plt.subplots(1, 3, figsize=(20, 10))
+        axes[0].imshow(cropped_images[0])
+        axes[1].imshow(cropped_images[1])
+        axes[2].imshow(cropped_images[2])
+
+        plt.tight_layout()
+
+        plt.savefig("test_ssrm.jpg")
 
 
 if __name__ == "__main__":
