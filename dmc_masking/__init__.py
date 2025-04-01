@@ -9,8 +9,7 @@ from dmc_masking.mask import RoIPolygon, apply_mask
 from dmc_masking.match import match_markers
 from dmc_masking.rotation import (
     compute_marker_group_angles,
-    rotate_image,
-    rotate_markers,
+    rotate_image_and_markers,
 )
 from dmc_masking.utils import normalize_image
 
@@ -59,13 +58,13 @@ def extract_data(result, image: np.ndarray):
 class MarkerDetectionModel:
     """Yolo model for detecting the markers"""
 
-    def __init__(self, model_path: Path):
+    def __init__(self, model_path: Path, verbose=False):
         """
 
         Args:
             model_path (Path): path to the model pt
         """
-        self.model = YOLO(model_path)
+        self.model = YOLO(model_path, verbose=verbose)
 
     def predict_markers(self, image: np.ndarray):
         """Predict markers on the image
@@ -106,7 +105,7 @@ class RoIMasker:
 
     def __call__(
         self,
-        image: np.ndarray,
+        image_stack: np.ndarray,
         roi_polygon: RoIPolygon = None,
         marker_group_pixel=None,
         return_uncropped=False,
@@ -114,7 +113,7 @@ class RoIMasker:
         """_summary_
 
         Args:
-            image (np.ndarray): the raw image
+            image (np.ndarray): the raw image (TxCxHxW). First channel should be phase contrast.
             roi_polygon (RoIPolygon, optional): chamber shape polygon. If None, the initial shape polygon is used. Defaults to None.
             marker_group_pixel (_type_, optional): marker group information in pixel coordinates. If None, the intial marker group information is used. Defaults to None.
 
@@ -128,45 +127,58 @@ class RoIMasker:
         if marker_group_pixel is None:
             marker_group_pixel = self.marker_group_pixel
 
-        if image.dtype == np.uint16:
-            image = normalize_image(image)
+        result_images = []
+        result_masks = []
 
-        if len(image.shape) == 2:
-            image = np.stack((image,) * 3, axis=-1)
+        for image in image_stack:
 
-        # 1. detect markers
+            ph_image = image[0]
 
-        markers = self.detection_model.predict_markers(image)
+            if ph_image.dtype == np.uint16:
+                ph_image = normalize_image(ph_image)
 
-        # 2. match markers
+            if len(ph_image.shape) == 2:
+                ph_image = np.stack((ph_image,) * 3, axis=-1)
 
-        matched_marker_indices = match_markers(
-            markers, marker_group=marker_group_pixel, tolerance=60
-        )
+            # 1. detect markers
 
-        # 3. compute angle
-        angles = compute_marker_group_angles(
-            markers, matched_marker_indices, marker_group_pixel
-        )
-        mean_angle = np.mean(angles)
+            markers = self.detection_model.predict_markers(ph_image)
 
-        # 4. Rotate image
+            # 2. match markers
 
-        rotated_image = rotate_image(image, mean_angle)
-        rotated_markers = rotate_markers(markers, image, mean_angle)
+            matched_marker_indices = match_markers(
+                markers, marker_group=marker_group_pixel, tolerance=60
+            )
 
-        # 5. Apply mask
+            # 3. compute angle
+            angles = compute_marker_group_angles(
+                markers, matched_marker_indices, marker_group_pixel
+            )
+            mean_angle = np.mean(angles)
 
-        cropped_image, cropped_mask = apply_mask(
-            matched_marker_indices=matched_marker_indices,
-            rotated_markers=rotated_markers,
-            marker_group_pixels=marker_group_pixel,
-            roi_polygon=roi_polygon,
-            rotated_image=rotated_image,
-            return_uncropped=return_uncropped,
-        )
+            # 4. Rotate image
 
-        return cropped_image, cropped_mask
+            rotated_image, rotated_markers = rotate_image_and_markers(
+                image, markers, mean_angle
+            )
+            # rotated_image = np.stack([rotate_image(im, mean_angle) for im in image], axis=0)
+            # rotated_markers = rotate_markers(markers, image, mean_angle)
+
+            # 5. Apply mask
+
+            cropped_image, cropped_mask = apply_mask(
+                matched_marker_indices=matched_marker_indices,
+                rotated_markers=rotated_markers,
+                marker_group_pixels=marker_group_pixel,
+                roi_polygon=roi_polygon,
+                rotated_image=rotated_image,
+                return_uncropped=return_uncropped,
+            )
+
+            result_images.append(cropped_image)
+            result_masks.append(cropped_mask)
+
+        return np.stack(result_images, axis=0), np.stack(result_masks, axis=0)
 
 
 def compute_marker_angles(markers, marker_group_pixel):

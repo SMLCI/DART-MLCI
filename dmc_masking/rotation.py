@@ -27,10 +27,85 @@ def rotate_image(image: np.ndarray, angle: float) -> np.ndarray:
         np.ndarray: the rotated image
     """
 
-    image_center = tuple(np.array(image.shape[1::-1]) / 2)
+    height, width = image.shape[-2:]
+
+    image_center = tuple(np.array(image.shape[-2:][::-1]) / 2)
     rot_mat = cv2.getRotationMatrix2D(image_center, angle, 1.0)
-    result = cv2.warpAffine(image, rot_mat, image.shape[1::-1], flags=cv2.INTER_LINEAR)
+
+    # rotation calculates the cos and sin, taking absolutes of those.
+    abs_cos = abs(rot_mat[0, 0])
+    abs_sin = abs(rot_mat[0, 1])
+
+    # find the new width and height bounds
+    bound_w = int(height * abs_sin + width * abs_cos)
+    bound_h = int(height * abs_cos + width * abs_sin)
+
+    # subtract old image center (bringing image back to origo) and adding the new image center coordinates
+    rot_mat[0, 2] += bound_w / 2 - image_center[0]
+    rot_mat[1, 2] += bound_h / 2 - image_center[1]
+
+    # result = cv2.warpAffine(image, rot_mat, (bound_w, bound_h), flags=cv2.INTER_LINEAR)
+    result = cv2.warpAffine(image, rot_mat, (bound_w, bound_h), flags=cv2.INTER_LINEAR)
     return result
+
+
+def rotate_image_and_markers(
+    image: np.ndarray, markers, angle: float, position_labels=None
+) -> np.ndarray:
+    """Rotate image around its center
+
+    Args:
+        image (np.ndarray): the image to rotate. CxHxW
+        markers: Markers to rotate
+        angle (float): the angle in degrees
+
+    Returns:
+        np.ndarray: the rotated image. CxHxW
+    """
+
+    height, width = image.shape[-2:]
+
+    image_center = tuple(np.array(image.shape[-2:][::-1]) / 2)
+    rot_mat = cv2.getRotationMatrix2D(image_center, angle, 1.0)
+
+    # rotation calculates the cos and sin, taking absolutes of those.
+    abs_cos = abs(rot_mat[0, 0])
+    abs_sin = abs(rot_mat[0, 1])
+
+    # find the new width and height bounds
+    bound_w = int(height * abs_sin + width * abs_cos)
+    bound_h = int(height * abs_cos + width * abs_sin)
+
+    # subtract old image center (bringing image back to origo) and adding the new image center coordinates
+    rot_mat[0, 2] += bound_w / 2 - image_center[0]
+    rot_mat[1, 2] += bound_h / 2 - image_center[1]
+
+    # rotate all channels
+    result = np.stack(
+        [
+            cv2.warpAffine(im, rot_mat, (bound_w, bound_h), flags=cv2.INTER_LINEAR)
+            for im in image
+        ],
+        axis=0,
+    )
+
+    if position_labels is None:
+        position_labels = ["bbox_center"]
+
+    new_markers = []
+
+    for marker in markers:
+        new_marker = {**marker}
+        for pl in position_labels:
+
+            p = np.array([*new_marker[pl], 1])
+
+            # apply rotation matrix
+            new_marker[pl] = np.dot(rot_mat, p.T)
+
+        new_markers.append(new_marker)
+
+    return result, new_markers
 
 
 def rotate_point(p: np.ndarray, origin: np.ndarray, angle: float) -> np.ndarray:
@@ -59,7 +134,7 @@ def rotate_markers(markers, image, angle: float, position_labels=None):
 
     new_markers = []
 
-    image_center = tuple(np.array(image.shape[1::-1]) / 2)
+    image_center = tuple(np.array(image.shape[-2:][::-1]) / 2)
 
     for marker in markers:
         new_marker = {**marker}

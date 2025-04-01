@@ -68,7 +68,7 @@ def apply_mask(
     polygons = []
     masks = []
 
-    im_width, im_height = rotated_image.shape[:2]
+    im_height, im_width = rotated_image.shape[-2:]
 
     for cross_index, circle_index in matched_marker_indices:
 
@@ -114,7 +114,7 @@ def apply_mask(
     # 8. Cropping
 
     minx, miny, maxx, maxy = tuple(map(int, map(np.round, polygon.roi_polygon.bounds)))
-    cropped_image = rotated_image[miny:maxy, minx:maxx]
+    cropped_image = rotated_image[..., miny:maxy, minx:maxx]
     cropped_mask = mask[miny:maxy, minx:maxx]
 
     return cropped_image, cropped_mask

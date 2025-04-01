@@ -16,8 +16,7 @@ from dmc_masking.mask import RoIPolygon, SAKRoIStructureLibrary
 from dmc_masking.match import marker_group_to_pixel_coordinates, match_markers
 from dmc_masking.rotation import (
     compute_marker_group_angles,
-    rotate_image,
-    rotate_markers,
+    rotate_image_and_markers,
 )
 
 
@@ -98,16 +97,22 @@ class TestFullPipeline(unittest.TestCase):
 
         print("angles", angles)
 
+        image = np.moveaxis(image, [0, 1, 2], [1, 2, 0])
+
         # 6. Rotate image
 
-        rotated_image = rotate_image(image, mean_angle)
-        rotated_markers = rotate_markers(markers, image, mean_angle)
+        rotated_image, rotated_markers = rotate_image_and_markers(
+            image, markers, mean_angle
+        )
+
+        # rotated_image = np.stack([rotate_image(im, mean_angle) for im in image], axis=0)
+        # rotated_markers = rotate_markers(markers, image, mean_angle)
 
         # 7. Apply mask
 
         masks = []
         polygons = []
-        im_height, im_width = rotated_image.shape[:2]
+        im_height, im_width = rotated_image.shape[-2:]
 
         for cross_index, circle_index in matched_marker_indices:
 
@@ -157,14 +162,14 @@ class TestFullPipeline(unittest.TestCase):
         minx, miny, maxx, maxy = tuple(
             map(int, map(np.round, polygon.roi_polygon.bounds))
         )
-        cropped_image = rotated_image[miny:maxy, minx:maxx]
+        cropped_image = rotated_image[..., miny:maxy, minx:maxx]
         cropped_mask = mask[miny:maxy, minx:maxx]
 
         _, axes = plt.subplots(1, 2, figsize=(15, 15))
-        axes[0].imshow(rotated_image)
+        axes[0].imshow(np.moveaxis(rotated_image, [0, 1, 2], [2, 0, 1]))
         axes[0].imshow(mask, alpha=0.5)
 
-        axes[1].imshow(cropped_image)
+        axes[1].imshow(np.moveaxis(cropped_image, [0, 1, 2], [2, 0, 1]))
         axes[1].imshow(cropped_mask, alpha=0.2)
         plt.savefig("test.jpg")
 
@@ -197,12 +202,12 @@ class TestFullPipeline(unittest.TestCase):
         )
 
         # apply the masker
-        cropped_image, cropped_mask = rm(image)
+        cropped_image, cropped_mask = rm(np.moveaxis(image[None], [1, 2, 3], [2, 3, 1]))
 
         # plot
         _, axes = plt.subplots(1, 2, figsize=(10, 10))
-        axes[0].imshow(cropped_image)
-        axes[0].imshow(cropped_mask, alpha=0.25)
+        axes[0].imshow(np.moveaxis(cropped_image[0], [0, 1, 2], [2, 0, 1]))
+        axes[0].imshow(cropped_mask[0], alpha=0.25)
         axes[1].imshow(image)
 
         plt.savefig("test2.jpg")
@@ -234,6 +239,11 @@ class TestFullPipeline(unittest.TestCase):
             Path(dmc_masking.__file__).parent.parent / "artifacts/images/sak/0007.png"
         )
 
+        print(image.shape)
+
+        # make it TxCxHxW
+        image = np.moveaxis(image[None, ...], [1, 2, 3], [2, 3, 1])
+
         # pylint: disable=unbalanced-tuple-unpacking
         _, sp, sc = sakl("0000")
 
@@ -242,9 +252,9 @@ class TestFullPipeline(unittest.TestCase):
 
         # plot
         _, axes = plt.subplots(1, 2, figsize=(10, 10))
-        axes[0].imshow(cropped_image)
-        axes[0].imshow(cropped_mask, alpha=0.25)
-        axes[1].imshow(image)
+        axes[0].imshow(np.moveaxis(cropped_image[0], [0, 1, 2], [2, 0, 1]))
+        axes[0].imshow(cropped_mask[0], alpha=0.25)
+        axes[1].imshow(np.moveaxis(image[0], [0, 1, 2], [2, 0, 1]))
 
         plt.savefig("test_rm2.jpg")
 
@@ -361,6 +371,8 @@ class TestFullPipeline(unittest.TestCase):
 
             image = cv2.imread(image_file)
 
+            image = np.moveaxis(image, [0, 1, 2], [1, 2, 0])[None]
+
             # apply the masker
             cropped_image, cropped_mask = rm(
                 image,
@@ -377,11 +389,11 @@ class TestFullPipeline(unittest.TestCase):
 
             # plot
             _, axes = plt.subplots(1, 3, figsize=(20, 10))
-            axes[0].imshow(image)
-            axes[1].imshow(rotated_image)
-            axes[1].imshow(rotated_mask, alpha=0.2)
-            axes[2].imshow(cropped_image)
-            axes[2].imshow(cropped_mask, alpha=0.2)
+            axes[0].imshow(np.moveaxis(image[0], [0, 1, 2], [2, 0, 1]))
+            axes[1].imshow(np.moveaxis(rotated_image[0], [0, 1, 2], [2, 0, 1]))
+            axes[1].imshow(rotated_mask[0], alpha=0.2)
+            axes[2].imshow(np.moveaxis(cropped_image[0], [0, 1, 2], [2, 0, 1]))
+            axes[2].imshow(cropped_mask[0], alpha=0.2)
 
             plt.tight_layout()
 
