@@ -5,7 +5,6 @@ from pathlib import Path
 
 import cv2
 import matplotlib.pyplot as plt
-import numpy as np
 from shapely.geometry import Point, Polygon
 
 import dmc_masking
@@ -14,9 +13,9 @@ from dmc_masking import (
     MarkerDetectionStep,
     MarkerMatchingStep,
     RoIMaskingStep,
+    SingleRoIStructureLibrary,
 )
 from dmc_masking.mask import RoIPolygon
-from dmc_masking.match import marker_group_to_pixel_coordinates
 from dmc_masking.utils import plot_marker_paris, plot_markers
 
 
@@ -55,17 +54,18 @@ class TestFullPipeline(unittest.TestCase):
 
         # config
         pixel_size = 0.065789
-        marker_group = {
-            "cross": np.array((4, 8), dtype=float),
-            "circle": np.array((56, 8), dtype=float),
-        }
 
-        marker_group_pixels = marker_group_to_pixel_coordinates(
-            marker_group, pixel_size
+        # get the RoI structure information
+        srsl = SingleRoIStructureLibrary(
+            lookup_path=Path(dmc_masking.__file__).parent.parent
+            / "artifacts/chamber_structure.json",
+            structure_name="NormaleBox-inner",
+            pixel_size=pixel_size,
         )
 
-        roi_polygon = build_polygon(pixel_size)
+        _, roi_polygon, marker_group_pixels = srsl("0000")
 
+        # build the pipeline
         step1 = MarkerDetectionStep(
             Path(dmc_masking.__file__).parent.parent / "artifacts/models/best34.pt"
         )
@@ -76,6 +76,8 @@ class TestFullPipeline(unittest.TestCase):
         image = cv2.imread(
             Path(dmc_masking.__file__).parent.parent / "artifacts/images/sak/0000.png"
         )
+
+        ### Go through the pipeline steps
 
         # detect markers
         data_res_1 = step1(image)
