@@ -2,6 +2,7 @@
 
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import tifffile
 
@@ -55,3 +56,60 @@ def plot_marker_data(marker_data, ax):
         x, y = marker["mask_center"]
 
         ax.scatter(x, y, s=1, c="blue")
+
+
+def plot_markers(image: np.ndarray, markers: dict):
+    """Visualize markers on the image using matplotlib
+
+    Args:
+        image (np.ndarray): the image
+        markers (dict): the detected markers
+    """
+
+    marker_image = np.copy(image)
+
+    plt.imshow(marker_image)
+    plt.tight_layout()
+    plt.axis("off")
+
+    for m in markers:
+        print(m)
+        if m["label"] == "cross":
+            c = "red"
+            mr = "+"
+        elif m["label"] == "circle":
+            c = "blue"
+            mr = "o"
+
+        plt.plot(
+            [m["bbox_center"][0]], [m["bbox_center"][1]], c=c, marker=mr, markersize=10
+        )
+
+
+def plot_marker_paris(image: np.ndarray, matched_marker_indices: list, markers: dict):
+    """Visualize marker pairs on the image
+
+    Args:
+        image (np.ndarray): the image
+        matched_marker_indices (list): the matched markers
+        markers (dict): the makerd detections
+    """
+
+    matched_image = np.copy(image)
+
+    colors = ["purple", "yellow"]
+
+    plt.figure()
+    plt.imshow(matched_image)
+    for i, index_match in enumerate(matched_marker_indices):
+        for ind in index_match:
+            plt.plot(
+                [markers[ind]["bbox_center"][0]],
+                [markers[ind]["bbox_center"][1]],
+                c=colors[i],
+                marker="+" if markers[ind]["label"] == "cross" else "o",
+                markersize=10,
+            )
+
+    plt.axis("off")
+    plt.tight_layout()

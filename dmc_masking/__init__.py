@@ -162,11 +162,8 @@ class RoIMasker:
             rotated_image, rotated_markers = rotate_image_and_markers(
                 image, markers, mean_angle
             )
-            # rotated_image = np.stack([rotate_image(im, mean_angle) for im in image], axis=0)
-            # rotated_markers = rotate_markers(markers, image, mean_angle)
 
             # 5. Apply mask
-
             cropped_image, cropped_mask = apply_mask(
                 matched_marker_indices=matched_marker_indices,
                 rotated_markers=rotated_markers,
@@ -264,3 +261,94 @@ class SingleStructureRoIMasker:
         cropped_image, cropped_mask = self.rm(image_stack, rp, mgp)
 
         return cropped_image, cropped_mask
+
+
+class MarkerDetectionStep:
+    """Detect Markers"""
+
+    def __init__(self, model_path: str):
+        self.mdm = MarkerDetectionModel(model_path)
+
+    def __call__(self, image):
+        markers = self.mdm.predict_markers(image)
+
+        data = {"image": image, "markers": markers}
+
+        return data
+
+
+class MarkerMatchingStep:
+    """Match markers into pairs"""
+
+    def __init__(self, marker_group_pixel, tolerance=60):
+        self.marker_group_pixel = marker_group_pixel
+        self.tolerance = tolerance
+
+    def __call__(self, data):
+        markers = data["markers"]
+
+        matched_marker_indices = match_markers(
+            markers, marker_group=self.marker_group_pixel, tolerance=self.tolerance
+        )
+
+        data["matched_marker_indices"] = matched_marker_indices
+
+        angles = compute_marker_group_angles(
+            markers, matched_marker_indices, self.marker_group_pixel
+        )
+        mean_angle = np.mean(angles)
+
+        data["angle"] = mean_angle
+
+        return data
+
+
+class ImageRotationStep:
+    """Rotate images and markers"""
+
+    def __call__(self, data):
+        markers = data["markers"]
+        mean_angle = data["angle"]
+        image = data["image"]
+
+        image = np.moveaxis(image, [0, 1, 2], [1, 2, 0])
+
+        rotated_image, rotated_markers = rotate_image_and_markers(
+            image, markers, mean_angle
+        )
+
+        rotated_image = np.moveaxis(rotated_image, [0, 1, 2], [2, 0, 1])
+
+        data["image"] = rotated_image
+        data["markers"] = rotated_markers
+
+        return data
+
+
+class RoIMaskingStep:
+    """Masking RoI"""
+
+    def __init__(self, marker_group_pixels, roi_polygon):
+        super().__init__()
+
+        self.marker_group_pixels = marker_group_pixels
+        self.roi_polygon = roi_polygon
+
+    def __call__(self, data, cropped=True):
+        image = np.moveaxis(data["image"], [0, 1, 2], [1, 2, 0])
+
+        cropped_image, cropped_mask = apply_mask(
+            matched_marker_indices=data["matched_marker_indices"],
+            rotated_markers=data["markers"],
+            marker_group_pixels=self.marker_group_pixels,
+            roi_polygon=self.roi_polygon,
+            rotated_image=image,
+            return_uncropped=not cropped,
+        )
+
+        cropped_image = np.moveaxis(cropped_image, [0, 1, 2], [2, 0, 1])
+
+        data["image"] = cropped_image
+        data["mask"] = cropped_mask
+
+        return data
