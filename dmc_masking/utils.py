@@ -113,3 +113,39 @@ def plot_marker_paris(image: np.ndarray, matched_marker_indices: list, markers: 
 
     plt.axis("off")
     plt.tight_layout()
+
+
+def homogenize_image_size(result_images: list[np.ndarray]):
+    """Homogneize spatial image dimensions
+
+    Args:
+        result_images (list[np.ndarray]): List of TxHxW images where HxW may differ
+
+    Returns:
+        np.ndarray: TxH*xW*xC image stack with homogeneous and maximal image spatial dimensions of H*xW*
+    """
+
+    # extract image shapes
+    shapes = np.stack([np.array(im.shape) for im in result_images], axis=0)
+
+    if not np.all(shapes[:, -1] == shapes[0, -1]):
+        raise ValueError(
+            f"Inhomogeneous number of channels (last dimension). All images need the same number of channels. But they are of dimension {shapes}"
+        )
+
+    # identify max size
+    max_height = np.max(shapes[:, 0])
+    max_width = np.max(shapes[:, 1])
+
+    for i, im in enumerate(result_images):
+        im_height, im_width = im.shape[:2]
+
+        # compute differences to max image size
+        ph = max_height - im_height
+        pw = max_width - im_width
+
+        # introduce padding
+        result_images[i] = np.pad(im, [(0, ph), (0, pw), (0, 0)])
+
+    # combine into a single image stack
+    return np.stack(result_images, axis=0)
