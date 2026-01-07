@@ -1,4 +1,4 @@
-""" Testcases for mask shape handling. """
+"""Testcases for mask shape handling."""
 
 import unittest
 from pathlib import Path
@@ -17,8 +17,7 @@ class TestMask(unittest.TestCase):
 
         # load the sak library
         sakl = SAKRoIStructureLibrary(
-            Path(dmc_masking.__file__).parent.parent
-            / "artifacts/chamber_structure.json",
+            Path(dmc_masking.__file__).parent.parent / "artifacts/chamber_structure.json",
             1,
         )
 

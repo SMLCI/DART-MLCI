@@ -7,9 +7,7 @@ import numpy as np
 import tifffile
 
 
-def normalize_image(
-    im: np.ndarray, low_quantile=0.01, high_quantile=0.99
-) -> np.ndarray:
+def normalize_image(im: np.ndarray, low_quantile=0.01, high_quantile=0.99) -> np.ndarray:
     """Normalize image to uint8 space [0...255]
 
     Args:
@@ -81,9 +79,7 @@ def plot_markers(image: np.ndarray, markers: dict):
             c = "blue"
             mr = "o"
 
-        plt.plot(
-            [m["bbox_center"][0]], [m["bbox_center"][1]], c=c, marker=mr, markersize=10
-        )
+        plt.plot([m["bbox_center"][0]], [m["bbox_center"][1]], c=c, marker=mr, markersize=10)
 
 
 def plot_marker_paris(image: np.ndarray, matched_marker_indices: list, markers: dict):

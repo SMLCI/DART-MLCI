@@ -1,4 +1,4 @@
-""" Testcases for mask shape handling. """
+"""Testcases for mask shape handling."""
 
 import unittest
 
@@ -48,9 +48,7 @@ class TestMask(unittest.TestCase):
         new_roi_polygon = roi_polygon.translate(15, -15)
 
         np.testing.assert_almost_equal(roi_polygon.center, np.array([30, 30]))
-        np.testing.assert_almost_equal(
-            new_roi_polygon.center, np.array([30 + 15, 30 - 15])
-        )
+        np.testing.assert_almost_equal(new_roi_polygon.center, np.array([30 + 15, 30 - 15]))
 
     def test_scaling(self):
         """test scaling operation"""

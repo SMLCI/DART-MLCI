@@ -1,4 +1,4 @@
-""" Testcases for full masking pipeline """
+"""Testcases for full masking pipeline"""
 
 import unittest
 from pathlib import Path
@@ -6,6 +6,7 @@ from pathlib import Path
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
+import tifffile
 from shapely.geometry import Point, Polygon, shape
 from tqdm.auto import tqdm
 
@@ -18,6 +19,7 @@ from dmc_masking.rotation import (
     compute_marker_group_angles,
     rotate_image_and_markers,
 )
+from dmc_masking.utils import normalize_image, plot_marker_paris, plot_markers
 
 
 def build_polygon(pixel_size):
@@ -60,9 +62,7 @@ class TestFullPipeline(unittest.TestCase):
             "circle": np.array((56, 8), dtype=float),
         }
 
-        marker_group_pixels = marker_group_to_pixel_coordinates(
-            marker_group, pixel_size
-        )
+        marker_group_pixels = marker_group_to_pixel_coordinates(marker_group, pixel_size)
 
         roi_polygon = build_polygon(pixel_size)
 
@@ -74,11 +74,22 @@ class TestFullPipeline(unittest.TestCase):
 
         # 2. Load image
         image = cv2.imread(
-            Path(dmc_masking.__file__).parent.parent / "artifacts/images/sak/0007.png"
+            Path(dmc_masking.__file__).parent.parent / "artifacts/images/sak/0000.png"
         )
+
+        plt.imshow(image, cmap="gray")
+        plt.tight_layout()
+        plt.axis("off")
+        plt.savefig("test_step_1.png")
 
         # 3. Detect markers
         markers = model.predict_markers(image)
+
+        plot_markers(image, markers)
+
+        plt.savefig("test_step_2.png")
+
+        # plt.save()
 
         print(markers)
 
@@ -89,10 +100,11 @@ class TestFullPipeline(unittest.TestCase):
 
         print(matched_marker_indices)
 
+        plot_marker_paris(image, matched_marker_indices, markers)
+        plt.savefig("test_step_3.png")
+
         # 5. Compute angle
-        angles = compute_marker_group_angles(
-            markers, matched_marker_indices, marker_group_pixels
-        )
+        angles = compute_marker_group_angles(markers, matched_marker_indices, marker_group_pixels)
         mean_angle = np.mean(angles)
 
         print("angles", angles)
@@ -101,12 +113,16 @@ class TestFullPipeline(unittest.TestCase):
 
         # 6. Rotate image
 
-        rotated_image, rotated_markers = rotate_image_and_markers(
-            image, markers, mean_angle
-        )
+        rotated_image, rotated_markers = rotate_image_and_markers(image, markers, mean_angle)
 
         # rotated_image = np.stack([rotate_image(im, mean_angle) for im in image], axis=0)
         # rotated_markers = rotate_markers(markers, image, mean_angle)
+        plot_marker_paris(
+            np.moveaxis(rotated_image, [0, 1, 2], [2, 0, 1]),
+            matched_marker_indices,
+            rotated_markers,
+        )
+        plt.savefig("test_step_4.png")
 
         # 7. Apply mask
 
@@ -115,16 +131,13 @@ class TestFullPipeline(unittest.TestCase):
         im_height, im_width = rotated_image.shape[-2:]
 
         for cross_index, circle_index in matched_marker_indices:
-
             cross_marker = rotated_markers[cross_index]
             circle_marker = rotated_markers[circle_index]
 
             print(cross_marker["bbox_center"][0])
 
             # correct for difference in expected width
-            width = np.abs(
-                cross_marker["bbox_center"][0] - circle_marker["bbox_center"][0]
-            )
+            width = np.abs(cross_marker["bbox_center"][0] - circle_marker["bbox_center"][0])
             expected_width = np.abs(
                 marker_group_pixels["cross"][0] - marker_group_pixels["circle"][0]
             )
@@ -132,9 +145,7 @@ class TestFullPipeline(unittest.TestCase):
 
             # translate roi polygon
             rp = roi_polygon.translate(
-                x=cross_marker["bbox_center"][0]
-                - marker_group_pixels["cross"][0]
-                + diff,
+                x=cross_marker["bbox_center"][0] - marker_group_pixels["cross"][0] + diff,
                 y=cross_marker["bbox_center"][1] + marker_group_pixels["cross"][1],
             )
 
@@ -152,16 +163,12 @@ class TestFullPipeline(unittest.TestCase):
         if len(masks) == 0:
             raise ValueError("No roi lies completely inside the image")
 
-        mask = masks[
-            0
-        ]  # np.bitwise_or.reduce(np.stack(masks, axis=-1).astype(bool), axis=-1)
+        mask = masks[0]  # np.bitwise_or.reduce(np.stack(masks, axis=-1).astype(bool), axis=-1)
         polygon: RoIPolygon = polygons[0]
 
         # 8. Cropping
 
-        minx, miny, maxx, maxy = tuple(
-            map(int, map(np.round, polygon.roi_polygon.bounds))
-        )
+        minx, miny, maxx, maxy = tuple(map(int, map(np.round, polygon.roi_polygon.bounds)))
         cropped_image = rotated_image[..., miny:maxy, minx:maxx]
         cropped_mask = mask[miny:maxy, minx:maxx]
 
@@ -172,6 +179,33 @@ class TestFullPipeline(unittest.TestCase):
         axes[1].imshow(np.moveaxis(cropped_image, [0, 1, 2], [2, 0, 1]))
         axes[1].imshow(cropped_mask, alpha=0.2)
         plt.savefig("test.jpg")
+
+        plt.figure()
+        plt.imshow(np.moveaxis(rotated_image, [0, 1, 2], [2, 0, 1]), cmap="gray")
+        plt.imshow(np.stack((mask * 255, mask * 0, mask * 0), axis=-1), alpha=0.2)
+        plt.tight_layout()
+        plt.axis("off")
+
+        print(rotated_image.shape, mask.shape)
+
+        # output phase-contrast and mask
+        tifffile.imwrite("test_step_raw.tif", rotated_image[0])
+        tifffile.imwrite("test_step_mask.tif", mask)
+
+        tifffile.imwrite("test_step_cropped_raw.tif", cropped_image[0])
+        tifffile.imwrite("test_step_cropped_mask.tif", cropped_mask)
+
+        plt.savefig("test_step_5.png")
+
+        plt.figure()
+        plt.imshow(np.moveaxis(cropped_image, [0, 1, 2], [2, 0, 1]), cmap="gray")
+        plt.imshow(
+            np.stack((cropped_mask * 255, cropped_mask * 0, cropped_mask * 0), axis=-1), alpha=0.2
+        )
+        plt.tight_layout()
+        plt.axis("off")
+
+        plt.savefig("test_step_6.png")
 
     @staticmethod
     def test_roi_masker():
@@ -191,8 +225,7 @@ class TestFullPipeline(unittest.TestCase):
         # create the masker
         rm = RoIMasker(
             # model_path="./artifacts/models/best34.pt",
-            model_path=Path(dmc_masking.__file__).parent.parent
-            / "artifacts/models/best34.pt",
+            model_path=Path(dmc_masking.__file__).parent.parent / "artifacts/models/best34.pt",
             roi_polygon=roi_polygon,
             marker_group_pixel=marker_group_pixel,
         )
@@ -221,16 +254,14 @@ class TestFullPipeline(unittest.TestCase):
 
         # pylint: disable=too-many-function-args
         sakl = SAKRoIStructureLibrary(
-            Path(dmc_masking.__file__).parent.parent
-            / "artifacts/chamber_structure.json",
+            Path(dmc_masking.__file__).parent.parent / "artifacts/chamber_structure.json",
             pixel_size,
         )
 
         # create the masker
         rm = RoIMasker(
             # model_path="./artifacts/models/best34.pt",
-            model_path=Path(dmc_masking.__file__).parent.parent
-            / "artifacts/models/best34.pt",
+            model_path=Path(dmc_masking.__file__).parent.parent / "artifacts/models/best34.pt",
             roi_polygon=None,
             marker_group_pixel=None,
         )
@@ -260,6 +291,7 @@ class TestFullPipeline(unittest.TestCase):
 
     @staticmethod
     def test_sak_chip():
+        """ """
         configs = [
             {
                 "file_name": "0000.png",
@@ -292,6 +324,10 @@ class TestFullPipeline(unittest.TestCase):
             {
                 "file_name": "0008.png",
                 "chamber_type": "Mothermachine-2x-inner",
+            },
+            {
+                "file_name": "0009.tif",
+                "chamber_type": "Mothermachine-inner",
             },
         ]
 
@@ -332,8 +368,7 @@ class TestFullPipeline(unittest.TestCase):
 
         # load structures
         roi_structures = load_roi_structures(
-            Path(dmc_masking.__file__).parent.parent
-            / "artifacts/chamber_structure.json"
+            Path(dmc_masking.__file__).parent.parent / "artifacts/chamber_structure.json"
         )
 
         # general information
@@ -342,8 +377,8 @@ class TestFullPipeline(unittest.TestCase):
         # create the masker
         rm = RoIMasker(
             # model_path="./artifacts/models/best34.pt",
-            model_path=Path(dmc_masking.__file__).parent.parent
-            / "artifacts/models/best34.pt",
+            model_path=Path(dmc_masking.__file__).parent.parent / "artifacts/models/best34.pt",
+            # model_path=Path("/home/seiffarth_l/projects/DMC/dmc-training/training/runs/detect/train62/weights/best.pt"),
             roi_polygon=None,
             marker_group_pixel=None,
         )
@@ -357,9 +392,7 @@ class TestFullPipeline(unittest.TestCase):
             chamber_type = conf["chamber_type"]
 
             marker_group = marker_group_configs[chamber_type]
-            marker_group_pixel = marker_group_to_pixel_coordinates(
-                marker_group, pixel_size
-            )
+            marker_group_pixel = marker_group_to_pixel_coordinates(marker_group, pixel_size)
 
             rp = RoIPolygon(shape(roi_structures[chamber_type]))
 
@@ -369,7 +402,18 @@ class TestFullPipeline(unittest.TestCase):
             # move polygon into positive coordinates
             rp = rp.translate(x=-xmin, y=-ymin)
 
-            image = cv2.imread(image_file)
+            print(image_file.suffix)
+
+            if image_file.suffix == ".tif":
+                print("Hello")
+                image = tifffile.imread(image_file)
+                # norm image
+                image = normalize_image(image)
+                # make it three channels
+                image = np.stack((image,) * 3, axis=-1)
+                print(image.shape, image.dtype)
+            else:
+                image = cv2.imread(image_file)
 
             image = np.moveaxis(image, [0, 1, 2], [1, 2, 0])[None]
 
@@ -389,25 +433,43 @@ class TestFullPipeline(unittest.TestCase):
 
             # plot
             _, axes = plt.subplots(1, 3, figsize=(20, 10))
-            axes[0].imshow(np.moveaxis(image[0], [0, 1, 2], [2, 0, 1]))
-            axes[1].imshow(np.moveaxis(rotated_image[0], [0, 1, 2], [2, 0, 1]))
-            axes[1].imshow(rotated_mask[0], alpha=0.2)
+            axes[0].imshow(np.moveaxis(image[0], [0, 1, 2], [2, 0, 1]), cmap="gray")
+            axes[1].imshow(np.moveaxis(rotated_image[0], [0, 1, 2], [2, 0, 1]), cmap="gray")
+            axes[1].imshow(rotated_mask[0], alpha=0.5)
+
+            # Save just the portion _inside_ the second axis's boundaries
+            # extent = axes[1].get_window_extent().transformed(fig.dpi_scale_trans.inverted())
+            # fig.savefig('test_{i}_inner.png', bbox_inches=extent)
+
             axes[2].imshow(np.moveaxis(cropped_image[0], [0, 1, 2], [2, 0, 1]))
             axes[2].imshow(cropped_mask[0], alpha=0.2)
 
             plt.tight_layout()
 
             plt.savefig(f"test_{i}.jpg")
+            plt.close("all")
+
+            plt.imshow(
+                np.moveaxis(
+                    normalize_image(rotated_image[0], high_quantile=0.95), [0, 1, 2], [2, 0, 1]
+                ),
+                cmap="gray",
+            )
+
+            rgb_mask = np.stack((rotated_mask * 255, rotated_mask * 0, rotated_mask * 0), axis=-1)[
+                0
+            ]
+
+            plt.imshow(rgb_mask, alpha=0.5)
+            plt.tight_layout()
+            plt.axis("off")
+            plt.savefig(f"inner_test_{i}.png", dpi=300)
 
     def test_ssrm(self):
         """test cropping of an image stack with a single structure masker"""
         ssrm = SingleStructureRoIMasker()
 
-        image_path = (
-            Path(dmc_masking.__file__).parent.parent
-            / "artifacts/images/sak"
-            / "0003.png"
-        )
+        image_path = Path(dmc_masking.__file__).parent.parent / "artifacts/images/sak" / "0003.png"
 
         image = cv2.imread(image_path)
 

@@ -67,21 +67,19 @@ def apply_mask(
 
     polygons = []
     masks = []
+    min_dists = []
 
     im_height, im_width = rotated_image.shape[-2:]
 
     for cross_index, circle_index in matched_marker_indices:
-
         cross_marker = rotated_markers[cross_index]
         circle_marker = rotated_markers[circle_index]
 
-        print(cross_marker["bbox_center"][0])
+        # print(cross_marker["bbox_center"][0])
 
         # correct for difference in expected width
         width = np.abs(cross_marker["bbox_center"][0] - circle_marker["bbox_center"][0])
-        expected_width = np.abs(
-            marker_group_pixels["cross"][0] - marker_group_pixels["circle"][0]
-        )
+        expected_width = np.abs(marker_group_pixels["cross"][0] - marker_group_pixels["circle"][0])
         diff = width - expected_width
 
         # translate roi polygon
@@ -97,15 +95,22 @@ def apply_mask(
             # roi is out of image bounds
             continue
 
+        min_dist = np.min(
+            list(map(np.abs, [0 - xmin, xmax - im_width, ymin - 0, ymax - im_height]))
+        )
+
+        min_dists.append(min_dist)
         polygons.append(rp)
         masks.append(~rp.to_mask(height=im_height, width=im_width).astype(bool))
-        break
 
     if len(masks) == 0:
         raise ValueError("No roi lies completely inside the image")
 
-    mask = masks[0]
-    polygon: RoIPolygon = polygons[0]
+    # use the RoI with maximum margin to the image boundaries
+    index = np.argmax(min_dists)
+
+    mask = masks[index]
+    polygon: RoIPolygon = polygons[index]
 
     if return_uncropped:
         # return uncropped image and mask
@@ -128,7 +133,6 @@ class SAKRoIStructureLibrary:
     """Library for SAK roi structures"""
 
     def __init__(self, lookup_path, pixel_size):
-
         self.pixel_size = pixel_size
 
         # load structural information of the polygon library
@@ -185,7 +189,6 @@ class SAKRoIStructureLibrary:
         }
 
         for sn, sp in self.polygon_library.items():
-
             rp = RoIPolygon(sp)
 
             rp = rp.scale(1.0 / pixel_size)
@@ -196,12 +199,11 @@ class SAKRoIStructureLibrary:
 
             self.polygon_library[sn] = rp
 
-        for sn, sc in self.marker_group_configs.items():
+        for _sn, sc in self.marker_group_configs.items():
             for mn, mc in sc.items():
                 sc[mn] = mc * 1.0 / pixel_size
 
     def __call__(self, roi_id: str) -> tuple[str, RoIPolygon, dict]:
-
         # match id with structure patterns
         structure_name = None
 
@@ -210,9 +212,7 @@ class SAKRoIStructureLibrary:
                 structure_name = sn
 
         if structure_name is None:
-            raise ValueError(
-                f"No structure found corresponding to the roi id {roi_id}!"
-            )
+            raise ValueError(f"No structure found corresponding to the roi id {roi_id}!")
 
         return (
             structure_name,
@@ -234,8 +234,7 @@ class SingleRoIStructureLibrary(SAKRoIStructureLibrary):
                 f"Structure {self.structure_name} is not in the polygon libarary. Only {[self.polygon_library.keys()]} names are available!"
             )
 
-    def __call__(self, roi_id: str) -> tuple[str, RoIPolygon, dict]:
-
+    def __call__(self, roi_id: str | None = None) -> tuple[str, RoIPolygon, dict]:
         structure_name = self.structure_name
 
         return (

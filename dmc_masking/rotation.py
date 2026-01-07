@@ -82,10 +82,7 @@ def rotate_image_and_markers(
 
     # rotate all channels
     result = np.stack(
-        [
-            cv2.warpAffine(im, rot_mat, (bound_w, bound_h), flags=cv2.INTER_LINEAR)
-            for im in image
-        ],
+        [cv2.warpAffine(im, rot_mat, (bound_w, bound_h), flags=cv2.INTER_LINEAR) for im in image],
         axis=0,
     )
 
@@ -97,7 +94,6 @@ def rotate_image_and_markers(
     for marker in markers:
         new_marker = {**marker}
         for pl in position_labels:
-
             p = np.array([*new_marker[pl], 1])
 
             # apply rotation matrix
@@ -128,7 +124,6 @@ def rotate_point(p: np.ndarray, origin: np.ndarray, angle: float) -> np.ndarray:
 
 
 def rotate_markers(markers, image, angle: float, position_labels=None):
-
     if position_labels is None:
         position_labels = ["bbox_center"]
 
@@ -146,17 +141,12 @@ def rotate_markers(markers, image, angle: float, position_labels=None):
     return new_markers
 
 
-def compute_marker_group_angles(
-    markers, matched_marker_indices, marker_group, on="bbox_center"
-):
-
+def compute_marker_group_angles(markers, matched_marker_indices, marker_group, on="bbox_center"):
     angles = []
     blueprint_cross_to_circle = marker_group["circle"] - marker_group["cross"]
 
     for iCross, iCircle in matched_marker_indices:
         measured_cross_to_circle = markers[iCircle][on] - markers[iCross][on]
-        angles.append(
-            angle_between(blueprint_cross_to_circle, measured_cross_to_circle)
-        )
+        angles.append(angle_between(blueprint_cross_to_circle, measured_cross_to_circle))
 
     return angles

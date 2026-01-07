@@ -7,7 +7,6 @@ import numpy as np
 
 
 def marker_group_to_pixel_coordinates(marker_group, pixel_size: float):
-
     new_marker_group = {}
 
     for label, pos in marker_group.items():
@@ -16,10 +15,7 @@ def marker_group_to_pixel_coordinates(marker_group, pixel_size: float):
     return new_marker_group
 
 
-def match_markers(
-    markers, marker_group: dict[str, np.ndarray], on="bbox_center", tolerance=5.0
-):
-
+def match_markers(markers, marker_group: dict[str, np.ndarray], on="bbox_center", tolerance=5.0):
     if len(marker_group) != 2:
         raise ValueError("No more general implementation!")
 
@@ -30,12 +26,8 @@ def match_markers(
 
     data = deque()
 
-    cross_marker_indices = filter(
-        lambda i: markers[i]["label"] == "cross", range(len(markers))
-    )
-    circle_marker_indices = filter(
-        lambda i: markers[i]["label"] == "circle", range(len(markers))
-    )
+    cross_marker_indices = filter(lambda i: markers[i]["label"] == "cross", range(len(markers)))
+    circle_marker_indices = filter(lambda i: markers[i]["label"] == "circle", range(len(markers)))
 
     for iCross, iCircle in product(cross_marker_indices, circle_marker_indices):
         dist = np.linalg.norm(markers[iCross][on] - markers[iCircle][on])

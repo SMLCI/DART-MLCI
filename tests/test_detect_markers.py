@@ -1,4 +1,4 @@
-""" Testcases for single-cell property extractors """
+"""Testcases for single-cell property extractors"""
 
 import unittest
 
@@ -55,7 +55,7 @@ class TestMarkerDetection(unittest.TestCase):
 
         pixel_accuracy = 5
 
-        for pred_marker, gt_marker in zip(markers, marker_gt):
+        for pred_marker, gt_marker in zip(markers, marker_gt, strict=False):
             self.assertLess(
                 np.linalg.norm(pred_marker["bbox_center"] - gt_marker["bbox_center"]),
                 pixel_accuracy,
@@ -64,9 +64,7 @@ class TestMarkerDetection(unittest.TestCase):
                 np.linalg.norm(pred_marker["mask_center"] - gt_marker["mask_center"]),
                 pixel_accuracy,
             )
-            self.assertLess(
-                np.abs(pred_marker["mask_size"] - gt_marker["mask_size"]), 100
-            )
+            self.assertLess(np.abs(pred_marker["mask_size"] - gt_marker["mask_size"]), 100)
             self.assertEqual(pred_marker["label"], gt_marker["label"])
 
 

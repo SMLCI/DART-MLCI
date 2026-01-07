@@ -1,4 +1,4 @@
-""" Testcases for marker matching. """
+"""Testcases for marker matching."""
 
 import unittest
 

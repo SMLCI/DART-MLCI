@@ -1,4 +1,4 @@
-""" Testcases for full masking pipeline """
+"""Testcases for full masking pipeline"""
 
 import unittest
 from pathlib import Path
@@ -95,6 +95,74 @@ class TestFullPipeline(unittest.TestCase):
         plt.savefig("test_pp_step_2.png")
 
         # rotate image
+        data_res_3 = step3(data_res_2)
+
+        image = data_res_3["image"]
+        matched_marker_indices = data_res_3["matched_marker_indices"]
+        markers = data_res_3["markers"]
+
+        plot_marker_paris(image, matched_marker_indices, markers)
+        plt.savefig("test_pp_step_3.png")
+
+        # apply mask
+        data_res_4 = step4(data_res_3)
+
+        plt.figure()
+        plt.imshow(data_res_4["image"], cmap="gray")
+        plt.savefig("test_pp_step_4.png")
+
+        # data_res = step4(step3(step2(step1(image))))
+        print(data_res_4)
+
+    @staticmethod
+    def test_all_pipeline_steps_bright():
+        """test the full pipeline step-by-step"""
+
+        # config
+        pixel_size = 0.07220  # micrometer / pixel
+
+        # get the RoI structure information
+        srsl = SingleRoIStructureLibrary(
+            lookup_path=Path(dmc_masking.__file__).parent.parent
+            / "artifacts/chamber_structure.json",
+            structure_name="OpenBox-inner",
+            pixel_size=pixel_size,
+        )
+
+        _, roi_polygon, marker_group_pixels = srsl("0000")
+
+        # build the pipeline
+        step1 = MarkerDetectionStep(
+            "/home/seiffarth_l/projects/DMC/dmc-training/ultralytics/runs/segment/train10/weights/last.pt"
+            # Path(dmc_masking.__file__).parent.parent / "artifacts/models/best34.pt"
+        )
+        step2 = MarkerMatchingStep(marker_group_pixels, tolerance=60)
+        step3 = ImageRotationStep()
+        step4 = RoIMaskingStep(marker_group_pixels, roi_polygon)
+
+        image = cv2.imread(
+            Path(dmc_masking.__file__).parent.parent / "artifacts/images/bright/bright_chamber.png"
+        )
+
+        ### Go through the pipeline steps
+
+        # detect markers
+        data_res_1 = step1(image)
+
+        plot_markers(image, data_res_1["markers"])
+        plt.savefig("test_pp_step_1.png")
+
+        # match markers
+        data_res_2 = step2(data_res_1)
+
+        matched_marker_indices = data_res_2["matched_marker_indices"]
+        markers = data_res_2["markers"]
+
+        plot_marker_paris(image, matched_marker_indices, markers)
+        plt.savefig("test_pp_step_2.png")
+
+        # rotate image
+        data_res_2["angle"] *= -1
         data_res_3 = step3(data_res_2)
 
         image = data_res_3["image"]

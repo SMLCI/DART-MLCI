@@ -1,0 +1,105 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "dmc-masking"
+version = "0.0.1"
+description = "Real-time microfluidic chamber masking library with marker detection, rotation, cropping, and masking capabilities"
+readme = "Readme.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Johannes Seiffarth", email = "j.seiffarth@fz-juelich.de" },
+]
+keywords = ["dmc-masking", "microfluidics", "image-processing", "computer-vision"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+dependencies = [
+    "ultralytics",
+    "tifffile",
+    "opencv-python",
+    "kornia",
+    "shapely",
+    "rasterio",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+    "pytest-cov",
+    "ruff",
+    "pre-commit",
+]
+
+[project.urls]
+Homepage = "https://github.com/JojoDevel/dmc-masking"
+Repository = "https://github.com/JojoDevel/dmc-masking"
+Issues = "https://github.com/JojoDevel/dmc-masking/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["dmc_masking"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "dmc_masking/",
+    "tests/",
+    "artifacts/chamber_structure.json",
+    "Readme.md",
+    "pyproject.toml",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort
+    "UP",     # pyupgrade
+    "B",      # flake8-bugbear
+    "SIM",    # flake8-simplify
+    "RUF",    # ruff-specific rules
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "B008",   # function calls in argument defaults
+    "SIM108", # ternary operator
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["dmc_masking"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.coverage.run]
+source = ["dmc_masking"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]

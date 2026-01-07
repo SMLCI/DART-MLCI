@@ -1,4 +1,4 @@
-""" Testcases for utils. """
+"""Testcases for utils."""
 
 import unittest
 

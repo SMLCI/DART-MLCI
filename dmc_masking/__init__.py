@@ -32,10 +32,12 @@ def extract_data(result, image: np.ndarray):
 
     data = []
 
-    for marker_detection, label in zip(boxes_data.xywh, boxes_data.cls):
+    for marker_detection, label, conf in zip(
+        boxes_data.xywh, boxes_data.cls, boxes_data.conf, strict=False
+    ):
         x, y, _, _ = marker_detection
 
-        data.append({"bbox_center": np.array((x, y)), "label": result.names[label]})
+        data.append({"bbox_center": np.array((x, y)), "label": result.names[label], "conf": conf})
 
     if result.masks is not None:
         mask_data = result.masks.cpu().numpy()
@@ -132,7 +134,6 @@ class RoIMasker:
         result_masks = []
 
         for image in image_stack:
-
             ph_image = image[0]
 
             if ph_image.dtype == np.uint16:
@@ -159,9 +160,7 @@ class RoIMasker:
 
             # 4. Rotate image
 
-            rotated_image, rotated_markers = rotate_image_and_markers(
-                image, markers, mean_angle
-            )
+            rotated_image, rotated_markers = rotate_image_and_markers(image, markers, mean_angle)
 
             # 5. Apply mask
             cropped_image, cropped_mask = apply_mask(
@@ -196,14 +195,10 @@ class RoIMasker:
 def compute_marker_angles(markers, marker_group_pixel):
     # 2. match markers
 
-    matched_marker_indices = match_markers(
-        markers, marker_group=marker_group_pixel, tolerance=60
-    )
+    matched_marker_indices = match_markers(markers, marker_group=marker_group_pixel, tolerance=60)
 
     # 3. compute angle
-    angles = compute_marker_group_angles(
-        markers, matched_marker_indices, marker_group_pixel
-    )
+    angles = compute_marker_group_angles(markers, matched_marker_indices, marker_group_pixel)
     mean_angle = np.mean(angles)
 
     return mean_angle
@@ -214,8 +209,8 @@ class SingleStructureRoIMasker:
 
     def __init__(
         self,
-        model_path: Path = None,
-        structure_library: Path = None,
+        model_path: Path | None = None,
+        structure_library: Path | None = None,
         structure_name="OpenBox-inner",
         pixel_size: float = 0.065789,
     ):
@@ -229,15 +224,11 @@ class SingleStructureRoIMasker:
         """
 
         if structure_library is None:
-            structure_library = (
-                Path(__file__).parent.parent / "artifacts/chamber_structure.json"
-            )
+            structure_library = Path(__file__).parent.parent / "artifacts/chamber_structure.json"
         if model_path is None:
             model_path = Path(__file__).parent.parent / "artifacts/models/best34.pt"
 
-        self.rm = RoIMasker(
-            model_path=model_path, roi_polygon=None, marker_group_pixel=None
-        )
+        self.rm = RoIMasker(model_path=model_path, roi_polygon=None, marker_group_pixel=None)
 
         self.structure_library = SingleRoIStructureLibrary(
             lookup_path=structure_library,
@@ -268,6 +259,7 @@ class MarkerDetectionStep:
 
     def __init__(self, model_path: str):
         self.mdm = MarkerDetectionModel(model_path)
+        self.mdm.model.conf = 0.6
 
     def __call__(self, image):
         markers = self.mdm.predict_markers(image)
@@ -313,9 +305,7 @@ class ImageRotationStep:
 
         image = np.moveaxis(image, [0, 1, 2], [1, 2, 0])
 
-        rotated_image, rotated_markers = rotate_image_and_markers(
-            image, markers, mean_angle
-        )
+        rotated_image, rotated_markers = rotate_image_and_markers(image, markers, mean_angle)
 
         rotated_image = np.moveaxis(rotated_image, [0, 1, 2], [2, 0, 1])
 

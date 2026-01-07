@@ -1,4 +1,4 @@
-""" Testcases for rotation """
+"""Testcases for rotation"""
 
 import unittest
 
@@ -46,15 +46,11 @@ class TestPointRotation(unittest.TestCase):
         origin = np.array([0.0, 0.0])
         point = np.array([1, 1])
 
-        np.testing.assert_almost_equal(
-            rotate_point(point, origin, 90), np.array([1, -1])
-        )
+        np.testing.assert_almost_equal(rotate_point(point, origin, 90), np.array([1, -1]))
 
         origin = np.array([10, 0.0])
         point = np.array([0, 0])
-        np.testing.assert_almost_equal(
-            rotate_point(point, origin, 90), np.array([10, 10])
-        )
+        np.testing.assert_almost_equal(rotate_point(point, origin, 90), np.array([10, 10]))
 
     @staticmethod
     def test_angle_180():
@@ -63,15 +59,11 @@ class TestPointRotation(unittest.TestCase):
         origin = np.array([0.0, 0.0])
         point = np.array([1, 1])
 
-        np.testing.assert_almost_equal(
-            rotate_point(point, origin, 180), np.array([-1, -1])
-        )
+        np.testing.assert_almost_equal(rotate_point(point, origin, 180), np.array([-1, -1]))
 
         origin = np.array([10, 0.0])
         point = np.array([0, 0])
-        np.testing.assert_almost_equal(
-            rotate_point(point, origin, 180), np.array([20, 0])
-        )
+        np.testing.assert_almost_equal(rotate_point(point, origin, 180), np.array([20, 0]))
 
 
 if __name__ == "__main__":
