@@ -18,6 +18,10 @@ from dmc_masking import (
 from dmc_masking.mask import RoIPolygon
 from dmc_masking.utils import plot_marker_paris, plot_markers
 
+# Dedicated folder for test results
+TEST_RESULTS_DIR = Path(__file__).parent / "test_results"
+TEST_RESULTS_DIR.mkdir(exist_ok=True)
+
 
 def build_polygon(pixel_size):
     chamber_width = 60
@@ -51,6 +55,9 @@ class TestFullPipeline(unittest.TestCase):
     @staticmethod
     def test_all_pipeline_steps():
         """test the full pipeline step-by-step"""
+        # Create subfolder for this test
+        output_dir = TEST_RESULTS_DIR / "pipeline_steps"
+        output_dir.mkdir(exist_ok=True)
 
         # config
         pixel_size = 0.065789
@@ -83,7 +90,7 @@ class TestFullPipeline(unittest.TestCase):
         data_res_1 = step1(image)
 
         plot_markers(image, data_res_1["markers"])
-        plt.savefig("test_pp_step_1.png")
+        plt.savefig(output_dir / "step_1_detection.png")
 
         # match markers
         data_res_2 = step2(data_res_1)
@@ -92,7 +99,7 @@ class TestFullPipeline(unittest.TestCase):
         markers = data_res_2["markers"]
 
         plot_marker_paris(image, matched_marker_indices, markers)
-        plt.savefig("test_pp_step_2.png")
+        plt.savefig(output_dir / "step_2_matching.png")
 
         # rotate image
         data_res_3 = step3(data_res_2)
@@ -102,14 +109,14 @@ class TestFullPipeline(unittest.TestCase):
         markers = data_res_3["markers"]
 
         plot_marker_paris(image, matched_marker_indices, markers)
-        plt.savefig("test_pp_step_3.png")
+        plt.savefig(output_dir / "step_3_rotation.png")
 
         # apply mask
         data_res_4 = step4(data_res_3)
 
         plt.figure()
         plt.imshow(data_res_4["image"], cmap="gray")
-        plt.savefig("test_pp_step_4.png")
+        plt.savefig(output_dir / "step_4_masking.png")
 
         # data_res = step4(step3(step2(step1(image))))
         print(data_res_4)
@@ -117,6 +124,9 @@ class TestFullPipeline(unittest.TestCase):
     @staticmethod
     def test_all_pipeline_steps_bright():
         """test the full pipeline step-by-step"""
+        # Create subfolder for this test
+        output_dir = TEST_RESULTS_DIR / "pipeline_steps_bright"
+        output_dir.mkdir(exist_ok=True)
 
         # config
         pixel_size = 0.07220  # micrometer / pixel
@@ -150,7 +160,7 @@ class TestFullPipeline(unittest.TestCase):
         data_res_1 = step1(image)
 
         plot_markers(image, data_res_1["markers"])
-        plt.savefig("test_pp_step_1.png")
+        plt.savefig(output_dir / "step_1_detection.png")
 
         # match markers
         data_res_2 = step2(data_res_1)
@@ -159,7 +169,7 @@ class TestFullPipeline(unittest.TestCase):
         markers = data_res_2["markers"]
 
         plot_marker_paris(image, matched_marker_indices, markers)
-        plt.savefig("test_pp_step_2.png")
+        plt.savefig(output_dir / "step_2_matching.png")
 
         # rotate image
         data_res_2["angle"] *= -1
@@ -170,14 +180,14 @@ class TestFullPipeline(unittest.TestCase):
         markers = data_res_3["markers"]
 
         plot_marker_paris(image, matched_marker_indices, markers)
-        plt.savefig("test_pp_step_3.png")
+        plt.savefig(output_dir / "step_3_rotation.png")
 
         # apply mask
         data_res_4 = step4(data_res_3)
 
         plt.figure()
         plt.imshow(data_res_4["image"], cmap="gray")
-        plt.savefig("test_pp_step_4.png")
+        plt.savefig(output_dir / "step_4_masking.png")
 
         # data_res = step4(step3(step2(step1(image))))
         print(data_res_4)

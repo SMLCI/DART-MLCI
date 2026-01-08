@@ -21,6 +21,10 @@ from dmc_masking.rotation import (
 )
 from dmc_masking.utils import normalize_image, plot_marker_paris, plot_markers
 
+# Dedicated folder for test results
+TEST_RESULTS_DIR = Path(__file__).parent / "test_results"
+TEST_RESULTS_DIR.mkdir(exist_ok=True)
+
 
 def build_polygon(pixel_size):
     chamber_width = 60
@@ -54,6 +58,9 @@ class TestFullPipeline(unittest.TestCase):
     @staticmethod
     def test_all_pipeline_steps():
         """test the full pipeline step-by-step"""
+        # Create subfolder for this test
+        output_dir = TEST_RESULTS_DIR / "all_pipeline_steps"
+        output_dir.mkdir(exist_ok=True)
 
         # config
         pixel_size = 0.065789
@@ -80,14 +87,14 @@ class TestFullPipeline(unittest.TestCase):
         plt.imshow(image, cmap="gray")
         plt.tight_layout()
         plt.axis("off")
-        plt.savefig("test_step_1.png")
+        plt.savefig(output_dir / "step_1_input.png")
 
         # 3. Detect markers
         markers = model.predict_markers(image)
 
         plot_markers(image, markers)
 
-        plt.savefig("test_step_2.png")
+        plt.savefig(output_dir / "step_2_markers.png")
 
         # plt.save()
 
@@ -101,7 +108,7 @@ class TestFullPipeline(unittest.TestCase):
         print(matched_marker_indices)
 
         plot_marker_paris(image, matched_marker_indices, markers)
-        plt.savefig("test_step_3.png")
+        plt.savefig(output_dir / "step_3_matched.png")
 
         # 5. Compute angle
         angles = compute_marker_group_angles(markers, matched_marker_indices, marker_group_pixels)
@@ -122,7 +129,7 @@ class TestFullPipeline(unittest.TestCase):
             matched_marker_indices,
             rotated_markers,
         )
-        plt.savefig("test_step_4.png")
+        plt.savefig(output_dir / "step_4_rotated.png")
 
         # 7. Apply mask
 
@@ -178,7 +185,7 @@ class TestFullPipeline(unittest.TestCase):
 
         axes[1].imshow(np.moveaxis(cropped_image, [0, 1, 2], [2, 0, 1]))
         axes[1].imshow(cropped_mask, alpha=0.2)
-        plt.savefig("test.jpg")
+        plt.savefig(output_dir / "step_5_comparison.jpg")
 
         plt.figure()
         plt.imshow(np.moveaxis(rotated_image, [0, 1, 2], [2, 0, 1]), cmap="gray")
@@ -189,13 +196,13 @@ class TestFullPipeline(unittest.TestCase):
         print(rotated_image.shape, mask.shape)
 
         # output phase-contrast and mask
-        tifffile.imwrite("test_step_raw.tif", rotated_image[0])
-        tifffile.imwrite("test_step_mask.tif", mask)
+        tifffile.imwrite(output_dir / "rotated_raw.tif", rotated_image[0])
+        tifffile.imwrite(output_dir / "rotated_mask.tif", mask)
 
-        tifffile.imwrite("test_step_cropped_raw.tif", cropped_image[0])
-        tifffile.imwrite("test_step_cropped_mask.tif", cropped_mask)
+        tifffile.imwrite(output_dir / "cropped_raw.tif", cropped_image[0])
+        tifffile.imwrite(output_dir / "cropped_mask.tif", cropped_mask)
 
-        plt.savefig("test_step_5.png")
+        plt.savefig(output_dir / "step_6_masked.png")
 
         plt.figure()
         plt.imshow(np.moveaxis(cropped_image, [0, 1, 2], [2, 0, 1]), cmap="gray")
@@ -205,11 +212,14 @@ class TestFullPipeline(unittest.TestCase):
         plt.tight_layout()
         plt.axis("off")
 
-        plt.savefig("test_step_6.png")
+        plt.savefig(output_dir / "step_7_cropped.png")
 
     @staticmethod
     def test_roi_masker():
         """testing the roi masker class."""
+        # Create subfolder for this test
+        output_dir = TEST_RESULTS_DIR / "roi_masker"
+        output_dir.mkdir(exist_ok=True)
 
         # general information
         pixel_size = 0.065789
@@ -243,11 +253,14 @@ class TestFullPipeline(unittest.TestCase):
         axes[0].imshow(cropped_mask[0], alpha=0.25)
         axes[1].imshow(image)
 
-        plt.savefig("test2.jpg")
+        plt.savefig(output_dir / "result.jpg")
 
     @staticmethod
     def test_roi_masker_sak():
         """testing the roi masker class."""
+        # Create subfolder for this test
+        output_dir = TEST_RESULTS_DIR / "roi_masker_sak"
+        output_dir.mkdir(exist_ok=True)
 
         # general information
         pixel_size = 0.065789
@@ -287,11 +300,15 @@ class TestFullPipeline(unittest.TestCase):
         axes[0].imshow(cropped_mask[0], alpha=0.25)
         axes[1].imshow(np.moveaxis(image[0], [0, 1, 2], [2, 0, 1]))
 
-        plt.savefig("test_rm2.jpg")
+        plt.savefig(output_dir / "result.jpg")
 
     @staticmethod
     def test_sak_chip():
-        """ """
+        """Test SAK chip masking for various chamber types."""
+        # Create subfolder for this test
+        output_dir = TEST_RESULTS_DIR / "sak_chip"
+        output_dir.mkdir(exist_ok=True)
+
         configs = [
             {
                 "file_name": "0000.png",
@@ -446,7 +463,7 @@ class TestFullPipeline(unittest.TestCase):
 
             plt.tight_layout()
 
-            plt.savefig(f"test_{i}.jpg")
+            plt.savefig(output_dir / f"chip_{i}_overview.jpg")
             plt.close("all")
 
             plt.imshow(
@@ -463,10 +480,14 @@ class TestFullPipeline(unittest.TestCase):
             plt.imshow(rgb_mask, alpha=0.5)
             plt.tight_layout()
             plt.axis("off")
-            plt.savefig(f"inner_test_{i}.png", dpi=300)
+            plt.savefig(output_dir / f"chip_{i}_masked.png", dpi=300)
 
     def test_ssrm(self):
         """test cropping of an image stack with a single structure masker"""
+        # Create subfolder for this test
+        output_dir = TEST_RESULTS_DIR / "ssrm"
+        output_dir.mkdir(exist_ok=True)
+
         ssrm = SingleStructureRoIMasker()
 
         image_path = Path(dmc_masking.__file__).parent.parent / "artifacts/images/sak" / "0003.png"
@@ -489,7 +510,7 @@ class TestFullPipeline(unittest.TestCase):
 
         plt.tight_layout()
 
-        plt.savefig("test_ssrm.jpg")
+        plt.savefig(output_dir / "result.jpg")
 
 
 if __name__ == "__main__":

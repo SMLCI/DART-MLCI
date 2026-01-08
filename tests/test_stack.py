@@ -10,12 +10,20 @@ import tifffile
 import dmc_masking
 from dmc_masking import SingleStructureRoIMasker
 
+# Dedicated folder for test results
+TEST_RESULTS_DIR = Path(__file__).parent / "test_results"
+TEST_RESULTS_DIR.mkdir(exist_ok=True)
+
 
 class TestFullPipeline(unittest.TestCase):
     """Test cases for full masking pipeline"""
 
     def test_ssrm(self):
         """test cropping of an image stack with a single structure masker"""
+        # Create subfolder for this test
+        output_dir = TEST_RESULTS_DIR / "stack_ssrm"
+        output_dir.mkdir(exist_ok=True)
+
         ssrm = SingleStructureRoIMasker()
 
         image_path = Path(dmc_masking.__file__).parent.parent / "artifacts/images/image_stack.tif"
@@ -38,7 +46,7 @@ class TestFullPipeline(unittest.TestCase):
 
         plt.tight_layout()
 
-        plt.savefig("test_ssrm.jpg")
+        plt.savefig(output_dir / "result.jpg")
 
 
 if __name__ == "__main__":

@@ -20,6 +20,8 @@ test:
     - pytest -v --cov=dmc_masking --cov-report=xml --junitxml=test_report.xml tests/
   coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
   artifacts:
+    paths:
+      - tests/test_results/
     reports:
       coverage_report:
         coverage_format: cobertura
