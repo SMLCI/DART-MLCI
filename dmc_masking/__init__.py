@@ -17,12 +17,14 @@ from .mask import SingleRoIStructureLibrary
 from .utils import center_of_mask_mass
 
 
-def extract_data(result, image: np.ndarray):
+def extract_data(result, image: np.ndarray, label_mapping: dict[str, str] | None = None):
     """Extracts marker information from yolo detection results on the image
 
     Args:
         result (_type_): Yolo detection results
         image (np.ndarray): the original image
+        label_mapping: Optional dict mapping model class names to desired labels
+                       e.g., {"class_0": "cross", "class_1": "circle"}
 
     Returns:
         _type_: marker information
@@ -36,8 +38,10 @@ def extract_data(result, image: np.ndarray):
         boxes_data.xywh, boxes_data.cls, boxes_data.conf, strict=False
     ):
         x, y, _, _ = marker_detection
+        raw_label = result.names[label]
+        mapped_label = label_mapping.get(raw_label, raw_label) if label_mapping else raw_label
 
-        data.append({"bbox_center": np.array((x, y)), "label": result.names[label], "conf": conf})
+        data.append({"bbox_center": np.array((x, y)), "label": mapped_label, "conf": conf})
 
     if result.masks is not None:
         mask_data = result.masks.cpu().numpy()
@@ -61,13 +65,19 @@ def extract_data(result, image: np.ndarray):
 class MarkerDetectionModel:
     """Yolo model for detecting the markers"""
 
-    def __init__(self, model_path: Path, verbose=False):
+    def __init__(
+        self, model_path: Path, verbose=False, label_mapping: dict[str, str] | None = None
+    ):
         """
 
         Args:
             model_path (Path): path to the model pt
+            verbose: whether to print verbose output
+            label_mapping: Optional dict mapping model class names to desired labels
+                           e.g., {"class_0": "cross", "class_1": "circle"}
         """
         self.model = YOLO(model_path, verbose=verbose)
+        self.label_mapping = label_mapping
 
     def predict_markers(self, image: np.ndarray):
         """Predict markers on the image
@@ -80,7 +90,7 @@ class MarkerDetectionModel:
         """
         result = self.model(image)[0]
 
-        return extract_data(result, image)
+        return extract_data(result, image, self.label_mapping)
 
 
 class RoIMasker:

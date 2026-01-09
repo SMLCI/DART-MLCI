@@ -10,10 +10,37 @@ def unit_vector(vector):
 
 
 def angle_between(v1, v2):
-    """Returns the angle in degrees between vectors 'v1' and 'v2'"""
+    """Returns the absolute angle in degrees between vectors 'v1' and 'v2'.
+
+    Note: This function returns only positive angles (0° to 180°).
+    Use signed_angle_between() for signed angles (-180° to 180°).
+    """
     v1_u = unit_vector(v1)
     v2_u = unit_vector(v2)
     return np.arccos(np.clip(np.dot(v1_u, v2_u), -1.0, 1.0)) * 57.29578
+
+
+def signed_angle_between(v1, v2):
+    """Returns the signed angle in degrees from vector 'v1' to vector 'v2'.
+
+    The angle is positive for counter-clockwise rotation (in image coordinates
+    where y-axis points down, this appears as clockwise on screen).
+
+    Args:
+        v1: Reference vector (2D numpy array)
+        v2: Target vector (2D numpy array)
+
+    Returns:
+        Signed angle in degrees, range [-180, 180]
+    """
+    # Cross product (z-component): v1.x * v2.y - v1.y * v2.x
+    cross = v1[0] * v2[1] - v1[1] * v2[0]
+    # Dot product: v1.x * v2.x + v1.y * v2.y
+    dot = v1[0] * v2[0] + v1[1] * v2[1]
+    # atan2 gives signed angle in radians
+    angle_rad = np.arctan2(cross, dot)
+    # Convert to degrees
+    return angle_rad * (180.0 / np.pi)
 
 
 def rotate_image(image: np.ndarray, angle: float) -> np.ndarray:
@@ -141,12 +168,30 @@ def rotate_markers(markers, image, angle: float, position_labels=None):
     return new_markers
 
 
-def compute_marker_group_angles(markers, matched_marker_indices, marker_group, on="bbox_center"):
+def compute_marker_group_angles(
+    markers, matched_marker_indices, marker_group, on="bbox_center", signed=True
+):
+    """Compute rotation angles between detected markers and expected marker positions.
+
+    Args:
+        markers: List of detected markers with position information
+        matched_marker_indices: List of (cross_idx, circle_idx) tuples
+        marker_group: Dict with 'cross' and 'circle' expected positions
+        on: Key to use for marker position (default: 'bbox_center')
+        signed: If True, return signed angles (-180° to 180°). If False, return
+                absolute angles (0° to 180°). Default is True.
+
+    Returns:
+        List of angles in degrees for each matched marker pair
+    """
     angles = []
     blueprint_cross_to_circle = marker_group["circle"] - marker_group["cross"]
 
     for iCross, iCircle in matched_marker_indices:
         measured_cross_to_circle = markers[iCircle][on] - markers[iCross][on]
-        angles.append(angle_between(blueprint_cross_to_circle, measured_cross_to_circle))
+        if signed:
+            angles.append(signed_angle_between(blueprint_cross_to_circle, measured_cross_to_circle))
+        else:
+            angles.append(angle_between(blueprint_cross_to_circle, measured_cross_to_circle))
 
     return angles
