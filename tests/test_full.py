@@ -19,7 +19,8 @@ from dmc_masking.rotation import (
     compute_marker_group_angles,
     rotate_image_and_markers,
 )
-from dmc_masking.utils import normalize_image, plot_marker_paris, plot_markers
+from dmc_masking.utils import normalize_image
+from dmc_masking.visualization import plot_marker_paris, plot_markers
 
 # Dedicated folder for test results
 TEST_RESULTS_DIR = Path(__file__).parent / "test_results"
@@ -76,7 +77,10 @@ class TestFullPipeline(unittest.TestCase):
         # 1. Load yolo model
 
         model = MarkerDetectionModel(
-            Path(dmc_masking.__file__).parent.parent / "artifacts/models/best34.pt"
+            # Path(dmc_masking.__file__).parent.parent / "artifacts/models/best34.pt"
+            Path(
+                "/home/seiffarth_l/projects/DMC_new/dmc-train/runs/v8_segment_s_imgsz1280/weights/best.pt"
+            ),
         )  # "./artifacts/models/best34.pt")
 
         # 2. Load image
@@ -235,7 +239,9 @@ class TestFullPipeline(unittest.TestCase):
         # create the masker
         rm = RoIMasker(
             # model_path="./artifacts/models/best34.pt",
-            model_path=Path(dmc_masking.__file__).parent.parent / "artifacts/models/best34.pt",
+            model_path=Path(
+                "/home/seiffarth_l/projects/DMC_new/dmc-train/runs/v8_segment_s_imgsz1280/weights/best.pt"
+            ),  # Path(dmc_masking.__file__).parent.parent / "artifacts/models/best34.pt",
             roi_polygon=roi_polygon,
             marker_group_pixel=marker_group_pixel,
         )
@@ -394,7 +400,10 @@ class TestFullPipeline(unittest.TestCase):
         # create the masker
         rm = RoIMasker(
             # model_path="./artifacts/models/best34.pt",
-            model_path=Path(dmc_masking.__file__).parent.parent / "artifacts/models/best34.pt",
+            # model_path=Path(dmc_masking.__file__).parent.parent / "artifacts/models/best34.pt",
+            Path(
+                "/home/seiffarth_l/projects/DMC_new/dmc-train/runs/v8_segment_s_imgsz1280/weights/best.pt"
+            ),
             # model_path=Path("/home/seiffarth_l/projects/DMC/dmc-training/training/runs/detect/train62/weights/best.pt"),
             roi_polygon=None,
             marker_group_pixel=None,

@@ -1,31 +1,39 @@
 """Test for generating video animation of the marker detection and masking pipeline."""
 
 import unittest
+import warnings
 from pathlib import Path
 
 import cv2
 import numpy as np
+
+# Cell segmentation imports
+import torch
+from acia.segm.local import THWCSequenceSource
+from acia.segm.processor.cellpose_sam import CellposeSAMSegmenter
+from acia.viz import render_segmentation_mask
 
 import dmc_masking
 from dmc_masking import MarkerDetectionModel
 from dmc_masking.mask import SingleRoIStructureLibrary, apply_mask
 from dmc_masking.match import marker_group_to_pixel_coordinates, match_markers
 from dmc_masking.rotation import compute_marker_group_angles, rotate_image_and_markers
-
-from .visualization_utils import (
+from dmc_masking.visualization import (
     FPS,
     FRAME_HEIGHT,
     FRAME_WIDTH,
-    TEST_RESULTS_DIR,
     add_step_title,
     animate_zoom_to_roi,
     draw_progress_bar,
     draw_roi_polygon,
     prepare_frame,
     render_markers_to_frame,
-    rotate_image_no_crop,
     write_frames,
 )
+
+# Dedicated folder for test results
+TEST_RESULTS_DIR = Path(__file__).parent / "test_results"
+TEST_RESULTS_DIR.mkdir(exist_ok=True)
 
 
 class TestVideoAnimation(unittest.TestCase):
@@ -46,7 +54,10 @@ class TestVideoAnimation(unittest.TestCase):
 
         # Load model
         model = MarkerDetectionModel(
-            Path(dmc_masking.__file__).parent.parent / "artifacts/models/best34.pt"
+            # Path(dmc_masking.__file__).parent.parent / "artifacts/models/best34.pt"
+            Path(
+                "/home/seiffarth_l/projects/DMC_new/dmc-train/runs/v8_detect_s_imgsz640/weights/best.pt"
+            )
         )
 
         # Load ROI structure
@@ -77,7 +88,7 @@ class TestVideoAnimation(unittest.TestCase):
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         writer = cv2.VideoWriter(str(output_path), fourcc, FPS, (FRAME_WIDTH, FRAME_HEIGHT))
 
-        total_steps = 7
+        total_steps = 8
 
         # ==================== STEP 1: Raw Image ====================
         frame, scale, offset = prepare_frame(original_image)
@@ -92,7 +103,16 @@ class TestVideoAnimation(unittest.TestCase):
         write_frames(writer, frame, int(2 * FPS))
 
         # ==================== STEP 3: Marker Pair Matching ====================
-        frame = render_markers_to_frame(original_image, markers, matched_indices)
+        # Calculate unmatched marker indices for fading
+        matched_marker_indices = set()
+        for cross_idx, circle_idx in matched_indices:
+            matched_marker_indices.add(cross_idx)
+            matched_marker_indices.add(circle_idx)
+        unmatched_indices = [i for i in range(len(markers)) if i not in matched_marker_indices]
+
+        frame = render_markers_to_frame(
+            original_image, markers, matched_indices, faded_indices=unmatched_indices
+        )
         frame = add_step_title(frame, "Marker Pair Matching")
         frame = draw_progress_bar(frame, 3, total_steps, "Marker Matching")
         write_frames(writer, frame, int(2 * FPS))
@@ -115,13 +135,28 @@ class TestVideoAnimation(unittest.TestCase):
 
         # ==================== STEP 5: Rotation Animation ====================
         num_rotation_frames = int(2 * FPS)
+        original_image_chw = np.moveaxis(original_image, -1, 0)
+
         for i in range(num_rotation_frames):
             progress = i / num_rotation_frames
             eased_progress = 0.5 - 0.5 * np.cos(np.pi * progress)
             current_angle = rotation_angle * eased_progress
 
-            rotated_img = rotate_image_no_crop(original_image, current_angle)
-            frame, scale, offset = prepare_frame(rotated_img)
+            # Rotate image and markers together
+            rotated_result_chw, current_rotated_markers = rotate_image_and_markers(
+                original_image_chw, markers, current_angle
+            )
+            rotated_img = np.moveaxis(rotated_result_chw, 0, -1)
+
+            # Render with markers (same visualization as steps 2-4)
+            frame = render_markers_to_frame(
+                rotated_img,
+                current_rotated_markers,
+                matched_indices,
+                highlight_indices=highlight_indices,
+                selected_pair_idx=selected_pair_idx,
+                faded_indices=unmatched_indices,
+            )
             frame = add_step_title(frame, f"Rotation: {current_angle:.1f}° / {rotation_angle:.1f}°")
             frame = draw_progress_bar(
                 frame, 5, total_steps, "Image Rotation", step_progress=progress
@@ -158,7 +193,7 @@ class TestVideoAnimation(unittest.TestCase):
             )
             masked_overlay = rotated_image_hwc.copy()
             masked_overlay[uncropped_mask] = (
-                0.3 * masked_overlay[uncropped_mask] + 0.7 * np.array([0, 0, 128])
+                0.3 * masked_overlay[uncropped_mask] + 0.7 * np.array([128, 128, 128])
             ).astype(np.uint8)
 
             frame, scale, offset = prepare_frame(masked_overlay)
@@ -189,7 +224,7 @@ class TestVideoAnimation(unittest.TestCase):
                     return_uncropped=True,
                 )
                 masked_overlay[temp_mask] = (
-                    0.3 * masked_overlay[temp_mask] + 0.7 * np.array([0, 0, 128])
+                    0.3 * masked_overlay[temp_mask] + 0.7 * np.array([128, 128, 128])
                 ).astype(np.uint8)
 
             num_zoom_frames = int(2 * FPS)
@@ -214,7 +249,7 @@ class TestVideoAnimation(unittest.TestCase):
             cropped_hwc = np.moveaxis(cropped_image, 0, -1)
             masked_display = cropped_hwc.copy()
             masked_display[cropped_mask] = (
-                0.3 * masked_display[cropped_mask] + 0.7 * np.array([0, 0, 128])
+                0.3 * masked_display[cropped_mask] + 0.7 * np.array([128, 128, 128])
             ).astype(np.uint8)
 
             frame, scale, offset = prepare_frame(masked_display)
@@ -226,9 +261,72 @@ class TestVideoAnimation(unittest.TestCase):
             print(f"Could not apply mask: {e}")
             write_frames(writer, frame, int(3.5 * FPS))
 
+        # ==================== STEP 8: Cell Segmentation ====================
+        try:
+            # Prepare image for acia (TxHxWxC format with T=1)
+            # Convert BGR to RGB for visualization, use grayscale for segmentation
+            cropped_rgb = cv2.cvtColor(cropped_hwc, cv2.COLOR_BGR2RGB)
+            segm_input = cropped_rgb[None, :, :, :].astype(np.uint8)  # TxHxWxC (3 channels)
+            source = THWCSequenceSource(segm_input)
+
+            # Run CellPose segmentation (use first channel / grayscale)
+            warnings.filterwarnings("ignore", category=FutureWarning)
+            segmenter = CellposeSAMSegmenter()
+            with torch.no_grad():
+                segmentation_result = segmenter(source.to_channel(0))
+
+            # Render segmentation with colorful masks
+            rendered = render_segmentation_mask(source, segmentation_result, alpha=0.5)
+            segmented_frame = rendered.image_stack[0]  # Get first (only) frame, RGB format
+
+            # Convert RGB to BGR for OpenCV
+            segmented_bgr = cv2.cvtColor(segmented_frame, cv2.COLOR_RGB2BGR)
+
+            # Apply gray ROI mask on top
+            final_display = segmented_bgr.copy()
+            final_display[cropped_mask] = (
+                0.3 * final_display[cropped_mask] + 0.7 * np.array([128, 128, 128])
+            ).astype(np.uint8)
+
+            # Write final frame
+            frame, scale, offset = prepare_frame(final_display)
+            frame = add_step_title(frame, "Cell Segmentation with ROI Mask")
+            frame = draw_progress_bar(frame, 8, total_steps, "Segmentation", step_progress=1.0)
+            write_frames(writer, frame, int(2 * FPS))
+
+        except Exception as e:
+            print(f"Could not perform cell segmentation: {e}")
+            import traceback
+
+            traceback.print_exc()
+
         writer.release()
         self.assertTrue(output_path.exists(), "Video file was not created")
         print(f"\nVideo saved to: {output_path}")
+
+        # Generate low quality GIF for README
+        gif_path = output_dir / "pipeline_animation.gif"
+        cap = cv2.VideoCapture(str(output_path))
+        frames = []
+        frame_skip = 6  # Take every 6th frame to reduce size (5 fps effective)
+        frame_idx = 0
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            if frame_idx % frame_skip == 0:
+                # Resize to lower resolution and convert BGR to RGB
+                small_frame = cv2.resize(frame, (320, 360))
+                rgb_frame = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+                frames.append(rgb_frame)
+            frame_idx += 1
+        cap.release()
+
+        # Save as GIF using imageio
+        import imageio
+
+        imageio.mimsave(str(gif_path), frames, duration=200, loop=0)  # 200ms = 5fps
+        print(f"GIF saved to: {gif_path}")
 
 
 if __name__ == "__main__":

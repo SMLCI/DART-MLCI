@@ -10,12 +10,11 @@ import dmc_masking
 from dmc_masking import MarkerDetectionModel
 from dmc_masking.match import marker_group_to_pixel_coordinates, match_markers
 from dmc_masking.rotation import compute_marker_group_angles
+from dmc_masking.visualization import plot_markers_on_image, rotate_image_no_crop
 
-from .visualization_utils import (
-    TEST_RESULTS_DIR,
-    plot_markers_on_image,
-    rotate_image_no_crop,
-)
+# Dedicated folder for test results
+TEST_RESULTS_DIR = Path(__file__).parent / "test_results"
+TEST_RESULTS_DIR.mkdir(exist_ok=True)
 
 
 class TestRotationAngleConsistency(unittest.TestCase):

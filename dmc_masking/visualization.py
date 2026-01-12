@@ -1,4 +1,4 @@
-"""Shared visualization utilities for tests."""
+"""Visualization utilities for marker detection and ROI masking."""
 
 from pathlib import Path
 
@@ -7,10 +7,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from dmc_masking.mask import RoIPolygon
-
-# Dedicated folder for test results
-TEST_RESULTS_DIR = Path(__file__).parent / "test_results"
-TEST_RESULTS_DIR.mkdir(exist_ok=True)
 
 # Video settings
 FRAME_WIDTH = 1920 // 2
@@ -159,6 +155,35 @@ def plot_markers_on_image(
     plt.close()
 
 
+def plot_markers(image: np.ndarray, markers: list, output_path: Path | None = None) -> None:
+    """Simple marker visualization (backward-compatible wrapper).
+
+    Args:
+        image: Input image
+        markers: List of detected markers
+        output_path: Optional path to save the figure
+    """
+    plot_markers_on_image(image, markers, [], output_path=output_path)
+
+
+def plot_marker_pairs(
+    image: np.ndarray, matched_marker_indices: list, markers: list, output_path: Path | None = None
+) -> None:
+    """Visualize marker pairs (backward-compatible wrapper).
+
+    Args:
+        image: Input image
+        matched_marker_indices: List of matched marker index pairs
+        markers: List of detected markers
+        output_path: Optional path to save the figure
+    """
+    plot_markers_on_image(image, markers, matched_marker_indices, output_path=output_path)
+
+
+# Alias for backward compatibility with typo
+plot_marker_paris = plot_marker_pairs
+
+
 def render_markers_to_frame(
     image: np.ndarray,
     markers: list,
@@ -166,6 +191,7 @@ def render_markers_to_frame(
     frame_size: tuple = (FRAME_WIDTH, FRAME_HEIGHT),
     highlight_indices: list | None = None,
     selected_pair_idx: int | None = None,
+    faded_indices: list | None = None,
 ) -> np.ndarray:
     """Render markers on image using matplotlib and return as video frame.
 
@@ -176,12 +202,15 @@ def render_markers_to_frame(
         frame_size: Target frame size (width, height)
         highlight_indices: Optional list of marker indices to highlight
         selected_pair_idx: Optional index of selected pair to highlight
+        faded_indices: Optional list of marker indices to render with low opacity
 
     Returns:
         Frame as numpy array suitable for video
     """
     if highlight_indices is None:
         highlight_indices = []
+    if faded_indices is None:
+        faded_indices = []
 
     if image.ndim == 3:
         image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
@@ -210,6 +239,9 @@ def render_markers_to_frame(
         label = marker["label"]
         conf = marker.get("conf", 0.0)
 
+        is_faded = i in faded_indices
+        alpha = 0.3 if is_faded else 1.0
+
         if i in highlight_indices:
             color = "gold"
             size = 300
@@ -218,7 +250,16 @@ def render_markers_to_frame(
             size = 200
 
         symbol = marker_symbols.get(label, "s")
-        ax.scatter(center[0], center[1], c=color, marker=symbol, s=size, linewidths=3, zorder=5)
+        ax.scatter(
+            center[0],
+            center[1],
+            c=color,
+            marker=symbol,
+            s=size,
+            linewidths=3,
+            zorder=5,
+            alpha=alpha,
+        )
         ax.annotate(
             f"{i}: {label} ({conf:.2f})",
             (center[0], center[1]),
@@ -226,7 +267,8 @@ def render_markers_to_frame(
             textcoords="offset points",
             fontsize=8,
             color=color,
-            bbox={"boxstyle": "round,pad=0.3", "facecolor": "white", "alpha": 0.7},
+            alpha=alpha,
+            bbox={"boxstyle": "round,pad=0.3", "facecolor": "white", "alpha": 0.7 * alpha},
         )
 
     for i, (cross_idx, circle_idx) in enumerate(matched_indices):
@@ -543,21 +585,8 @@ def animate_zoom_to_roi(
 
         cropped = full_image[curr_miny:curr_maxy, curr_minx:curr_maxx]
 
-        crop_h, crop_w = cropped.shape[:2]
-        target_w, target_h = frame_size
-        usable_height = target_h - 80
-        scale = min(target_w / crop_w, usable_height / crop_h) * 0.95
-
-        new_w = int(crop_w * scale)
-        new_h = int(crop_h * scale)
-
-        resized = cv2.resize(cropped, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
-
-        frame = np.zeros((target_h, target_w, 3), dtype=np.uint8)
-        x_offset = (target_w - new_w) // 2
-        y_offset = (usable_height - new_h) // 2
-        frame[y_offset : y_offset + new_h, x_offset : x_offset + new_w] = resized
-
+        # Use prepare_frame to scale and center the cropped image
+        frame, _, _ = prepare_frame(cropped, frame_size)
         frames.append(frame)
 
     return frames

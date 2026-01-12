@@ -16,7 +16,7 @@ from dmc_masking import (
     SingleRoIStructureLibrary,
 )
 from dmc_masking.mask import RoIPolygon
-from dmc_masking.utils import plot_marker_paris, plot_markers
+from dmc_masking.visualization import plot_marker_paris, plot_markers
 
 # Dedicated folder for test results
 TEST_RESULTS_DIR = Path(__file__).parent / "test_results"
