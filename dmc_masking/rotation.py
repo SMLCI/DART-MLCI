@@ -1,7 +1,94 @@
 """Implementation of angle and rotation functions."""
 
 import cv2
+import kornia.geometry.transform as KT
 import numpy as np
+import torch
+
+
+def _get_rotation_matrix_and_bounds(height: int, width: int, angle: float):
+    """Compute rotation matrix and output bounds for rotating an image.
+
+    Args:
+        height: Image height
+        width: Image width
+        angle: Rotation angle in degrees
+
+    Returns:
+        rot_mat: 2x3 rotation matrix
+        bound_w: Output width after rotation
+        bound_h: Output height after rotation
+    """
+    image_center = (width / 2, height / 2)
+    rot_mat = cv2.getRotationMatrix2D(image_center, angle, 1.0)
+
+    abs_cos = abs(rot_mat[0, 0])
+    abs_sin = abs(rot_mat[0, 1])
+
+    bound_w = int(height * abs_sin + width * abs_cos)
+    bound_h = int(height * abs_cos + width * abs_sin)
+
+    rot_mat[0, 2] += bound_w / 2 - image_center[0]
+    rot_mat[1, 2] += bound_h / 2 - image_center[1]
+
+    return rot_mat, bound_w, bound_h
+
+
+def rotate_image_opencv(image: np.ndarray, angle: float) -> np.ndarray:
+    """Rotate image using OpenCV (CPU).
+
+    Args:
+        image: Image array of shape (C, H, W)
+        angle: Rotation angle in degrees
+
+    Returns:
+        Rotated image array of shape (C, H', W')
+    """
+    height, width = image.shape[-2:]
+    rot_mat, bound_w, bound_h = _get_rotation_matrix_and_bounds(height, width, angle)
+
+    result = np.stack(
+        [cv2.warpAffine(im, rot_mat, (bound_w, bound_h), flags=cv2.INTER_LINEAR) for im in image],
+        axis=0,
+    )
+    return result
+
+
+def rotate_image_kornia(image: np.ndarray, angle: float, device: str | None = None) -> np.ndarray:
+    """Rotate image using kornia (GPU-accelerated).
+
+    Args:
+        image: Image array of shape (C, H, W)
+        angle: Rotation angle in degrees
+        device: Device to use ('cuda', 'cpu', or None for auto-detect)
+
+    Returns:
+        Rotated image array of shape (C, H', W')
+    """
+    if device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    height, width = image.shape[-2:]
+    rot_mat, bound_w, bound_h = _get_rotation_matrix_and_bounds(height, width, angle)
+
+    # Convert to tensor: (C, H, W) -> (1, C, H, W)
+    tensor = torch.from_numpy(image).unsqueeze(0).float().to(device)
+
+    # Convert 2x3 rotation matrix to 3x3 for kornia
+    rot_mat_3x3 = np.vstack([rot_mat, [0, 0, 1]])
+    rot_mat_tensor = torch.from_numpy(rot_mat_3x3).unsqueeze(0).float().to(device)
+
+    # Apply affine transformation
+    rotated = KT.warp_affine(
+        tensor,
+        rot_mat_tensor[:, :2, :],  # kornia expects 2x3 matrix
+        dsize=(bound_h, bound_w),
+        mode="bilinear",
+        padding_mode="zeros",
+    )
+
+    # Convert back to numpy: (1, C, H, W) -> (C, H, W)
+    return rotated.squeeze(0).cpu().numpy()
 
 
 def unit_vector(vector):
@@ -43,41 +130,26 @@ def signed_angle_between(v1, v2):
     return angle_rad * (180.0 / np.pi)
 
 
-def rotate_image(image: np.ndarray, angle: float) -> np.ndarray:
+def rotate_image(image: np.ndarray, angle: float, use_gpu: bool = True) -> np.ndarray:
     """Rotate image around its center
 
     Args:
-        image (np.ndarray): the image to rotate
+        image (np.ndarray): the image to rotate (2D: H x W)
         angle (float): the angle in degrees
+        use_gpu (bool): Use GPU-accelerated kornia if available (default: True)
 
     Returns:
         np.ndarray: the rotated image
     """
-
     height, width = image.shape[-2:]
+    rot_mat, bound_w, bound_h = _get_rotation_matrix_and_bounds(height, width, angle)
 
-    image_center = tuple(np.array(image.shape[-2:][::-1]) / 2)
-    rot_mat = cv2.getRotationMatrix2D(image_center, angle, 1.0)
-
-    # rotation calculates the cos and sin, taking absolutes of those.
-    abs_cos = abs(rot_mat[0, 0])
-    abs_sin = abs(rot_mat[0, 1])
-
-    # find the new width and height bounds
-    bound_w = int(height * abs_sin + width * abs_cos)
-    bound_h = int(height * abs_cos + width * abs_sin)
-
-    # subtract old image center (bringing image back to origo) and adding the new image center coordinates
-    rot_mat[0, 2] += bound_w / 2 - image_center[0]
-    rot_mat[1, 2] += bound_h / 2 - image_center[1]
-
-    # result = cv2.warpAffine(image, rot_mat, (bound_w, bound_h), flags=cv2.INTER_LINEAR)
     result = cv2.warpAffine(image, rot_mat, (bound_w, bound_h), flags=cv2.INTER_LINEAR)
     return result
 
 
 def rotate_image_and_markers(
-    image: np.ndarray, markers, angle: float, position_labels=None
+    image: np.ndarray, markers, angle: float, position_labels=None, use_gpu: bool = True
 ) -> np.ndarray:
     """Rotate image around its center
 
@@ -85,34 +157,23 @@ def rotate_image_and_markers(
         image (np.ndarray): the image to rotate. CxHxW
         markers: Markers to rotate
         angle (float): the angle in degrees
+        position_labels: Keys in marker dict to transform (default: ["bbox_center"])
+        use_gpu (bool): Use GPU-accelerated kornia if available (default: True)
 
     Returns:
         np.ndarray: the rotated image. CxHxW
+        list: transformed markers
     """
-
     height, width = image.shape[-2:]
+    rot_mat, bound_w, bound_h = _get_rotation_matrix_and_bounds(height, width, angle)
 
-    image_center = tuple(np.array(image.shape[-2:][::-1]) / 2)
-    rot_mat = cv2.getRotationMatrix2D(image_center, angle, 1.0)
+    # Rotate image using GPU or CPU
+    if use_gpu and torch.cuda.is_available():
+        result = rotate_image_kornia(image, angle)
+    else:
+        result = rotate_image_opencv(image, angle)
 
-    # rotation calculates the cos and sin, taking absolutes of those.
-    abs_cos = abs(rot_mat[0, 0])
-    abs_sin = abs(rot_mat[0, 1])
-
-    # find the new width and height bounds
-    bound_w = int(height * abs_sin + width * abs_cos)
-    bound_h = int(height * abs_cos + width * abs_sin)
-
-    # subtract old image center (bringing image back to origo) and adding the new image center coordinates
-    rot_mat[0, 2] += bound_w / 2 - image_center[0]
-    rot_mat[1, 2] += bound_h / 2 - image_center[1]
-
-    # rotate all channels
-    result = np.stack(
-        [cv2.warpAffine(im, rot_mat, (bound_w, bound_h), flags=cv2.INTER_LINEAR) for im in image],
-        axis=0,
-    )
-
+    # Transform marker positions (CPU, already efficient)
     if position_labels is None:
         position_labels = ["bbox_center"]
 

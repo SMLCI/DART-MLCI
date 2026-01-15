@@ -203,6 +203,13 @@ class SAKRoIStructureLibrary:
             for mn, mc in sc.items():
                 sc[mn] = mc * 1.0 / pixel_size
 
+    def _structure_name(self, roi_id: str) -> str:
+        roi_id = str(roi_id)
+
+        for sn, structure_pattern in self.patterns.items():
+            if re.match(structure_pattern, roi_id) is not None:
+                return sn
+
     def __call__(self, roi_id: str) -> tuple[str, RoIPolygon, dict]:
         # match id with structure patterns
         structure_name = None

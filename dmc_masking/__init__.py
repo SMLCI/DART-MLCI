@@ -66,7 +66,11 @@ class MarkerDetectionModel:
     """Yolo model for detecting the markers"""
 
     def __init__(
-        self, model_path: Path, verbose=False, label_mapping: dict[str, str] | None = None
+        self,
+        model_path: Path,
+        verbose=False,
+        label_mapping: dict[str, str] | None = None,
+        device: str | None = None,
     ):
         """
 
@@ -75,9 +79,11 @@ class MarkerDetectionModel:
             verbose: whether to print verbose output
             label_mapping: Optional dict mapping model class names to desired labels
                            e.g., {"class_0": "cross", "class_1": "circle"}
+            device: Device to run on (e.g., 'cuda:0', 'cuda:1', 'cpu'). None for auto.
         """
         self.model = YOLO(model_path, verbose=verbose)
         self.label_mapping = label_mapping
+        self.device = device
 
     def predict_markers(self, image: np.ndarray):
         """Predict markers on the image
@@ -88,7 +94,7 @@ class MarkerDetectionModel:
         Returns:
             _type_: marker information
         """
-        result = self.model(image)[0]
+        result = self.model(image, device=self.device)[0]
 
         return extract_data(result, image, self.label_mapping)
 
@@ -267,8 +273,8 @@ class SingleStructureRoIMasker:
 class MarkerDetectionStep:
     """Detect Markers"""
 
-    def __init__(self, model_path: str):
-        self.mdm = MarkerDetectionModel(model_path)
+    def __init__(self, model_path: str, device: str | None = None):
+        self.mdm = MarkerDetectionModel(model_path, device=device)
         self.mdm.model.conf = 0.6
 
     def __call__(self, image):
@@ -308,6 +314,14 @@ class MarkerMatchingStep:
 class ImageRotationStep:
     """Rotate images and markers"""
 
+    def __init__(self, use_gpu: bool = True):
+        """Initialize rotation step.
+
+        Args:
+            use_gpu: Use GPU-accelerated kornia if available (default: True)
+        """
+        self.use_gpu = use_gpu
+
     def __call__(self, data):
         markers = data["markers"]
         mean_angle = data["angle"]
@@ -315,7 +329,9 @@ class ImageRotationStep:
 
         image = np.moveaxis(image, [0, 1, 2], [1, 2, 0])
 
-        rotated_image, rotated_markers = rotate_image_and_markers(image, markers, mean_angle)
+        rotated_image, rotated_markers = rotate_image_and_markers(
+            image, markers, mean_angle, use_gpu=self.use_gpu
+        )
 
         rotated_image = np.moveaxis(rotated_image, [0, 1, 2], [2, 0, 1])
 
