@@ -35,7 +35,7 @@ def match_markers(markers, marker_group: dict[str, np.ndarray], on="bbox_center"
         if np.abs(dist - expected_distance) < tolerance:
             data.append((iCross, iCircle, dist))
 
-    sorted(data, key=lambda x: x[2])
+    data = deque(sorted(data, key=lambda x: x[2]))
 
     used_marker_indices = set()
     matches = []
