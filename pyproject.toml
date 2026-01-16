@@ -57,6 +57,7 @@ include = [
     "dmc_masking/",
     "tests/",
     "artifacts/chamber_structure.json",
+    "artifacts/models/*.pt",
     "Readme.md",
     "pyproject.toml",
 ]
