@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import numpy as np
+import torch
 from ultralytics import YOLO
 
 from dmc_masking.mask import RoIPolygon, apply_mask
@@ -84,18 +85,18 @@ class MarkerDetectionModel:
         self.model = YOLO(model_path, verbose=verbose)
         self.label_mapping = label_mapping
         self.device = device
+        self.verbose = verbose
 
     def predict_markers(self, image: np.ndarray):
         """Predict markers on the image
 
         Args:
-            image (np.ndarray): the recorded image
+            image (np.ndarray): the recorded image in HWC format
 
         Returns:
-            _type_: marker information
+            marker information
         """
-        result = self.model(image, device=self.device)[0]
-
+        result = self.model(image, device=self.device, verbose=self.verbose)[0]
         return extract_data(result, image, self.label_mapping)
 
 
@@ -273,14 +274,44 @@ class SingleStructureRoIMasker:
 class MarkerDetectionStep:
     """Detect Markers"""
 
-    def __init__(self, model_path: str, device: str | None = None):
-        self.mdm = MarkerDetectionModel(model_path, device=device)
+    def __init__(
+        self,
+        model_path: str,
+        device: str | None = None,
+        verbose: bool = False,
+        use_gpu_tensor: bool = False,
+    ):
+        """Initialize detection step.
+
+        Args:
+            model_path: Path to YOLO model weights
+            device: Device to use for inference
+            verbose: Show YOLO inference output
+            use_gpu_tensor: Keep image on GPU for downstream steps to avoid redundant
+                           transfers. Set True for performance, False for compatibility
+                           with code expecting numpy arrays. (default: False)
+        """
+        self.mdm = MarkerDetectionModel(model_path, device=device, verbose=verbose)
         self.mdm.model.conf = 0.6
+        self.use_gpu_tensor = use_gpu_tensor
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
     def __call__(self, image):
+        # YOLO requires numpy input for proper preprocessing (resize, normalize, etc.)
+        # After detection, convert to GPU tensor for downstream steps (rotation, etc.)
         markers = self.mdm.predict_markers(image)
 
-        data = {"image": image, "markers": markers}
+        # Convert to GPU tensor for downstream steps to avoid redundant transfers
+        # YOLO has already done its work; now we keep on GPU through rotation
+        if self.use_gpu_tensor and self.device != "cpu" and torch.cuda.is_available():
+            # Input image is HWC (height, width, channels)
+            image_tensor = torch.from_numpy(image).float().to(self.device)
+            # Convert HWC -> CHW for downstream pipeline (rotation expects CHW)
+            if image_tensor.dim() == 3 and image_tensor.shape[-1] in (1, 3, 4):
+                image_tensor = image_tensor.permute(2, 0, 1)
+            data = {"image": image_tensor, "markers": markers}
+        else:
+            data = {"image": image, "markers": markers}
 
         return data
 
@@ -327,13 +358,24 @@ class ImageRotationStep:
         mean_angle = data["angle"]
         image = data["image"]
 
-        image = np.moveaxis(image, [0, 1, 2], [1, 2, 0])
+        # Check if input is tensor (GPU) or numpy (CPU)
+        is_tensor = isinstance(image, torch.Tensor)
+
+        # Rotation functions expect CHW format
+        # - Tensor path: image is already CHW from detection step
+        # - Numpy path: image is HWC, need to convert to CHW
+        if not is_tensor:
+            image = np.moveaxis(image, [0, 1, 2], [1, 2, 0])  # HWC -> CHW
 
         rotated_image, rotated_markers = rotate_image_and_markers(
-            image, markers, mean_angle, use_gpu=self.use_gpu
+            image, markers, mean_angle, use_gpu=self.use_gpu, return_tensor=is_tensor
         )
 
-        rotated_image = np.moveaxis(rotated_image, [0, 1, 2], [2, 0, 1])
+        # Convert output back to original format
+        # - Tensor path: keep as CHW for downstream steps
+        # - Numpy path: convert back to HWC
+        if not is_tensor:
+            rotated_image = np.moveaxis(rotated_image, [0, 1, 2], [2, 0, 1])  # CHW -> HWC
 
         data["image"] = rotated_image
         data["markers"] = rotated_markers
@@ -351,7 +393,16 @@ class RoIMaskingStep:
         self.roi_polygon = roi_polygon
 
     def __call__(self, data, cropped=True):
-        image = np.moveaxis(data["image"], [0, 1, 2], [1, 2, 0])
+        image = data["image"]
+
+        # Convert to numpy in CHW format for apply_mask
+        # apply_mask expects CHW format (uses shape[-2:] for height, width)
+        if isinstance(image, torch.Tensor):
+            # Tensor path: already CHW, just convert to numpy
+            image = image.cpu().numpy()
+        else:
+            # Numpy path: HWC from rotation, convert to CHW
+            image = np.moveaxis(image, [0, 1, 2], [1, 2, 0])  # HWC -> CHW
 
         cropped_image, cropped_mask = apply_mask(
             matched_marker_indices=data["matched_marker_indices"],

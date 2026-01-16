@@ -54,16 +54,22 @@ def rotate_image_opencv(image: np.ndarray, angle: float) -> np.ndarray:
     return result
 
 
-def rotate_image_kornia(image: np.ndarray, angle: float, device: str | None = None) -> np.ndarray:
+def rotate_image_kornia(
+    image: np.ndarray | torch.Tensor,
+    angle: float,
+    device: str | None = None,
+    return_tensor: bool = False,
+) -> np.ndarray | torch.Tensor:
     """Rotate image using kornia (GPU-accelerated).
 
     Args:
-        image: Image array of shape (C, H, W)
+        image: Image array of shape (C, H, W), either numpy array or torch.Tensor
         angle: Rotation angle in degrees
         device: Device to use ('cuda', 'cpu', or None for auto-detect)
+        return_tensor: If True, return torch.Tensor instead of numpy array
 
     Returns:
-        Rotated image array of shape (C, H', W')
+        Rotated image of shape (C, H', W'), as numpy array or torch.Tensor
     """
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -71,8 +77,14 @@ def rotate_image_kornia(image: np.ndarray, angle: float, device: str | None = No
     height, width = image.shape[-2:]
     rot_mat, bound_w, bound_h = _get_rotation_matrix_and_bounds(height, width, angle)
 
-    # Convert to tensor: (C, H, W) -> (1, C, H, W)
-    tensor = torch.from_numpy(image).unsqueeze(0).float().to(device)
+    # Convert to tensor if needed: (C, H, W) -> (1, C, H, W)
+    if isinstance(image, torch.Tensor):
+        tensor = image.unsqueeze(0) if image.dim() == 3 else image
+        if tensor.device.type != device.split(":")[0]:
+            tensor = tensor.to(device)
+        tensor = tensor.float()
+    else:
+        tensor = torch.from_numpy(image).unsqueeze(0).float().to(device)
 
     # Convert 2x3 rotation matrix to 3x3 for kornia
     rot_mat_3x3 = np.vstack([rot_mat, [0, 0, 1]])
@@ -87,8 +99,11 @@ def rotate_image_kornia(image: np.ndarray, angle: float, device: str | None = No
         padding_mode="zeros",
     )
 
-    # Convert back to numpy: (1, C, H, W) -> (C, H, W)
-    return rotated.squeeze(0).cpu().numpy()
+    # Return tensor or numpy based on flag
+    result = rotated.squeeze(0)
+    if return_tensor:
+        return result
+    return result.cpu().numpy()
 
 
 def unit_vector(vector):
@@ -149,29 +164,43 @@ def rotate_image(image: np.ndarray, angle: float, use_gpu: bool = True) -> np.nd
 
 
 def rotate_image_and_markers(
-    image: np.ndarray, markers, angle: float, position_labels=None, use_gpu: bool = True
-) -> np.ndarray:
+    image: np.ndarray | torch.Tensor,
+    markers,
+    angle: float,
+    position_labels=None,
+    use_gpu: bool = True,
+    return_tensor: bool = False,
+) -> np.ndarray | torch.Tensor:
     """Rotate image around its center
 
     Args:
-        image (np.ndarray): the image to rotate. CxHxW
+        image: the image to rotate. CxHxW (numpy array or torch.Tensor)
         markers: Markers to rotate
         angle (float): the angle in degrees
         position_labels: Keys in marker dict to transform (default: ["bbox_center"])
         use_gpu (bool): Use GPU-accelerated kornia if available (default: True)
+        return_tensor (bool): If True, return torch.Tensor instead of numpy array
 
     Returns:
-        np.ndarray: the rotated image. CxHxW
+        Rotated image (CxHxW) as numpy array or torch.Tensor
         list: transformed markers
     """
     height, width = image.shape[-2:]
     rot_mat, bound_w, bound_h = _get_rotation_matrix_and_bounds(height, width, angle)
 
     # Rotate image using GPU or CPU
+    is_tensor = isinstance(image, torch.Tensor)
     if use_gpu and torch.cuda.is_available():
-        result = rotate_image_kornia(image, angle)
+        result = rotate_image_kornia(image, angle, return_tensor=return_tensor or is_tensor)
     else:
-        result = rotate_image_opencv(image, angle)
+        # CPU path requires numpy
+        if is_tensor:
+            image_np = image.cpu().numpy()
+        else:
+            image_np = image
+        result = rotate_image_opencv(image_np, angle)
+        if return_tensor:
+            result = torch.from_numpy(result)
 
     # Transform marker positions (CPU, already efficient)
     if position_labels is None:
