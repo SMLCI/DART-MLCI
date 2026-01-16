@@ -89,6 +89,7 @@ class BatchMaskingRunner:
         structure_library_path: Path | None = None,
         skip_segmentation: bool = False,
         device: str | None = None,
+        verbose: bool = False,
     ):
         """Initialize the batch runner.
 
@@ -98,6 +99,7 @@ class BatchMaskingRunner:
             structure_library_path: Path to chamber structure JSON file
             skip_segmentation: If True, skip the cell segmentation step
             device: Device to run on (e.g., 'cuda:0', 'cuda:1', 'cpu'). None for auto.
+            verbose: If True, show YOLO inference output. Default: False.
         """
         self.model_path = model_path
         self.pixel_size = pixel_size
@@ -117,7 +119,7 @@ class BatchMaskingRunner:
         )
 
         # Initialize detection step (shared across all images)
-        self.detection_step = MarkerDetectionStep(model_path, device=device)
+        self.detection_step = MarkerDetectionStep(model_path, device=device, verbose=verbose)
 
         # Cache for chamber-specific pipeline components (keyed by structure_name)
         self._chamber_cache: dict[str, dict] = {}
@@ -454,6 +456,11 @@ CSV format (chamber_type is a structure name string):
         default=None,
         help="Device to run on (e.g., 'cuda:0', 'cuda:1', 'cpu'). Default: auto",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show YOLO inference output (default: quiet)",
+    )
 
     args = parser.parse_args()
 
@@ -491,6 +498,7 @@ CSV format (chamber_type is a structure name string):
         structure_library_path=args.structure_library,
         skip_segmentation=args.skip_segmentation,
         device=args.device,
+        verbose=args.verbose,
     )
 
     results = runner.run(image_list)
