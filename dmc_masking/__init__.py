@@ -242,7 +242,7 @@ class SingleStructureRoIMasker:
         if structure_library is None:
             structure_library = Path(__file__).parent.parent / "artifacts/chamber_structure.json"
         if model_path is None:
-            model_path = Path(__file__).parent.parent / "artifacts/models/best34.pt"
+            model_path = Path(__file__).parent.parent / "artifacts/models/v8_detect_s_imgsz640.pt"
 
         self.rm = RoIMasker(model_path=model_path, roi_polygon=None, marker_group_pixel=None)
 

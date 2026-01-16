@@ -470,7 +470,9 @@ CSV format (chamber_type is a structure name string):
 
     # Set default model path
     if args.model_path is None:
-        args.model_path = Path(dmc_masking.__file__).parent.parent / "artifacts/models/best34.pt"
+        args.model_path = (
+            Path(dmc_masking.__file__).parent.parent / "artifacts/models/v8_detect_s_imgsz640.pt"
+        )
 
     if not args.model_path.exists():
         raise FileNotFoundError(f"Model path not found: {args.model_path}")
