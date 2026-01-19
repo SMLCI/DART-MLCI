@@ -1,10 +1,22 @@
 import logging
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
 import pandas as pd
 import seaborn as sns
+
+
+@dataclass
+class AffineTransformResult:
+    """Result of computing an affine transform between two maps."""
+
+    transform: Callable[[np.ndarray], np.ndarray]
+    residuals: np.ndarray  # Per-point residual distances
+    rmse: float  # Root mean square error
+    max_error: float  # Maximum residual
 
 
 class RoIPosition:
@@ -114,10 +126,26 @@ class Map:
 
         return df
 
-    def compute_affine_transform(self, target: "Map"):
-        ids = target.roi_positions.keys()
+    def compute_affine_transform(self, target: "Map") -> AffineTransformResult:
+        """Compute an affine transform from this map to the target map.
 
-        assert len(ids) == 3, "We can only do this for triplets right now"
+        Uses least squares fitting to handle any number of corresponding points (>=3).
+        Returns the transform function along with error metrics.
+
+        Args:
+            target: The target map with corresponding RoI positions
+
+        Returns:
+            AffineTransformResult containing the transform function and error metrics
+
+        Raises:
+            AssertionError: If fewer than 3 points are provided
+            KeyError: If a target RoI ID is not found in this map
+        """
+        ids = list(target.roi_positions.keys())
+        n_points = len(ids)
+
+        assert n_points >= 3, "Need at least 3 points for affine transform"
 
         # get the corresponding points from the blueprint positions
         blueprint_points = np.stack([self.roi_positions[rid].position for rid in ids])
@@ -125,23 +153,49 @@ class Map:
         # convert measured points to np.array
         measured_points = np.stack([target.roi_positions[rid].position for rid in ids])
 
-        def create_affine_function(pointsA: np.ndarray, pointsB: np.ndarray):
-            _pointsB = np.hstack((pointsB, np.ones((3, 1))))
-            Ab = np.linalg.solve(_pointsB, pointsA)
-            return lambda x: Ab[:2, :].T.dot(x.T).T + Ab[2:3, :]
+        # Build design matrix: [x, y, 1] for each point
+        design = np.hstack((blueprint_points, np.ones((n_points, 1))))
 
-        # get affine transformation
-        f = create_affine_function(measured_points, blueprint_points)
+        # Solve using least squares: design @ Ab = measured_points
+        Ab, residuals, rank, s = np.linalg.lstsq(design, measured_points, rcond=None)
 
-        # return the affine transform
-        return f
+        # Create transform function (handles both single points and batches)
+        def transform(x: np.ndarray) -> np.ndarray:
+            if x.ndim == 1:
+                return (x @ Ab[:2, :] + Ab[2:3, :])[0]
+            return x @ Ab[:2, :] + Ab[2:3, :]
 
-    def apply_transform(self, t) -> "Map":
-        new_roi_positions = []
+        # Compute per-point residuals
+        transformed = transform(blueprint_points)
+        point_residuals = np.linalg.norm(transformed - measured_points, axis=1)
 
-        # apply the transform to all RoI positions
-        for roi_id, rp in self.roi_positions.items():
-            new_roi_positions.append(RoIPosition(roi_id, t(rp.position[None])[0]))
+        return AffineTransformResult(
+            transform=transform,
+            residuals=point_residuals,
+            rmse=float(np.sqrt(np.mean(point_residuals**2))),
+            max_error=float(np.max(point_residuals)),
+        )
 
-        # return the new map
+    def apply_transform(
+        self, t: AffineTransformResult | Callable[[np.ndarray], np.ndarray]
+    ) -> "Map":
+        """Apply a transform to all RoI positions in this map.
+
+        Args:
+            t: Either an AffineTransformResult or a callable transform function
+
+        Returns:
+            A new Map with transformed positions
+        """
+        # Handle both AffineTransformResult and raw callable
+        transform_fn = t.transform if isinstance(t, AffineTransformResult) else t
+
+        # Batch transform all positions at once
+        roi_ids = list(self.roi_positions.keys())
+        positions = np.stack([self.roi_positions[rid].position for rid in roi_ids])
+        transformed = transform_fn(positions)
+
+        # Create new RoI positions from transformed coordinates
+        new_roi_positions = [RoIPosition(rid, transformed[i]) for i, rid in enumerate(roi_ids)]
+
         return Map(new_roi_positions)
