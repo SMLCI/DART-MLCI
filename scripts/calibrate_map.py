@@ -35,16 +35,15 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import tifffile
 from matplotlib.patches import Polygon as MplPolygon
 from shapely import affinity
 
 import dmc_masking
 from dmc_masking import MarkerDetectionStep, MarkerMatchingStep
+from dmc_masking.io import load_image
 from dmc_masking.map import AffineTransformResult, Map, RoIPosition
 from dmc_masking.mask import RoIPolygon, SAKRoIStructureLibrary
 from dmc_masking.rotation import compute_marker_group_angles
-from dmc_masking.utils import normalize_image
 
 
 @dataclass
@@ -192,60 +191,6 @@ def validate_config(config: dict, config_path: Path | None = None) -> None:
         model_path = Path(config["model_path"])
         if not model_path.exists():
             raise ValueError(f"'model_path'{source}: File not found: {model_path}")
-
-
-def load_image(image_path: Path) -> np.ndarray:
-    """Load and prepare image for pipeline.
-
-    Handles single images as well as TIFF stacks (TxCxHxW format).
-    For stacks, extracts the first frame and first channel.
-
-    Args:
-        image_path: Path to the image file
-
-    Returns:
-        Image as HxWx3 numpy array in uint8 format
-    """
-    suffix = image_path.suffix.lower()
-
-    if suffix in {".tif", ".tiff"}:
-        image = tifffile.imread(str(image_path))
-
-        # Handle multi-dimensional TIFF stacks (TxCxHxW or CxHxW)
-        if image.ndim == 4:
-            # TxCxHxW format - take first time point and first channel
-            image = image[0, 0]
-        elif image.ndim == 3:
-            # Could be CxHxW, TxHxW, or HxWxC
-            if image.shape[0] <= 4:
-                # Likely CxHxW - take first channel
-                image = image[0]
-            elif image.shape[2] <= 4:
-                # Likely HxWxC - keep as is
-                pass
-            else:
-                # Likely TxHxW - take first time point
-                image = image[0]
-
-        # Normalize to uint8
-        if image.dtype != np.uint8:
-            image = normalize_image(image)
-    else:
-        image = cv2.imread(str(image_path))
-        if image is None:
-            raise ValueError(f"Failed to load image: {image_path}")
-
-    # Normalize if uint16
-    if image.dtype == np.uint16:
-        image = normalize_image(image)
-
-    # Convert grayscale to RGB
-    if len(image.shape) == 2:
-        image = np.stack((image,) * 3, axis=-1)
-    elif len(image.shape) == 3 and image.shape[2] == 1:
-        image = np.stack((image[:, :, 0],) * 3, axis=-1)
-
-    return image
 
 
 def compute_chamber_center(

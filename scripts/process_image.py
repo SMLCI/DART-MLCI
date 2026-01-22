@@ -27,8 +27,8 @@ from dmc_masking import (
     MarkerMatchingStep,
     RoIMaskingStep,
 )
+from dmc_masking.io import load_image
 from dmc_masking.mask import SAKRoIStructureLibrary
-from dmc_masking.utils import normalize_image
 
 # Pipeline step names for error reporting
 STEP_VALIDATION = "VALIDATION"
@@ -90,62 +90,6 @@ def print_success(timings: PipelineTimings, output_path: Path, mask_path: Path |
     if mask_path:
         msg += f" | mask={mask_path}"
     print(msg)
-
-
-def load_image(image_path: Path) -> np.ndarray:
-    """Load and prepare image for pipeline.
-
-    Handles single images as well as TIFF stacks (TxCxHxW format).
-    For stacks, extracts the first frame and first channel.
-
-    Args:
-        image_path: Path to the image file
-
-    Returns:
-        Image as HxWx3 numpy array in uint8 format
-    """
-    import tifffile
-
-    suffix = image_path.suffix.lower()
-
-    if suffix in {".tif", ".tiff"}:
-        image = tifffile.imread(str(image_path))
-
-        # Handle multi-dimensional TIFF stacks (TxCxHxW or CxHxW)
-        if image.ndim == 4:
-            # TxCxHxW format - take first time point and first channel
-            image = image[0, 0]
-        elif image.ndim == 3:
-            # Could be CxHxW, TxHxW, or HxWxC
-            if image.shape[0] <= 4:
-                # Likely CxHxW - take first channel
-                image = image[0]
-            elif image.shape[2] <= 4:
-                # Likely HxWxC - keep as is
-                pass
-            else:
-                # Likely TxHxW - take first time point
-                image = image[0]
-
-        # Normalize to uint8
-        if image.dtype != np.uint8:
-            image = normalize_image(image)
-    else:
-        image = cv2.imread(str(image_path))
-        if image is None:
-            raise ValueError(f"Failed to load image: {image_path}")
-
-    # Normalize if uint16
-    if image.dtype == np.uint16:
-        image = normalize_image(image)
-
-    # Convert grayscale to RGB
-    if len(image.shape) == 2:
-        image = np.stack((image,) * 3, axis=-1)
-    elif len(image.shape) == 3 and image.shape[2] == 1:
-        image = np.stack((image[:, :, 0],) * 3, axis=-1)
-
-    return image
 
 
 class PipelineError(Exception):

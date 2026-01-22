@@ -39,11 +39,11 @@ from dmc_masking import (
     MarkerMatchingStep,
     RoIMaskingStep,
 )
+
+# Import load_image from shared module
+from dmc_masking.io import load_image
 from dmc_masking.mask import SAKRoIStructureLibrary
 from dmc_masking.visualization import plot_markers_on_image
-
-# Import load_image from benchmark script
-from scripts.benchmark import load_image
 
 # Pipeline step names for tracking
 STEP_LOADING = "Loading"
