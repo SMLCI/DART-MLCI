@@ -35,7 +35,17 @@ class RoIPolygon:
 
     @property
     def center(self) -> np.ndarray:
-        return np.asarray(self.roi_polygon.centroid.coords)[0]
+        """Return the center of the polygon's bounding box.
+
+        Uses the bounding box center (midpoint of axis-aligned bounds) rather than
+        the geometric centroid, which provides a more intuitive center point for
+        asymmetric polygons.
+
+        Returns:
+            np.ndarray: (x, y) coordinates of the bounding box center
+        """
+        xmin, ymin, xmax, ymax = self.roi_polygon.bounds
+        return np.array([(xmin + xmax) / 2, (ymin + ymax) / 2])
 
     def difference(self, other: "RoIPolygon") -> "RoIPolygon":
         return RoIPolygon(self.roi_polygon.difference(other.roi_polygon))
