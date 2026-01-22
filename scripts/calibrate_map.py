@@ -57,6 +57,7 @@ class ImageDebugData:
     chamber_center_pixels: np.ndarray | None = None
     chamber_center_microns: np.ndarray | None = None
     stage_position: dict[str, float] | None = None
+    pixel_size: float | None = None
     structure_name: str | None = None
     roi_polygon: RoIPolygon | None = None
     marker_group_pixels: dict[str, np.ndarray] | None = None
@@ -522,6 +523,7 @@ def process_calibration_image(
         if debug_data:
             debug_data.chamber_center_pixels = chamber_center_pixels
             debug_data.chamber_center_microns = np.array([microscope_x, microscope_y])
+            debug_data.pixel_size = pixel_size
 
         return ImageCalibrationResult(
             roi_id=roi_id,
@@ -1057,75 +1059,6 @@ def plot_image_debug(
         )
         ax.add_patch(poly_patch)
 
-    # Draw the offset vector from cross to polygon center (for debugging)
-    if (
-        debug_data.roi_polygon is not None
-        and debug_data.marker_group_pixels is not None
-        and debug_data.matched_indices
-        and debug_data.markers
-    ):
-        # Get detected cross position
-        cross_idx = debug_data.matched_indices[0][0]
-        cross_detected = debug_data.markers[cross_idx]["bbox_center"]
-
-        # Get the offset in blueprint coordinates
-        polygon_center = debug_data.roi_polygon.center
-        cross_local = debug_data.marker_group_pixels["cross"]
-        center_offset = polygon_center - cross_local
-
-        # Draw the raw (unrotated) offset vector from cross_detected
-        raw_endpoint = cross_detected + center_offset
-        ax.annotate(
-            "",
-            xy=(raw_endpoint[0], raw_endpoint[1]),
-            xytext=(cross_detected[0], cross_detected[1]),
-            arrowprops=dict(arrowstyle="->", color="magenta", lw=2),
-            zorder=8,
-        )
-        ax.scatter(
-            raw_endpoint[0],
-            raw_endpoint[1],
-            c="magenta",
-            marker="d",
-            s=100,
-            zorder=8,
-            label=f"Unrotated offset (dx={center_offset[0]:.1f}, dy={center_offset[1]:.1f})",
-        )
-
-        # Also show where cross_local is on the drawn polygon (to verify coordinate systems)
-        # The polygon is drawn rotated, so we need to apply the same rotation to the offset
-        if debug_data.chamber_center_pixels is not None and debug_data.rotation_angle is not None:
-            # Rotate the offset by the same angle used for the polygon visualization
-            angle_rad = np.radians(debug_data.rotation_angle)
-            cos_a = np.cos(angle_rad)
-            sin_a = np.sin(angle_rad)
-            rotated_offset_for_viz = np.array(
-                [
-                    center_offset[0] * cos_a - center_offset[1] * sin_a,
-                    center_offset[0] * sin_a + center_offset[1] * cos_a,
-                ]
-            )
-            # cross position on drawn polygon = chamber_center - rotated_offset
-            cross_on_polygon = debug_data.chamber_center_pixels - rotated_offset_for_viz
-            ax.scatter(
-                cross_on_polygon[0],
-                cross_on_polygon[1],
-                c="lime",
-                marker="P",
-                s=150,
-                zorder=9,
-                label="Expected cross on polygon",
-            )
-            # Draw line from expected cross position to detected cross
-            ax.plot(
-                [cross_on_polygon[0], cross_detected[0]],
-                [cross_on_polygon[1], cross_detected[1]],
-                "lime",
-                linestyle=":",
-                linewidth=2,
-                alpha=0.8,
-            )
-
     # Draw chamber center
     if debug_data.chamber_center_pixels is not None:
         ax.scatter(
@@ -1140,32 +1073,56 @@ def plot_image_debug(
             label="Chamber center",
         )
 
-    # Add text annotations
-    text_y = 30
-    text_props = {
-        "fontsize": 10,
-        "color": "white",
-        "bbox": {"facecolor": "black", "alpha": 0.7, "pad": 3},
-    }
+    # Add microscope position label near the star
+    # Microscope position = stage_position + center_pixels * pixel_size
+    if (
+        debug_data.stage_position is not None
+        and debug_data.chamber_center_pixels is not None
+        and debug_data.pixel_size is not None
+    ):
+        microscope_x = (
+            debug_data.stage_position["x"]
+            + debug_data.chamber_center_pixels[0] * debug_data.pixel_size
+        )
+        microscope_y = (
+            debug_data.stage_position["y"]
+            + debug_data.chamber_center_pixels[1] * debug_data.pixel_size
+        )
+        ax.annotate(
+            f"({microscope_x:.1f}, {microscope_y:.1f}) um",
+            xy=(debug_data.chamber_center_pixels[0], debug_data.chamber_center_pixels[1]),
+            xytext=(10, -10),
+            textcoords="offset points",
+            fontsize=9,
+            color="gold",
+            fontweight="bold",
+            bbox=dict(facecolor="black", alpha=0.7, pad=2),
+            zorder=11,
+        )
 
+    # Add text annotations in a single box
+    info_lines = []
     if debug_data.stage_position:
-        stage_text = f"Stage: ({debug_data.stage_position['x']:.2f}, {debug_data.stage_position['y']:.2f}) µm"
-        ax.text(10, text_y, stage_text, **text_props)
-        text_y += 25
-
+        info_lines.append(
+            f"Stage: ({debug_data.stage_position['x']:.2f}, {debug_data.stage_position['y']:.2f}) µm"
+        )
     if debug_data.chamber_center_pixels is not None:
-        center_px_text = f"Center (px): ({debug_data.chamber_center_pixels[0]:.1f}, {debug_data.chamber_center_pixels[1]:.1f})"
-        ax.text(10, text_y, center_px_text, **text_props)
-        text_y += 25
-
-    if debug_data.chamber_center_microns is not None:
-        center_um_text = f"Center (µm): ({debug_data.chamber_center_microns[0]:.2f}, {debug_data.chamber_center_microns[1]:.2f})"
-        ax.text(10, text_y, center_um_text, **text_props)
-        text_y += 25
-
+        info_lines.append(
+            f"Center (px): ({debug_data.chamber_center_pixels[0]:.1f}, {debug_data.chamber_center_pixels[1]:.1f})"
+        )
     if debug_data.rotation_angle is not None:
-        rotation_text = f"Rotation: {debug_data.rotation_angle:.2f}°"
-        ax.text(10, text_y, rotation_text, **text_props)
+        info_lines.append(f"Rotation: {debug_data.rotation_angle:.2f}°")
+
+    if info_lines:
+        ax.text(
+            10,
+            30,
+            "\n".join(info_lines),
+            fontsize=10,
+            color="white",
+            bbox={"facecolor": "black", "alpha": 0.7, "pad": 5},
+            verticalalignment="top",
+        )
 
     # Title
     title = f"RoI {roi_id}"
