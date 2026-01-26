@@ -35,6 +35,7 @@ from calibrate_map import (
 )
 from matplotlib.patches import Polygon as MplPolygon
 from shapely import affinity
+from tqdm import tqdm
 
 import dmc_masking
 from dmc_masking import MarkerDetectionStep, MarkerMatchingStep
@@ -416,8 +417,18 @@ def run_validation(
 
     results: list[ValidationResult] = []
 
-    for i, row in meta_df.iterrows():
+    # Use tqdm progress bar (disabled in verbose mode since it prints detailed info)
+    pbar = tqdm(
+        meta_df.iterrows(),
+        total=len(meta_df),
+        desc="Validating images",
+        disable=verbose,
+        unit="img",
+    )
+
+    for i, row in pbar:
         roi_id = row["roi_id"]
+        pbar.set_postfix(roi=roi_id)
 
         # Get stage position
         stage_position = {
