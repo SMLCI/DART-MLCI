@@ -268,8 +268,12 @@ def filter_matched_pairs_by_bounds(
     marker_group_pixels: dict[str, np.ndarray],
     roi_polygon: RoIPolygon,
     image_shape: tuple[int, int],
+    rotation_angle: float = 0.0,
 ) -> list[tuple[int, int]]:
     """Filter matched marker pairs to keep only those with RoI fully within image bounds.
+
+    This function positions the RoI polygon using the same rotation-aware logic as
+    apply_mask_rotation_free() to ensure consistent bounds checking.
 
     Args:
         markers: List of detected markers with bbox_center
@@ -277,6 +281,7 @@ def filter_matched_pairs_by_bounds(
         marker_group_pixels: Expected marker positions in pixels
         roi_polygon: RoI polygon template
         image_shape: (height, width) of the image
+        rotation_angle: Rotation angle in degrees from markers
 
     Returns:
         Filtered list of matched indices, sorted by margin to image boundary (largest first)
@@ -284,19 +289,30 @@ def filter_matched_pairs_by_bounds(
     im_height, im_width = image_shape
     valid_pairs = []
 
+    # Get the cross marker position in the polygon's local coordinate system
+    cross_local = marker_group_pixels["cross"]
+
     for cross_idx, circle_idx in matched_indices:
         cross_marker = markers[cross_idx]
         circle_marker = markers[circle_idx]
 
-        # Compute width correction (same as in apply_mask)
-        width = np.abs(cross_marker["bbox_center"][0] - circle_marker["bbox_center"][0])
-        expected_width = np.abs(marker_group_pixels["cross"][0] - marker_group_pixels["circle"][0])
-        diff = width - expected_width
+        # Compute scaling correction using Euclidean distance
+        # This works correctly for any rotation angle (unlike X-only distance)
+        detected_dist = np.linalg.norm(cross_marker["bbox_center"] - circle_marker["bbox_center"])
+        expected_dist = np.linalg.norm(marker_group_pixels["cross"] - marker_group_pixels["circle"])
+        diff = detected_dist - expected_dist
 
-        # Translate polygon to marker position (same logic as apply_mask)
-        rp = roi_polygon.translate(
-            x=cross_marker["bbox_center"][0] - marker_group_pixels["cross"][0] + diff,
-            y=cross_marker["bbox_center"][1] + marker_group_pixels["cross"][1],
+        # Position the polygon using the same logic as apply_mask_rotation_free:
+        # 1. Compute rotation origin in polygon's local coordinates
+        rotation_origin = (cross_local[0], -cross_local[1])
+
+        # 2. Rotate the polygon around the cross marker position
+        rp = roi_polygon.rotate(rotation_angle, origin=rotation_origin)
+
+        # 3. Translate so the cross marker aligns with detection
+        rp = rp.translate(
+            x=cross_marker["bbox_center"][0] - rotation_origin[0] + diff,
+            y=cross_marker["bbox_center"][1] - rotation_origin[1],
         )
 
         # Check if polygon is within image bounds
@@ -443,13 +459,27 @@ def process_calibration_image(
                 debug_data=debug_data,
             )
 
-        # 5b. Filter matched pairs to keep only those with RoI fully in image bounds
+        # 5b. Compute rotation angle from detected markers (needed for bounds check)
+        angles = compute_marker_group_angles(
+            markers, matched_indices, marker_group_pixels, signed=True
+        )
+        rotation_angle = np.mean(angles)
+
+        if verbose:
+            print(f"    - Rotation angle: {rotation_angle:.2f}°")
+
+        if debug_data:
+            debug_data.rotation_angle = rotation_angle
+
+        # 5c. Filter matched pairs to keep only those with RoI fully in image bounds
+        # Pass rotation_angle so the polygon is positioned correctly (matching apply_mask_rotation_free)
         matched_indices = filter_matched_pairs_by_bounds(
             markers=markers,
             matched_indices=matched_indices,
             marker_group_pixels=marker_group_pixels,
             roi_polygon=roi_polygon,
             image_shape=image.shape[:2],
+            rotation_angle=rotation_angle,
         )
 
         if verbose:
@@ -469,19 +499,7 @@ def process_calibration_image(
         if debug_data:
             debug_data.matched_indices = matched_indices
 
-        # 6. Compute rotation angle from detected markers
-        angles = compute_marker_group_angles(
-            markers, matched_indices, marker_group_pixels, signed=True
-        )
-        rotation_angle = np.mean(angles)
-
-        if verbose:
-            print(f"    - Rotation angle: {rotation_angle:.2f}°")
-
-        if debug_data:
-            debug_data.rotation_angle = rotation_angle
-
-        # 7. Compute chamber center in pixels (with rotation correction)
+        # 6. Compute chamber center in pixels (with rotation correction)
         chamber_center_pixels = compute_chamber_center(
             markers, matched_indices, marker_group_pixels, roi_polygon, rotation_angle
         )

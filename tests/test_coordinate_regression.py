@@ -233,7 +233,7 @@ class TestFilterMatchedPairsByBounds(unittest.TestCase):
         matched_indices = [(0, 1), (2, 3)]
 
         filtered = filter_matched_pairs_by_bounds(
-            markers, matched_indices, marker_group, polygon, image_shape
+            markers, matched_indices, marker_group, polygon, image_shape, rotation_angle=0.0
         )
 
         # Only pair 1 should remain (pair 0 would place polygon outside)
