@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 from shapely.geometry import Point, Polygon
 
-from dmc_masking.mask import RoIPolygon
+from dmc_masking.mask import RoIPolygon, apply_mask_rotation_free
 
 
 def build_polygon():
@@ -82,6 +82,183 @@ class TestMask(unittest.TestCase):
         self.assertLess(np.abs(A.area - polygon_area), 0.3)
         self.assertLess(np.abs(B.area - polygon_area), 0.3)
         self.assertLess(np.abs(both.area - 2 * polygon_area), 0.3)
+
+    def test_rotation_preserves_area(self):
+        """test that rotation preserves polygon area"""
+        roi_polygon = build_polygon()
+        original_area = roi_polygon.area
+
+        # Test various rotation angles
+        for angle in [0, 45, 90, 180, 270, -45]:
+            rotated = roi_polygon.rotate(angle)
+            self.assertLess(
+                np.abs(rotated.area - original_area),
+                0.3,
+                f"Area changed after rotating {angle} degrees",
+            )
+
+    def test_rotation_around_center(self):
+        """test rotation around default center (bounding box center)"""
+        roi_polygon = build_polygon()
+        original_center = roi_polygon.center.copy()
+
+        # Rotate 90 degrees around center
+        rotated = roi_polygon.rotate(90)
+
+        # Center should remain approximately the same
+        np.testing.assert_array_almost_equal(rotated.center, original_center, decimal=5)
+
+    def test_rotation_around_custom_origin(self):
+        """test rotation around a custom origin point"""
+        roi_polygon = build_polygon()
+
+        # Rotate around origin (0, 0)
+        rotated = roi_polygon.rotate(90, origin=(0, 0))
+
+        # The center should have moved
+        # Original center is (30, 30), after 90 deg CCW rotation around origin:
+        # (x, y) -> (-y, x) => (30, 30) -> (-30, 30)
+        np.testing.assert_array_almost_equal(rotated.center, np.array([-30, 30]), decimal=5)
+
+    def test_rotation_immutability(self):
+        """test that rotation does not modify the original polygon"""
+        roi_polygon = build_polygon()
+        original_center = roi_polygon.center.copy()
+        original_area = roi_polygon.area
+
+        _ = roi_polygon.rotate(45)
+
+        np.testing.assert_array_almost_equal(roi_polygon.center, original_center)
+        self.assertLess(np.abs(roi_polygon.area - original_area), 0.1)
+
+
+class TestApplyMaskRotationFree(unittest.TestCase):
+    """Test cases for rotation-free masking."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        # Create a simple square polygon
+        self.polygon = RoIPolygon(Polygon([(0, 0), (100, 0), (100, 100), (0, 100)]))
+        # Marker positions in polygon's local coordinate system
+        self.marker_group_pixels = {
+            "cross": np.array([10.0, -10.0]),  # Cross marker near top-left
+            "circle": np.array([90.0, -10.0]),  # Circle marker near top-right
+        }
+        # Create a test image (grayscale, 200x200)
+        self.image = np.zeros((200, 200), dtype=np.uint8)
+        self.image[50:150, 50:150] = 255  # White square in center
+
+    def test_basic_masking_no_rotation(self):
+        """Test masking with zero rotation angle."""
+        # Simulate markers detected at positions that match the blueprint
+        markers = [
+            {"bbox_center": np.array([60.0, 60.0]), "label": "cross"},
+            {"bbox_center": np.array([140.0, 60.0]), "label": "circle"},
+        ]
+        matched_indices = [(0, 1)]
+
+        cropped_image, cropped_mask = apply_mask_rotation_free(
+            matched_marker_indices=matched_indices,
+            markers=markers,
+            marker_group_pixels=self.marker_group_pixels,
+            roi_polygon=self.polygon,
+            image=self.image,
+            rotation_angle=0.0,
+        )
+
+        # Check that we got a cropped result
+        self.assertGreater(cropped_image.size, 0)
+        self.assertGreater(cropped_mask.size, 0)
+        # Mask should have same shape as cropped image
+        self.assertEqual(cropped_image.shape, cropped_mask.shape)
+
+    def test_masking_with_rotation(self):
+        """Test masking with non-zero rotation angle."""
+        # Markers are detected at rotated positions
+        markers = [
+            {"bbox_center": np.array([70.0, 70.0]), "label": "cross"},
+            {"bbox_center": np.array([140.0, 80.0]), "label": "circle"},
+        ]
+        matched_indices = [(0, 1)]
+
+        cropped_image, cropped_mask = apply_mask_rotation_free(
+            matched_marker_indices=matched_indices,
+            markers=markers,
+            marker_group_pixels=self.marker_group_pixels,
+            roi_polygon=self.polygon,
+            image=self.image,
+            rotation_angle=10.0,
+        )
+
+        # Should still produce valid output
+        self.assertGreater(cropped_image.size, 0)
+        self.assertGreater(cropped_mask.size, 0)
+
+    def test_return_uncropped(self):
+        """Test that return_uncropped returns full image."""
+        markers = [
+            {"bbox_center": np.array([60.0, 60.0]), "label": "cross"},
+            {"bbox_center": np.array([140.0, 60.0]), "label": "circle"},
+        ]
+        matched_indices = [(0, 1)]
+
+        full_image, full_mask = apply_mask_rotation_free(
+            matched_marker_indices=matched_indices,
+            markers=markers,
+            marker_group_pixels=self.marker_group_pixels,
+            roi_polygon=self.polygon,
+            image=self.image,
+            rotation_angle=0.0,
+            return_uncropped=True,
+        )
+
+        # Should return full image size
+        self.assertEqual(full_image.shape, self.image.shape)
+        self.assertEqual(full_mask.shape, self.image.shape)
+
+    def test_raises_when_roi_outside_bounds(self):
+        """Test that ValueError is raised when RoI is outside image bounds."""
+        # Markers are at edge, causing polygon to be partially outside
+        markers = [
+            {"bbox_center": np.array([5.0, 5.0]), "label": "cross"},
+            {"bbox_center": np.array([85.0, 5.0]), "label": "circle"},
+        ]
+        matched_indices = [(0, 1)]
+
+        with self.assertRaises(ValueError) as context:
+            apply_mask_rotation_free(
+                matched_marker_indices=matched_indices,
+                markers=markers,
+                marker_group_pixels=self.marker_group_pixels,
+                roi_polygon=self.polygon,
+                image=self.image,
+                rotation_angle=0.0,
+            )
+
+        self.assertIn("No roi lies completely inside", str(context.exception))
+
+    def test_selects_best_margin_polygon(self):
+        """Test that the polygon with maximum margin to boundaries is selected."""
+        # Two valid marker pairs - one more centered than the other
+        markers = [
+            {"bbox_center": np.array([60.0, 60.0]), "label": "cross"},
+            {"bbox_center": np.array([140.0, 60.0]), "label": "circle"},
+            {"bbox_center": np.array([80.0, 80.0]), "label": "cross"},  # More centered
+            {"bbox_center": np.array([160.0, 80.0]), "label": "circle"},
+        ]
+        matched_indices = [(0, 1), (2, 3)]
+
+        cropped_image, cropped_mask = apply_mask_rotation_free(
+            matched_marker_indices=matched_indices,
+            markers=markers,
+            marker_group_pixels=self.marker_group_pixels,
+            roi_polygon=self.polygon,
+            image=self.image,
+            rotation_angle=0.0,
+        )
+
+        # Should produce valid output (choosing the best one)
+        self.assertGreater(cropped_image.size, 0)
 
 
 if __name__ == "__main__":

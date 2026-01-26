@@ -42,7 +42,7 @@ import dmc_masking
 from dmc_masking import MarkerDetectionStep, MarkerMatchingStep
 from dmc_masking.io import load_image
 from dmc_masking.map import AffineTransformResult, Map, RoIPosition
-from dmc_masking.mask import RoIPolygon, SAKRoIStructureLibrary
+from dmc_masking.mask import RoIPolygon, SAKRoIStructureLibrary, apply_mask_rotation_free
 from dmc_masking.rotation import compute_marker_group_angles
 
 
@@ -312,6 +312,47 @@ def filter_matched_pairs_by_bounds(
     # Sort by margin (largest first) and return just the indices
     valid_pairs.sort(key=lambda x: x[1], reverse=True)
     return [pair for pair, margin in valid_pairs]
+
+
+def crop_calibration_image(
+    image: np.ndarray,
+    markers: list[dict],
+    matched_indices: list[tuple[int, int]],
+    marker_group_pixels: dict[str, np.ndarray],
+    roi_polygon: RoIPolygon,
+    rotation_angle: float,
+    return_uncropped: bool = False,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Crop a calibration image using the rotation-free masking approach.
+
+    This function applies masking and cropping without rotating the entire image.
+    Instead, it rotates the RoI polygon to match the detected orientation and
+    applies it directly to the unrotated image.
+
+    Args:
+        image: The unrotated image, shape (H, W) or (C, H, W)
+        markers: List of detected marker dicts with bbox_center
+        matched_indices: List of (cross_idx, circle_idx) tuples
+        marker_group_pixels: Expected marker positions in pixels
+        roi_polygon: RoI polygon template
+        rotation_angle: Detected rotation angle in degrees
+        return_uncropped: If True, return full image and mask without cropping
+
+    Returns:
+        Tuple of (cropped_image, cropped_mask)
+
+    Raises:
+        ValueError: If no RoI polygon fits within image bounds
+    """
+    return apply_mask_rotation_free(
+        matched_marker_indices=matched_indices,
+        markers=markers,
+        marker_group_pixels=marker_group_pixels,
+        roi_polygon=roi_polygon,
+        image=image,
+        rotation_angle=rotation_angle,
+        return_uncropped=return_uncropped,
+    )
 
 
 def process_calibration_image(

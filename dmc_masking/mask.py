@@ -26,6 +26,20 @@ class RoIPolygon:
     def translate(self, x: float = 0, y: float = 0) -> "RoIPolygon":
         return RoIPolygon(affinity.translate(self.roi_polygon, xoff=x, yoff=y))
 
+    def rotate(self, angle: float, origin: tuple[float, float] | str = "center") -> "RoIPolygon":
+        """Rotate polygon around a point.
+
+        Args:
+            angle: Rotation angle in degrees (counter-clockwise positive)
+            origin: Either a (x, y) tuple or "center" for bounding box center
+
+        Returns:
+            New RoIPolygon with rotated geometry
+        """
+        if origin == "center":
+            origin = tuple(self.center)
+        return RoIPolygon(affinity.rotate(self.roi_polygon, angle, origin=origin))
+
     def to_mask(self, height: int, width: int) -> np.ndarray:
         return rasterize([self.roi_polygon], out_shape=(height, width))
 
@@ -130,6 +144,102 @@ def apply_mask(
 
     minx, miny, maxx, maxy = tuple(map(int, map(np.round, polygon.roi_polygon.bounds)))
     cropped_image = rotated_image[..., miny:maxy, minx:maxx]
+    cropped_mask = mask[miny:maxy, minx:maxx]
+
+    return cropped_image, cropped_mask
+
+
+def apply_mask_rotation_free(
+    matched_marker_indices: list[tuple[int, int]],
+    markers: list[dict],
+    marker_group_pixels: dict[str, np.ndarray],
+    roi_polygon: "RoIPolygon",
+    image: np.ndarray,
+    rotation_angle: float,
+    return_uncropped: bool = False,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Compute and apply mask to an unrotated image using polygon rotation.
+
+    This function avoids the expensive image rotation step by rotating the RoI polygon
+    instead. The polygon is rotated to match the detected orientation and applied
+    directly to the unrotated image.
+
+    Args:
+        matched_marker_indices: List of (cross_idx, circle_idx) tuples for matched markers
+        markers: List of detected marker dicts with bbox_center (NOT rotated)
+        marker_group_pixels: Expected marker positions in pixels (cross, circle)
+        roi_polygon: The RoI polygon shape (in pixels)
+        image: The unrotated image, shape (H, W) or (C, H, W)
+        rotation_angle: Detected rotation angle in degrees (counter-clockwise positive)
+        return_uncropped: If True, return the full image and mask without cropping
+
+    Returns:
+        Tuple of (cropped_image, cropped_mask) or (image, mask) if return_uncropped=True
+    """
+    polygons = []
+    masks = []
+    min_dists = []
+
+    im_height, im_width = image.shape[-2:]
+
+    # Get the cross marker position in the polygon's local coordinate system
+    cross_local = marker_group_pixels["cross"]
+
+    for cross_index, circle_index in matched_marker_indices:
+        cross_marker = markers[cross_index]
+        circle_marker = markers[circle_index]
+
+        # Correct for difference in expected width (scaling correction)
+        width = np.abs(cross_marker["bbox_center"][0] - circle_marker["bbox_center"][0])
+        expected_width = np.abs(marker_group_pixels["cross"][0] - marker_group_pixels["circle"][0])
+        diff = width - expected_width
+
+        # Step 1: Compute the rotation origin in the polygon's local coordinates
+        # The cross marker is at cross_local relative to the polygon's origin (0,0)
+        # We rotate around the cross marker position
+        rotation_origin = (cross_local[0], -cross_local[1])
+
+        # Step 2: Rotate the polygon around the cross marker position
+        rp = roi_polygon.rotate(rotation_angle, origin=rotation_origin)
+
+        # Step 3: Translate the rotated polygon so the cross marker aligns with detection
+        # After rotation, the cross marker is still at rotation_origin in local coords
+        # We need to move it to the detected cross marker position
+        rp = rp.translate(
+            x=cross_marker["bbox_center"][0] - rotation_origin[0] + diff,
+            y=cross_marker["bbox_center"][1] - rotation_origin[1],
+        )
+
+        # Check whether RoI polygon is within image bounds
+        xmin, ymin, xmax, ymax = rp.roi_polygon.bounds
+
+        if xmin < 0 or xmax > im_width or ymin < 0 or ymax > im_height:
+            # RoI is out of image bounds
+            continue
+
+        min_dist = np.min(
+            list(map(np.abs, [0 - xmin, xmax - im_width, ymin - 0, ymax - im_height]))
+        )
+
+        min_dists.append(min_dist)
+        polygons.append(rp)
+        masks.append(~rp.to_mask(height=im_height, width=im_width).astype(bool))
+
+    if len(masks) == 0:
+        raise ValueError("No roi lies completely inside the image")
+
+    # Use the RoI with maximum margin to the image boundaries
+    index = np.argmax(min_dists)
+
+    mask = masks[index]
+    polygon: RoIPolygon = polygons[index]
+
+    if return_uncropped:
+        return image, mask
+
+    # Crop to polygon bounds
+    minx, miny, maxx, maxy = tuple(map(int, map(np.round, polygon.roi_polygon.bounds)))
+    cropped_image = image[..., miny:maxy, minx:maxx]
     cropped_mask = mask[miny:maxy, minx:maxx]
 
     return cropped_image, cropped_mask
