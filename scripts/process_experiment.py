@@ -10,7 +10,7 @@ Example usage:
 """
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import cv2
@@ -42,6 +42,7 @@ from dmc_masking import (
 )
 from dmc_masking.io import load_image
 from dmc_masking.mask import SAKRoIStructureLibrary
+from dmc_masking.visualization import plot_markers_on_image
 
 # Pipeline step names for tracking
 STEP_LOADING = "Loading"
@@ -77,6 +78,11 @@ class ImageResult:
     n_cells: int = 0
     structure_name: str | None = None
     output_path: str | None = None
+    # Partial results for debug visualization
+    image: np.ndarray | None = field(default=None, repr=False)
+    markers: list | None = field(default=None, repr=False)
+    matched_indices: list | None = field(default=None, repr=False)
+    angle: float | None = None
 
 
 class ExperimentProcessor:
@@ -173,6 +179,7 @@ class ExperimentProcessor:
             image = load_image(image_path)
             if image is None or image.size == 0:
                 raise ValueError("Image is empty or failed to load")
+            result.image = image  # Store for debug visualization
         except Exception as e:
             result.failed_step = STEP_LOADING
             result.error_message = str(e)
@@ -191,6 +198,7 @@ class ExperimentProcessor:
         # Step 3: Detection
         try:
             detection_result = self.detection_step(image)
+            result.markers = detection_result.get("markers", [])  # Store for debug
         except Exception as e:
             result.failed_step = STEP_DETECTION
             result.error_message = str(e)
@@ -199,7 +207,8 @@ class ExperimentProcessor:
         # Step 4: Matching
         try:
             matching_result = components["matching_step"](detection_result)
-            if not matching_result.get("matched_marker_indices", []):
+            result.matched_indices = matching_result.get("matched_marker_indices", [])
+            if not result.matched_indices:
                 raise ValueError("No valid marker pairs found")
         except Exception as e:
             result.failed_step = STEP_MATCHING
@@ -209,6 +218,7 @@ class ExperimentProcessor:
         # Step 5: Rotation
         try:
             rotation_result = components["rotation_step"](matching_result)
+            result.angle = rotation_result.get("angle", 0.0)  # Store for debug
         except Exception as e:
             result.failed_step = STEP_ROTATION
             result.error_message = str(e)
@@ -273,6 +283,39 @@ class ExperimentProcessor:
         return result
 
 
+def save_debug_visualization(result: ImageResult, output_path: Path) -> None:
+    """Save debug visualization for a failed image.
+
+    Args:
+        result: ImageResult with partial results
+        output_path: Path to save the visualization
+    """
+    if result.image is None:
+        # Loading failed, nothing to visualize
+        return
+
+    # Determine what to visualize based on failed step
+    markers = result.markers or []
+    matched_indices = result.matched_indices or []
+
+    # Build title with failure info
+    title = (
+        f"{result.image_file}\n"
+        f"ROI: {result.roi_id} | Structure: {result.structure_name or 'unknown'}\n"
+        f"Failed at: {result.failed_step}\n"
+        f"{result.error_message}"
+    )
+
+    # Use plot_markers_on_image for visualization
+    plot_markers_on_image(
+        image=result.image,
+        markers=markers,
+        matched_indices=matched_indices,
+        title=title,
+        output_path=output_path,
+    )
+
+
 def load_experiment_metadata(raw_images_dir: Path) -> tuple[pd.DataFrame, Path]:
     """Load experiment metadata from parquet or csv file.
 
@@ -307,13 +350,13 @@ def load_experiment_metadata(raw_images_dir: Path) -> tuple[pd.DataFrame, Path]:
 
 
 def generate_summary(results: list[ImageResult]) -> str:
-    """Generate text summary of processing results.
+    """Generate markdown summary of processing results.
 
     Args:
         results: List of ImageResult objects
 
     Returns:
-        Formatted summary string
+        Formatted markdown summary string
     """
     total = len(results)
     passed = sum(1 for r in results if r.success)
@@ -326,39 +369,50 @@ def generate_summary(results: list[ImageResult]) -> str:
         if not r.success and r.failed_step:
             step_counts[r.failed_step] += 1
 
-    # Build summary
+    # Build markdown summary
     lines = [
-        "=" * 80,
-        "EXPERIMENT PROCESSING SUMMARY",
-        "=" * 80,
-        f"Total Images:     {total}",
-        f"Passed:           {passed} ({100*passed/total:.1f}%)"
-        if total > 0
-        else "Passed:           0",
-        f"Failed:           {failed} ({100*failed/total:.1f}%)"
-        if total > 0
-        else "Failed:           0",
-        f"Total Cells:      {total_cells}",
+        "# Experiment Processing Summary",
+        "",
+        "## Overview",
+        "",
+        "| Metric | Value |",
+        "|--------|-------|",
+        f"| Total Images | {total} |",
+        f"| Passed | {passed} ({100*passed/total:.1f}%) |" if total > 0 else "| Passed | 0 |",
+        f"| Failed | {failed} ({100*failed/total:.1f}%) |" if total > 0 else "| Failed | 0 |",
+        f"| Total Cells | {total_cells} |",
         "",
     ]
 
     # Add failure breakdown if there are failures
     if failed > 0:
-        lines.append("Failed by Step:")
+        lines.extend(
+            [
+                "## Failures by Pipeline Step",
+                "",
+                "| Step | Errors |",
+                "|------|--------|",
+            ]
+        )
         for step in ALL_STEPS:
             if step_counts[step] > 0:
-                lines.append(f"  {step:15} {step_counts[step]} error(s)")
+                lines.append(f"| {step} | {step_counts[step]} |")
         lines.append("")
 
-        lines.append("Failed Images:")
+        lines.extend(
+            [
+                "## Failed Images",
+                "",
+                "| Image | ROI ID | Failed Step | Error |",
+                "|-------|--------|-------------|-------|",
+            ]
+        )
         for r in results:
             if not r.success:
-                lines.append(
-                    f"  {r.image_file} (roi={r.roi_id}): [{r.failed_step}] {r.error_message}"
-                )
+                error_msg = (r.error_message or "").replace("|", "\\|")
+                lines.append(f"| {r.image_file} | {r.roi_id} | {r.failed_step} | {error_msg} |")
         lines.append("")
 
-    lines.append("=" * 80)
     return "\n".join(lines)
 
 
@@ -410,7 +464,10 @@ Output structure:
       image2.tif
       ...
       results.csv           # Per-image results (success, n_cells, errors)
-      summary.txt           # Overall statistics
+      summary.md            # Overall statistics (markdown)
+      debug_failed/         # (with --debug) Visualizations of failed images
+          image_matching.png
+          ...
         """,
     )
 
@@ -466,6 +523,11 @@ Output structure:
         action="store_true",
         help="Also save cropped images alongside masks",
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Save debug visualizations for failed images",
+    )
 
     args = parser.parse_args()
 
@@ -502,6 +564,12 @@ Output structure:
     if args.save_cropped:
         cropped_dir = args.output_dir / "cropped_images"
         cropped_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create debug output directory if needed
+    debug_dir = None
+    if args.debug:
+        debug_dir = args.output_dir / "debug_failed"
+        debug_dir.mkdir(parents=True, exist_ok=True)
 
     # Determine raw_images directory
     raw_images_dir = args.dataset_dir / "raw_images"
@@ -583,12 +651,29 @@ Output structure:
             else:
                 print(f"-> FAILED [{result.failed_step}]")
 
+    # Save debug visualizations for failed images
+    if debug_dir is not None:
+        failed_results = [r for r in results if not r.success]
+        if failed_results:
+            print(f"\nSaving debug visualizations for {len(failed_results)} failed images...")
+            for r in failed_results:
+                if r.image is None:
+                    if args.verbose:
+                        print(f"  Skipped (no image loaded): {r.image_file}")
+                    continue
+                stem = Path(r.image_file).stem
+                debug_path = debug_dir / f"{stem}_{r.failed_step.lower()}.png"
+                save_debug_visualization(r, debug_path)
+                if args.verbose:
+                    print(f"  Saved: {debug_path.name}")
+            print(f"Debug images saved to: {debug_dir}")
+
     # Generate and print summary
     summary = generate_summary(results)
     print(f"\n{summary}")
 
     # Save summary to file
-    summary_path = args.output_dir / "summary.txt"
+    summary_path = args.output_dir / "summary.md"
     with open(summary_path, "w") as f:
         f.write(summary)
     print(f"\nSummary saved to: {summary_path}")
