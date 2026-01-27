@@ -12,7 +12,12 @@ import torch
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from PIL import Image
 
-from dmc_masking import MarkerDetectionStep, MarkerMatchingStep
+from dmc_masking import (
+    ImageRotationStep,
+    MarkerDetectionStep,
+    MarkerMatchingStep,
+    RoIMaskingStep,
+)
 from dmc_masking.api.models import (
     CalibrateConfig,
     CalibrateResponse,
@@ -22,8 +27,8 @@ from dmc_masking.api.models import (
     ProcessImageResponse,
 )
 from dmc_masking.api.settings import get_settings, resolve_path
-from dmc_masking.mask import SAKRoIStructureLibrary, apply_mask_rotation_free
-from dmc_masking.rotation import compute_marker_group_angles
+from dmc_masking.io import load_image
+from dmc_masking.mask import SAKRoIStructureLibrary
 
 
 @asynccontextmanager
@@ -102,7 +107,7 @@ async def list_chamber_types() -> list[ChamberType]:
 
     chamber_types = []
     for name, pattern in structure_library.patterns.items():
-        chamber_types.append(ChamberType(name=name, roi_pattern=pattern.pattern))
+        chamber_types.append(ChamberType(name=name, roi_pattern=pattern))
 
     return chamber_types
 
@@ -155,31 +160,30 @@ async def process_image(
                 error_message="Default structure library not loaded",
             )
 
-    # Load image from upload
+    # Load image using the same approach as calibrate endpoint
+    # Save to temp file and use load_image() for proper preprocessing
     try:
         contents = await image.read()
-        # Try to load with PIL first, then tifffile for TIFF
-        if image.filename and image.filename.lower().endswith((".tif", ".tiff")):
-            import tifffile
 
-            img_array = tifffile.imread(io.BytesIO(contents))
-        else:
-            pil_img = Image.open(io.BytesIO(contents))
-            img_array = np.array(pil_img)
+        # Save to temporary file
+        with tempfile.NamedTemporaryFile(
+            suffix=Path(image.filename).suffix if image.filename else ".tif", delete=False
+        ) as tmp_file:
+            tmp_file.write(contents)
+            tmp_path = Path(tmp_file.name)
+
+        try:
+            # Use load_image for proper preprocessing (same as calibrate endpoint)
+            img_array_hwc = load_image(tmp_path)
+        finally:
+            # Clean up temp file
+            tmp_path.unlink(missing_ok=True)
+
     except Exception as e:
         return ProcessImageResponse(
             success=False,
             error_message=f"Failed to load image: {e}",
         )
-
-    # Ensure image is in correct format (C, H, W) for processing
-    if img_array.ndim == 2:
-        # Grayscale - add channel dimension
-        img_array = img_array[np.newaxis, :, :]
-    elif img_array.ndim == 3 and img_array.shape[2] in (3, 4):
-        # (H, W, C) format -> transpose to (C, H, W)
-        img_array = np.transpose(img_array, (2, 0, 1))
-    # else assume already (C, H, W)
 
     # Get structure info for this ROI
     try:
@@ -190,54 +194,55 @@ async def process_image(
             error_message=f"Invalid ROI ID '{roi_id}': {e}",
         )
 
-    # Run marker detection
-    detection_result = detection_step(img_array)
-    markers = detection_result["markers"]
-
-    if len(markers) < 2:
-        return ProcessImageResponse(
-            success=False,
-            error_message=f"Insufficient markers detected: {len(markers)} (need at least 2)",
-        )
-
-    # Get marker group pixel positions for this structure
-    marker_group_pixels = marker_group_configs
-
-    # Match markers
-    matching_step = MarkerMatchingStep(
-        marker_group_pixel=marker_group_pixels,
-        tolerance=60,
-    )
-    matched_result = matching_step(detection_result)
-    matched_indices = matched_result.get("matched_marker_indices", [])
-
-    if len(matched_indices) == 0:
-        return ProcessImageResponse(
-            success=False,
-            error_message="No marker pairs could be matched",
-        )
-
-    # Compute rotation angle
-    angles = compute_marker_group_angles(
-        markers=markers,
-        matched_marker_indices=matched_indices,
-        marker_group=marker_group_pixels,
-        on="bbox_center",
-        signed=True,
-    )
-    rotation_angle = np.median(angles) if angles else 0.0
-
-    # Apply mask
+    # Run the full pipeline (same as local process_image.py script)
+    # Step 1: Detection
     try:
-        cropped_img, cropped_mask = apply_mask_rotation_free(
-            matched_marker_indices=matched_indices,
-            markers=markers,
-            marker_group_pixels=marker_group_pixels,
-            roi_polygon=roi_polygon,
-            image=img_array,
-            rotation_angle=rotation_angle,
-            return_uncropped=return_uncropped,
+        data = detection_step(img_array_hwc)
+        markers = data.get("markers", [])
+        if len(markers) < 2:
+            return ProcessImageResponse(
+                success=False,
+                error_message=f"Insufficient markers detected: {len(markers)} (need at least 2)",
+            )
+    except Exception as e:
+        return ProcessImageResponse(
+            success=False,
+            error_message=f"Detection failed: {e}",
         )
+
+    # Step 2: Matching
+    try:
+        matching_step = MarkerMatchingStep(marker_group_pixel=marker_group_configs, tolerance=60)
+        data = matching_step(data)
+        matched_indices = data.get("matched_marker_indices", [])
+        if len(matched_indices) == 0:
+            return ProcessImageResponse(
+                success=False,
+                error_message="No marker pairs could be matched",
+            )
+        rotation_angle = data.get("angle", 0.0)
+    except Exception as e:
+        return ProcessImageResponse(
+            success=False,
+            error_message=f"Matching failed: {e}",
+        )
+
+    # Step 3: Rotation (rotate the image)
+    try:
+        rotation_step = ImageRotationStep()
+        data = rotation_step(data)
+    except Exception as e:
+        return ProcessImageResponse(
+            success=False,
+            error_message=f"Rotation failed: {e}",
+        )
+
+    # Step 4: Masking (apply mask to rotated image)
+    try:
+        masking_step = RoIMaskingStep(marker_group_configs, roi_polygon)
+        data = masking_step(data)
+        cropped_img = data["image"]
+        cropped_mask = data["mask"]
     except Exception as e:
         return ProcessImageResponse(
             success=False,

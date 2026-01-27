@@ -39,6 +39,7 @@ dependencies = [
     "matplotlib",
     "seaborn",
     "pillow",
+    "albumentations",
 ]
 
 [project.optional-dependencies]
