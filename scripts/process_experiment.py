@@ -5,8 +5,8 @@ Applies the DMC masking pipeline (marker detection, matching, rotation, ROI mask
 followed by cell segmentation to all images in an experiment dataset.
 
 Example usage:
-    python scripts/process_experiment.py --dataset-dir /path/to/experiment
-    python scripts/process_experiment.py --dataset-dir /path/to/experiment --max-images 5 --verbose
+    python scripts/process_experiment.py --dataset-dir /path/to/experiment --output-dir /path/to/output
+    python scripts/process_experiment.py --dataset-dir /path/to/experiment --output-dir ./output --max-images 5 --verbose
 """
 
 import argparse
@@ -447,8 +447,8 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python scripts/process_experiment.py --dataset-dir /path/to/experiment
-  python scripts/process_experiment.py --dataset-dir /path/to/experiment --max-images 5 --verbose
+  python scripts/process_experiment.py --dataset-dir /path/to/experiment --output-dir /path/to/output
+  python scripts/process_experiment.py --dataset-dir /path/to/experiment --output-dir ./output --max-images 5 --verbose
 
 Dataset structure:
   <dataset-dir>/
@@ -480,8 +480,8 @@ Output structure:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=None,
-        help="Output directory for segmentation masks (default: <dataset-dir>/segmentation_masks)",
+        required=True,
+        help="Output directory for segmentation masks (required)",
     )
     parser.add_argument(
         "--pixel-size",
@@ -536,9 +536,6 @@ Output structure:
         raise FileNotFoundError(f"Dataset directory not found: {args.dataset_dir}")
 
     # Set default paths
-    if args.output_dir is None:
-        args.output_dir = args.dataset_dir / "segmentation_masks"
-
     if args.model_path is None:
         args.model_path = (
             Path(dmc_masking.__file__).parent.parent / "artifacts/models/v8_detect_s_imgsz640.pt"
