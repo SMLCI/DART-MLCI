@@ -16,7 +16,7 @@ lint:
 test:
   stage: test
   script:
-    - apt-get update && apt-get install -y libgl1-mesa-glx
+    - apt-get update && apt-get install -y libgl1 libglib2.0-0
     - pip install ".[dev]"
     - pytest -v --cov=dmc_masking --cov-report=xml --junitxml=test_report.xml tests/
   coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
