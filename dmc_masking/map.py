@@ -157,7 +157,7 @@ class Map:
         design = np.hstack((blueprint_points, np.ones((n_points, 1))))
 
         # Solve using least squares: design @ Ab = measured_points
-        Ab, residuals, rank, s = np.linalg.lstsq(design, measured_points, rcond=None)
+        Ab, _residuals, _rank, _s = np.linalg.lstsq(design, measured_points, rcond=None)
 
         # Create transform function (handles both single points and batches)
         def transform(x: np.ndarray) -> np.ndarray:

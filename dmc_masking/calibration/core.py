@@ -147,7 +147,7 @@ def compute_chamber_center(
     )
 
     # Use first matched pair (the one with best distance match)
-    cross_idx, circle_idx = matched_indices[0]
+    cross_idx, _circle_idx = matched_indices[0]
     cross_detected = markers[cross_idx]["bbox_center"]
 
     # Chamber center = detected cross + rotated offset to center

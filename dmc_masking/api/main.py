@@ -384,7 +384,7 @@ async def calibrate_map_endpoint(
 
         # Run calibration
         try:
-            result, blueprint_map = calibrate_map(
+            result, _blueprint_map = calibrate_map(
                 config=full_config,
                 verbose=False,
             )

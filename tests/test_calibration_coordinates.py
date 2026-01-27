@@ -225,7 +225,7 @@ class TestAffineTransform2D(unittest.TestCase):
         target = true_transform(source) + np.random.randn(4, 2) * 0.1  # Small noise
 
         # Fit transform
-        fitted, fit_result = AffineTransform2D.from_point_pairs(source, target)
+        _fitted, fit_result = AffineTransform2D.from_point_pairs(source, target)
 
         # Should have small error
         self.assertLess(fit_result.rmse, 1.0)

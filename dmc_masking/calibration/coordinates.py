@@ -335,7 +335,7 @@ class AffineTransform2D:
 
         # Solve using least squares: design @ Ab = target
         # Ab is 3x2: [[a, c], [b, d], [tx, ty]]
-        Ab, residuals, rank, s = np.linalg.lstsq(design, target, rcond=None)
+        Ab, _residuals, _rank, _s = np.linalg.lstsq(design, target, rcond=None)
 
         # Construct 3x3 homogeneous matrix
         # Ab format: [[a, c], [b, d], [tx, ty]]

@@ -392,7 +392,7 @@ class RoIMaskingStep:
         self.marker_group_pixels = marker_group_pixels
         self.roi_polygon = roi_polygon
 
-    def __call__(self, data, cropped=True):
+    def __call__(self, data, cropped=True, return_bbox=False):
         image = data["image"]
 
         # Convert to numpy in CHW format for apply_mask
@@ -404,14 +404,21 @@ class RoIMaskingStep:
             # Numpy path: HWC from rotation, convert to CHW
             image = np.moveaxis(image, [0, 1, 2], [1, 2, 0])  # HWC -> CHW
 
-        cropped_image, cropped_mask = apply_mask(
+        mask_result = apply_mask(
             matched_marker_indices=data["matched_marker_indices"],
             rotated_markers=data["markers"],
             marker_group_pixels=self.marker_group_pixels,
             roi_polygon=self.roi_polygon,
             rotated_image=image,
             return_uncropped=not cropped,
+            return_bbox=return_bbox,
         )
+
+        if return_bbox:
+            cropped_image, cropped_mask, bbox = mask_result
+            data["crop_bbox"] = bbox
+        else:
+            cropped_image, cropped_mask = mask_result
 
         cropped_image = np.moveaxis(cropped_image, [0, 1, 2], [2, 0, 1])
 

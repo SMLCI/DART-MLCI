@@ -186,7 +186,7 @@ def rotate_image_and_markers(
         list: transformed markers
     """
     height, width = image.shape[-2:]
-    rot_mat, bound_w, bound_h = _get_rotation_matrix_and_bounds(height, width, angle)
+    rot_mat, _bound_w, _bound_h = _get_rotation_matrix_and_bounds(height, width, angle)
 
     # Rotate image using GPU or CPU
     is_tensor = isinstance(image, torch.Tensor)

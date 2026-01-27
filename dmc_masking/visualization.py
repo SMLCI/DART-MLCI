@@ -413,7 +413,7 @@ def draw_progress_bar(
 
 def add_step_title(frame: np.ndarray, title: str) -> np.ndarray:
     """Add a centered title at the top of the frame."""
-    h, w = frame.shape[:2]
+    _h, w = frame.shape[:2]
 
     overlay = frame.copy()
     cv2.rectangle(overlay, (0, 0), (w, 60), (0, 0, 0), -1)

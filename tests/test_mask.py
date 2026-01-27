@@ -248,7 +248,7 @@ class TestApplyMaskRotationFree(unittest.TestCase):
         ]
         matched_indices = [(0, 1), (2, 3)]
 
-        cropped_image, cropped_mask = apply_mask_rotation_free(
+        cropped_image, _cropped_mask = apply_mask_rotation_free(
             matched_marker_indices=matched_indices,
             markers=markers,
             marker_group_pixels=self.marker_group_pixels,

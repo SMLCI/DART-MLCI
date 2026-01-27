@@ -114,7 +114,7 @@ class TestComputeChamberCenterRegression(unittest.TestCase):
         translated = polygon.translate(x=translate_x, y=translate_y)
 
         # Check bounds
-        xmin, ymin, xmax, ymax = translated.roi_polygon.bounds
+        xmin, ymin, _xmax, _ymax = translated.roi_polygon.bounds
 
         # Expected bounds after translation:
         # Original: (0, 0, 100, 100)

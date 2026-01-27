@@ -75,6 +75,7 @@ def apply_mask(
     roi_polygon,
     rotated_image,
     return_uncropped=False,
+    return_bbox=False,
 ):
     """Compute and apply mask to image
 
@@ -84,9 +85,12 @@ def apply_mask(
         marker_group_pixels (_type_): the marker group information in pixels
         roi_polygon (_type_): the shape of the roi polygon (in pixels)
         rotated_image (_type_): the rotated image
+        return_uncropped: If True, return the full image and mask without cropping
+        return_bbox: If True, also return the crop bounding box (minx, miny, maxx, maxy)
 
     Returns:
-        _type_: tuple of cropped image and mask
+        tuple: (cropped_image, cropped_mask) or (image, mask) if return_uncropped=True
+               If return_bbox=True, returns (image, mask, bbox) tuple
     """
 
     polygons = []
@@ -136,16 +140,21 @@ def apply_mask(
     mask = masks[index]
     polygon: RoIPolygon = polygons[index]
 
+    # 8. Cropping (compute bbox even if not cropping, for return_bbox)
+    minx, miny, maxx, maxy = tuple(map(int, map(np.round, polygon.roi_polygon.bounds)))
+    bbox = (minx, miny, maxx, maxy)
+
     if return_uncropped:
         # return uncropped image and mask
+        if return_bbox:
+            return rotated_image, mask, bbox
         return rotated_image, mask
 
-    # 8. Cropping
-
-    minx, miny, maxx, maxy = tuple(map(int, map(np.round, polygon.roi_polygon.bounds)))
     cropped_image = rotated_image[..., miny:maxy, minx:maxx]
     cropped_mask = mask[miny:maxy, minx:maxx]
 
+    if return_bbox:
+        return cropped_image, cropped_mask, bbox
     return cropped_image, cropped_mask
 
 

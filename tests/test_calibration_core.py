@@ -255,7 +255,7 @@ class TestComputeMicroscopePosition(unittest.TestCase):
         stage_position = {"x": 0.0, "y": 0.0}  # No z
         pixel_size = 1.0
 
-        pos_xy, z = compute_microscope_position(chamber_center_pixels, stage_position, pixel_size)
+        _pos_xy, z = compute_microscope_position(chamber_center_pixels, stage_position, pixel_size)
 
         self.assertIsNone(z)
 
