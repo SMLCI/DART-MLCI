@@ -36,6 +36,9 @@ dependencies = [
     "rasterio",
     "pandas",
     "tqdm",
+    "matplotlib",
+    "seaborn",
+    "pillow",
 ]
 
 [project.optional-dependencies]

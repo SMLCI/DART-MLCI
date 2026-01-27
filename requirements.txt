@@ -4,3 +4,8 @@ opencv-python
 kornia
 shapely
 rasterio
+pandas
+tqdm
+matplotlib
+seaborn
+pillow
