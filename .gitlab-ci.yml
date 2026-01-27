@@ -1,5 +1,8 @@
 image: python:3.12
 
+variables:
+  GIT_LFS_SKIP_SMUDGE: "1"
+
 stages:
   - lint
   - test
@@ -15,8 +18,13 @@ lint:
 
 test:
   stage: test
+  tags:
+    - bigmem
+  before_script:
+    - apt-get update && apt-get install -y git-lfs libgl1 libglib2.0-0
+    - git lfs install
+    - git lfs pull
   script:
-    - apt-get update && apt-get install -y libgl1 libglib2.0-0
     - pip install ".[dev]"
     - pytest -v --cov=dmc_masking --cov-report=xml --junitxml=test_report.xml tests/
   coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
