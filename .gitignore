@@ -6,11 +6,17 @@ examples/
 tests/test_results/
 
 coco/
-images/
+/images/
 mlruns/
 coco*
 *.tif
 *.png
+
+# Allow artifacts folder to be tracked (exceptions after ignores)
+!artifacts/
+!artifacts/**/*.tif
+!artifacts/**/*.png
+!artifacts/**/*.pt
 *.avi
 *.pkl
 *.profile
