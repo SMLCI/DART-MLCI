@@ -10,6 +10,7 @@ WORKDIR /app
 
 # Copy package files
 COPY pyproject.toml .
+COPY Readme.md .
 COPY dmc_masking/ dmc_masking/
 COPY scripts/ scripts/
 
