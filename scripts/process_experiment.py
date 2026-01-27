@@ -26,8 +26,10 @@ except ImportError:
     TORCH_AVAILABLE = False
 
 try:
+    import pint
     from acia.segm.local import THWCSequenceSource
     from acia.segm.processor.cellpose_sam import CellposeSAMSegmenter
+    from acia.viz import colorize_instance_mask, render_scalebar
 
     ACIA_AVAILABLE = True
 except ImportError:
@@ -43,6 +45,146 @@ from dmc_masking import (
 from dmc_masking.io import load_image
 from dmc_masking.mask import SAKRoIStructureLibrary
 from dmc_masking.visualization import plot_markers_on_image
+
+# Unit registry for scalebar (only if pint is available)
+if ACIA_AVAILABLE:
+    UNIT_REGISTRY = pint.UnitRegistry()
+
+
+def add_scalebar(
+    image: np.ndarray,
+    pixel_size: float,
+    bar_um: float = 10,
+) -> np.ndarray:
+    """Add scalebar to image using acia's render_scalebar.
+
+    Args:
+        image: HxWxC RGB image (uint8)
+        pixel_size: Pixel size in micrometers
+        bar_um: Scalebar width in micrometers
+
+    Returns:
+        Image with scalebar added
+    """
+    # Wrap image as THWCSequenceSource (T=1, H, W, C=3)
+    source = THWCSequenceSource(image[None, :, :, :].astype(np.uint8))
+
+    # Render scalebar at bottom-right
+    result = render_scalebar(
+        image_source=source,
+        xy_position=(0.95, 0.95),  # Relative position (bottom-right)
+        size_of_pixel=pixel_size * UNIT_REGISTRY.micrometer,
+        bar_width=bar_um * UNIT_REGISTRY.micrometer,
+        bar_height=5 * UNIT_REGISTRY.micrometer,
+        color=(255, 255, 255),
+        font_size=20,
+        show_text=True,
+    )
+    return result.image_stack[0]
+
+
+def render_cropped_visualization(
+    cropped_image: np.ndarray,
+    labeled_mask: np.ndarray,
+    chamber_mask: np.ndarray,
+    pixel_size: float,
+    scalebar_um: float = 10,
+    alpha: float = 0.5,
+) -> np.ndarray:
+    """Render visualization with colored cells, chamber mask, and scalebar.
+
+    Args:
+        cropped_image: HxWxC cropped chamber image (uint8, RGB)
+        labeled_mask: HxW instance mask (0=bg, 1..N=cells)
+        chamber_mask: HxW binary mask (True=outside ROI)
+        pixel_size: Pixel size in micrometers
+        scalebar_um: Scalebar width in micrometers
+        alpha: Cell mask transparency (0-1)
+
+    Returns:
+        Rendered visualization image (HxWxC, uint8, RGB)
+    """
+    # 1. Colorize cell masks using acia
+    colored_cells = colorize_instance_mask(labeled_mask, seed=42)
+
+    # 2. Alpha blend cell colors onto image
+    output = cropped_image.copy().astype(np.float32)
+    cell_area = labeled_mask > 0
+    output[cell_area] = (
+        alpha * colored_cells[cell_area].astype(np.float32) + (1 - alpha) * output[cell_area]
+    )
+
+    # 3. Gray out area outside chamber (ROI mask)
+    output[chamber_mask] = 0.3 * output[chamber_mask] + 0.7 * np.array(
+        [128, 128, 128], dtype=np.float32
+    )
+
+    output = output.astype(np.uint8)
+
+    # 4. Add scalebar using acia's render_scalebar
+    output = add_scalebar(output, pixel_size, scalebar_um)
+
+    return output
+
+
+def render_uncropped_visualization(
+    rotated_image: np.ndarray,
+    labeled_mask: np.ndarray,
+    crop_bbox: tuple[int, int, int, int],
+    chamber_mask_cropped: np.ndarray,
+    pixel_size: float,
+    scalebar_um: float = 10,
+    alpha: float = 0.5,
+) -> np.ndarray:
+    """Render uncropped visualization with ROI highlighted and cells overlaid.
+
+    Args:
+        rotated_image: HxWxC full rotated image (uint8, RGB)
+        labeled_mask: HxW instance mask in cropped coordinates (0=bg, 1..N=cells)
+        crop_bbox: (minx, miny, maxx, maxy) bounding box of the crop
+        chamber_mask_cropped: HxW binary mask in cropped coordinates (True=outside ROI)
+        pixel_size: Pixel size in micrometers
+        scalebar_um: Scalebar width in micrometers
+        alpha: Cell mask transparency (0-1)
+
+    Returns:
+        Rendered visualization image (HxWxC, uint8, RGB)
+    """
+    minx, miny, maxx, maxy = crop_bbox
+    output = rotated_image.copy().astype(np.float32)
+    h, w = output.shape[:2]
+
+    # 1. Create a dimmed version outside the ROI region
+    # First dim the entire image
+    dimmed = output * 0.4
+
+    # 2. Create full-size masks for ROI visualization
+    full_mask = np.ones((h, w), dtype=bool)  # True = dimmed
+    full_mask[miny:maxy, minx:maxx] = chamber_mask_cropped  # Inside crop: use chamber mask
+
+    # Apply dimming outside ROI
+    output[full_mask] = dimmed[full_mask]
+
+    # 3. Colorize and overlay cell masks
+    colored_cells = colorize_instance_mask(labeled_mask, seed=42)
+    cell_area = labeled_mask > 0
+
+    # Map cell colors to full image coordinates
+    crop_region = output[miny:maxy, minx:maxx]
+    crop_region[cell_area] = (
+        alpha * colored_cells[cell_area].astype(np.float32) + (1 - alpha) * crop_region[cell_area]
+    )
+
+    # 4. Draw ROI bounding box outline
+    output = output.astype(np.uint8)
+    # Draw rectangle (2 pixel thick cyan border)
+    cv2.rectangle(output, (minx, miny), (maxx - 1, maxy - 1), (0, 255, 255), 2)
+
+    # 5. Add scalebar
+    output = add_scalebar(output, pixel_size, scalebar_um)
+
+    return output
+
 
 # Pipeline step names for tracking
 STEP_LOADING = "Loading"
@@ -96,6 +238,8 @@ class ExperimentProcessor:
         device: str | None = None,
         verbose: bool = False,
         save_cropped: bool = False,
+        render_images: bool = False,
+        scalebar_um: float = 10.0,
     ):
         """Initialize the experiment processor.
 
@@ -106,11 +250,15 @@ class ExperimentProcessor:
             device: Device to run on (e.g., 'cuda:0', 'cuda:1', 'cpu'). None for auto.
             verbose: If True, show detailed progress
             save_cropped: If True, save cropped images alongside masks
+            render_images: If True, save rendered visualization images
+            scalebar_um: Scalebar width in micrometers for rendered images
         """
         self.pixel_size = pixel_size
         self.device = device
         self.verbose = verbose
         self.save_cropped = save_cropped
+        self.render_images = render_images
+        self.scalebar_um = scalebar_um
 
         # Initialize SAK structure library (provides polygon and marker configs)
         self.structure_library = SAKRoIStructureLibrary(
@@ -160,6 +308,8 @@ class ExperimentProcessor:
         roi_id: str,
         output_path: Path,
         cropped_output_path: Path | None = None,
+        render_cropped_path: Path | None = None,
+        render_uncropped_path: Path | None = None,
     ) -> ImageResult:
         """Process a single image through the pipeline.
 
@@ -168,6 +318,8 @@ class ExperimentProcessor:
             roi_id: ROI ID for determining chamber structure
             output_path: Path to save the segmentation mask
             cropped_output_path: Optional path to save cropped image
+            render_cropped_path: Optional path to save cropped rendered visualization
+            render_uncropped_path: Optional path to save uncropped rendered visualization
 
         Returns:
             ImageResult with success status and cell count
@@ -219,6 +371,14 @@ class ExperimentProcessor:
         try:
             rotation_result = components["rotation_step"](matching_result)
             result.angle = rotation_result.get("angle", 0.0)  # Store for debug
+            # Store rotated image for uncropped rendering (before masking crops it)
+            rotated_image_for_render = None
+            if render_uncropped_path is not None:
+                rotated_img = rotation_result["image"]
+                # Ensure HWC format
+                if rotated_img.ndim == 3 and rotated_img.shape[0] <= 4:
+                    rotated_img = np.moveaxis(rotated_img, 0, -1)
+                rotated_image_for_render = rotated_img.copy()
         except Exception as e:
             result.failed_step = STEP_ROTATION
             result.error_message = str(e)
@@ -226,8 +386,12 @@ class ExperimentProcessor:
 
         # Step 6: Masking
         try:
-            masking_result = components["masking_step"](rotation_result)
+            # Request bbox when rendering is needed
+            need_bbox = render_cropped_path is not None or render_uncropped_path is not None
+            masking_result = components["masking_step"](rotation_result, return_bbox=need_bbox)
             cropped_image = masking_result["image"]
+            chamber_mask = masking_result["mask"]
+            crop_bbox = masking_result.get("crop_bbox")
             # Convert CxHxW to HxWxC if needed
             if cropped_image.ndim == 3 and cropped_image.shape[0] <= 4:
                 cropped_image = np.moveaxis(cropped_image, 0, -1)
@@ -272,6 +436,40 @@ class ExperimentProcessor:
                     cropped_output_path,
                     cropped_image.astype(np.uint8),
                     compression="zlib",
+                )
+
+            # Optionally save rendered visualizations
+            if render_cropped_path is not None:
+                render_cropped_path.parent.mkdir(parents=True, exist_ok=True)
+                rendered_cropped = render_cropped_visualization(
+                    cropped_image=cropped_rgb,
+                    labeled_mask=labeled_mask,
+                    chamber_mask=chamber_mask,
+                    pixel_size=self.pixel_size,
+                    scalebar_um=self.scalebar_um,
+                )
+                cv2.imwrite(
+                    str(render_cropped_path),
+                    cv2.cvtColor(rendered_cropped, cv2.COLOR_RGB2BGR),
+                )
+
+            if render_uncropped_path is not None and rotated_image_for_render is not None:
+                render_uncropped_path.parent.mkdir(parents=True, exist_ok=True)
+                # Convert rotated image to RGB for rendering
+                rotated_rgb = cv2.cvtColor(
+                    rotated_image_for_render.astype(np.uint8), cv2.COLOR_BGR2RGB
+                )
+                rendered_uncropped = render_uncropped_visualization(
+                    rotated_image=rotated_rgb,
+                    labeled_mask=labeled_mask,
+                    crop_bbox=crop_bbox,
+                    chamber_mask_cropped=chamber_mask,
+                    pixel_size=self.pixel_size,
+                    scalebar_um=self.scalebar_um,
+                )
+                cv2.imwrite(
+                    str(render_uncropped_path),
+                    cv2.cvtColor(rendered_uncropped, cv2.COLOR_RGB2BGR),
                 )
         except Exception as e:
             result.failed_step = STEP_SAVING
@@ -468,6 +666,13 @@ Output structure:
       debug_failed/         # (with --debug) Visualizations of failed images
           image_matching.png
           ...
+      rendered/             # (with --render-images) Visualization images
+          cropped/          # Cropped chamber with colored cells + scalebar
+              image1.png
+              ...
+          uncropped/        # Full rotated image with ROI highlighted + cells
+              image1.png
+              ...
         """,
     )
 
@@ -528,6 +733,17 @@ Output structure:
         action="store_true",
         help="Save debug visualizations for failed images",
     )
+    parser.add_argument(
+        "--render-images",
+        action="store_true",
+        help="Save rendered visualization images (PNG) with colored cells and scalebar",
+    )
+    parser.add_argument(
+        "--scalebar-size",
+        type=float,
+        default=10.0,
+        help="Scalebar width in micrometers for rendered images (default: 10)",
+    )
 
     args = parser.parse_args()
 
@@ -568,6 +784,15 @@ Output structure:
         debug_dir = args.output_dir / "debug_failed"
         debug_dir.mkdir(parents=True, exist_ok=True)
 
+    # Create render output directories if needed
+    render_cropped_dir = None
+    render_uncropped_dir = None
+    if args.render_images:
+        render_cropped_dir = args.output_dir / "rendered" / "cropped"
+        render_uncropped_dir = args.output_dir / "rendered" / "uncropped"
+        render_cropped_dir.mkdir(parents=True, exist_ok=True)
+        render_uncropped_dir.mkdir(parents=True, exist_ok=True)
+
     # Determine raw_images directory
     raw_images_dir = args.dataset_dir / "raw_images"
     if not raw_images_dir.exists():
@@ -602,6 +827,8 @@ Output structure:
         device=args.device,
         verbose=args.verbose,
         save_cropped=args.save_cropped,
+        render_images=args.render_images,
+        scalebar_um=args.scalebar_size,
     )
 
     # Process images
@@ -621,6 +848,16 @@ Output structure:
         if cropped_dir is not None:
             cropped_output_path = cropped_dir / output_name
 
+        # Render output paths (PNG format)
+        render_cropped_path = None
+        render_uncropped_path = None
+        if render_cropped_dir is not None:
+            render_output_name = Path(image_file).stem + ".png"
+            render_cropped_path = render_cropped_dir / render_output_name
+        if render_uncropped_dir is not None:
+            render_output_name = Path(image_file).stem + ".png"
+            render_uncropped_path = render_uncropped_dir / render_output_name
+
         # Progress output
         if args.verbose:
             print(f"[{i}/{len(df)}] Processing {image_file} (roi_id={roi_id})...")
@@ -633,6 +870,8 @@ Output structure:
             roi_id=roi_id,
             output_path=output_path,
             cropped_output_path=cropped_output_path,
+            render_cropped_path=render_cropped_path,
+            render_uncropped_path=render_uncropped_path,
         )
         results.append(result)
 
