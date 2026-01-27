@@ -6,12 +6,19 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+import pytest
 
 # Cell segmentation imports
 import torch
-from acia.segm.local import THWCSequenceSource
-from acia.segm.processor.cellpose_sam import CellposeSAMSegmenter
-from acia.viz import render_segmentation_mask
+
+try:
+    from acia.segm.local import THWCSequenceSource
+    from acia.segm.processor.cellpose_sam import CellposeSAMSegmenter
+    from acia.viz import render_segmentation_mask
+
+    ACIA_AVAILABLE = True
+except ImportError:
+    ACIA_AVAILABLE = False
 
 import dmc_masking
 from dmc_masking import MarkerDetectionModel
@@ -39,6 +46,7 @@ TEST_RESULTS_DIR.mkdir(exist_ok=True)
 class TestVideoAnimation(unittest.TestCase):
     """Test case for generating pipeline animation video."""
 
+    @pytest.mark.skipif(not ACIA_AVAILABLE, reason="acia package not installed")
     def test_create_pipeline_video(self):
         """Generate video animation of the marker detection and masking pipeline."""
         output_dir = TEST_RESULTS_DIR / "video_animation"
