@@ -21,7 +21,7 @@ except ImportError:
     ACIA_AVAILABLE = False
 
 import dmc_masking
-from dmc_masking import MarkerDetectionModel
+from dmc_masking import DEFAULT_MODEL_PATH, MarkerDetectionModel
 from dmc_masking.mask import SingleRoIStructureLibrary, apply_mask
 from dmc_masking.match import marker_group_to_pixel_coordinates, match_markers
 from dmc_masking.rotation import compute_marker_group_angles, rotate_image_and_markers
@@ -61,12 +61,7 @@ class TestVideoAnimation(unittest.TestCase):
         marker_group_pixels = marker_group_to_pixel_coordinates(marker_group, pixel_size)
 
         # Load model
-        model = MarkerDetectionModel(
-            # Path(dmc_masking.__file__).parent.parent / "artifacts/models/best34.pt"
-            Path(
-                "/home/seiffarth_l/projects/DMC_new/dmc-train/runs/v8_detect_s_imgsz640/weights/best.pt"
-            )
-        )
+        model = MarkerDetectionModel(DEFAULT_MODEL_PATH)
 
         # Load ROI structure
         srsl = SingleRoIStructureLibrary(

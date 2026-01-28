@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import dmc_masking
-from dmc_masking import MarkerDetectionModel
+from dmc_masking import DEFAULT_MODEL_PATH, MarkerDetectionModel
 from dmc_masking.match import marker_group_to_pixel_coordinates, match_markers
 from dmc_masking.rotation import compute_marker_group_angles
 from dmc_masking.visualization import plot_markers_on_image, rotate_image_no_crop
@@ -44,9 +44,7 @@ class TestRotationAngleConsistency(unittest.TestCase):
         # Load model with label mapping for new model format
         label_mapping = {"class_0": "cross", "class_1": "circle"}
         model = MarkerDetectionModel(
-            Path(
-                "/home/seiffarth_l/projects/DMC_new/dmc-train/runs/v8_segment_s_imgsz1280/weights/best.pt"
-            ),
+            DEFAULT_MODEL_PATH,
             label_mapping=label_mapping,
         )
 

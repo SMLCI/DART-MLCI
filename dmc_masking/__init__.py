@@ -17,6 +17,9 @@ from dmc_masking.utils import normalize_image
 from .mask import SingleRoIStructureLibrary
 from .utils import center_of_mask_mass
 
+# Default model path
+DEFAULT_MODEL_PATH = Path(__file__).parent.parent / "artifacts/models/v8_detect_s_imgsz640.pt"
+
 
 def extract_data(result, image: np.ndarray, label_mapping: dict[str, str] | None = None):
     """Extracts marker information from yolo detection results on the image
@@ -68,7 +71,7 @@ class MarkerDetectionModel:
 
     def __init__(
         self,
-        model_path: Path,
+        model_path: Path | None = None,
         verbose=False,
         label_mapping: dict[str, str] | None = None,
         device: str | None = None,
@@ -76,12 +79,14 @@ class MarkerDetectionModel:
         """
 
         Args:
-            model_path (Path): path to the model pt
+            model_path (Path | None): path to the model pt. If None, uses DEFAULT_MODEL_PATH
             verbose: whether to print verbose output
             label_mapping: Optional dict mapping model class names to desired labels
                            e.g., {"class_0": "cross", "class_1": "circle"}
             device: Device to run on (e.g., 'cuda:0', 'cuda:1', 'cpu'). None for auto.
         """
+        if model_path is None:
+            model_path = DEFAULT_MODEL_PATH
         self.model = YOLO(model_path, verbose=verbose)
         self.label_mapping = label_mapping
         self.device = device
@@ -105,17 +110,19 @@ class RoIMasker:
 
     def __init__(
         self,
-        model_path: Path,
-        roi_polygon: RoIPolygon,
-        marker_group_pixel: dict[str, np.ndarray],
+        model_path: Path | None = None,
+        roi_polygon: RoIPolygon | None = None,
+        marker_group_pixel: dict[str, np.ndarray] | None = None,
     ):
         """Create new masking instance
 
         Args:
-            model_path (Path): path to the yolo pt
+            model_path (Path | None): path to the yolo pt. If None, uses DEFAULT_MODEL_PATH
             roi_polygon (RoIPolygon): polygon information for the RoI shape
             marker_group_pixel (dict[str, np.ndarray]): Information on the marker placement relative to the RoI shape
         """
+        if model_path is None:
+            model_path = DEFAULT_MODEL_PATH
 
         self.model_path = model_path
         self.roi_polygon = roi_polygon
@@ -126,7 +133,7 @@ class RoIMasker:
     def __call__(
         self,
         image_stack: np.ndarray,
-        roi_polygon: RoIPolygon = None,
+        roi_polygon: RoIPolygon | None = None,
         marker_group_pixel=None,
         return_uncropped=False,
     ):
@@ -243,7 +250,7 @@ class SingleStructureRoIMasker:
         if structure_library is None:
             structure_library = Path(__file__).parent.parent / "artifacts/chamber_structure.json"
         if model_path is None:
-            model_path = Path(__file__).parent.parent / "artifacts/models/v8_detect_s_imgsz640.pt"
+            model_path = DEFAULT_MODEL_PATH
 
         self.rm = RoIMasker(model_path=model_path, roi_polygon=None, marker_group_pixel=None)
 
@@ -276,7 +283,7 @@ class MarkerDetectionStep:
 
     def __init__(
         self,
-        model_path: str,
+        model_path: str | None = None,
         device: str | None = None,
         verbose: bool = False,
         use_gpu_tensor: bool = False,
@@ -284,13 +291,15 @@ class MarkerDetectionStep:
         """Initialize detection step.
 
         Args:
-            model_path: Path to YOLO model weights
+            model_path: Path to YOLO model weights. If None, uses DEFAULT_MODEL_PATH
             device: Device to use for inference
             verbose: Show YOLO inference output
             use_gpu_tensor: Keep image on GPU for downstream steps to avoid redundant
                            transfers. Set True for performance, False for compatibility
                            with code expecting numpy arrays. (default: False)
         """
+        if model_path is None:
+            model_path = DEFAULT_MODEL_PATH
         self.mdm = MarkerDetectionModel(model_path, device=device, verbose=verbose)
         self.mdm.model.conf = 0.6
         self.use_gpu_tensor = use_gpu_tensor

@@ -22,6 +22,7 @@ import numpy as np
 
 import dmc_masking
 from dmc_masking import (
+    DEFAULT_MODEL_PATH,
     ImageRotationStep,
     MarkerDetectionStep,
     MarkerMatchingStep,
@@ -294,7 +295,7 @@ Chamber ID patterns:
         "--model-path",
         type=Path,
         default=None,
-        help="Path to YOLO model (default: artifacts/models/best34.pt)",
+        help="Path to YOLO model (default: artifacts/models/v8_detect_s_imgsz640.pt)",
     )
     parser.add_argument(
         "--pixel-size",
@@ -331,9 +332,7 @@ Chamber ID patterns:
 
     # Set default model path
     if args.model_path is None:
-        args.model_path = (
-            Path(dmc_masking.__file__).parent.parent / "artifacts/models/v8_detect_s_imgsz640.pt"
-        )
+        args.model_path = DEFAULT_MODEL_PATH
 
     if not args.model_path.exists():
         print_error(STEP_VALIDATION, f"Model not found: {args.model_path}")

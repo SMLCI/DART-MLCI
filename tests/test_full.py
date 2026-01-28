@@ -11,7 +11,12 @@ from shapely.geometry import Point, Polygon, shape
 from tqdm.auto import tqdm
 
 import dmc_masking
-from dmc_masking import MarkerDetectionModel, RoIMasker, SingleStructureRoIMasker
+from dmc_masking import (
+    DEFAULT_MODEL_PATH,
+    MarkerDetectionModel,
+    RoIMasker,
+    SingleStructureRoIMasker,
+)
 from dmc_masking.io import load_roi_structures
 from dmc_masking.mask import RoIPolygon, SAKRoIStructureLibrary
 from dmc_masking.match import marker_group_to_pixel_coordinates, match_markers
@@ -76,12 +81,7 @@ class TestFullPipeline(unittest.TestCase):
 
         # 1. Load yolo model
 
-        model = MarkerDetectionModel(
-            # Path(dmc_masking.__file__).parent.parent / "artifacts/models/best34.pt"
-            Path(
-                "/home/seiffarth_l/projects/DMC_new/dmc-train/runs/v8_segment_s_imgsz1280/weights/best.pt"
-            ),
-        )  # "./artifacts/models/best34.pt")
+        model = MarkerDetectionModel(DEFAULT_MODEL_PATH)
 
         # 2. Load image
         image = cv2.imread(
@@ -238,10 +238,7 @@ class TestFullPipeline(unittest.TestCase):
 
         # create the masker
         rm = RoIMasker(
-            # model_path="./artifacts/models/best34.pt",
-            model_path=Path(
-                "/home/seiffarth_l/projects/DMC_new/dmc-train/runs/v8_segment_s_imgsz1280/weights/best.pt"
-            ),  # Path(dmc_masking.__file__).parent.parent / "artifacts/models/best34.pt",
+            model_path=DEFAULT_MODEL_PATH,
             roi_polygon=roi_polygon,
             marker_group_pixel=marker_group_pixel,
         )
@@ -279,8 +276,7 @@ class TestFullPipeline(unittest.TestCase):
 
         # create the masker
         rm = RoIMasker(
-            # model_path="./artifacts/models/best34.pt",
-            model_path=Path(dmc_masking.__file__).parent.parent / "artifacts/models/best34.pt",
+            model_path=DEFAULT_MODEL_PATH,
             roi_polygon=None,
             marker_group_pixel=None,
         )
@@ -399,12 +395,7 @@ class TestFullPipeline(unittest.TestCase):
 
         # create the masker
         rm = RoIMasker(
-            # model_path="./artifacts/models/best34.pt",
-            # model_path=Path(dmc_masking.__file__).parent.parent / "artifacts/models/best34.pt",
-            Path(
-                "/home/seiffarth_l/projects/DMC_new/dmc-train/runs/v8_segment_s_imgsz1280/weights/best.pt"
-            ),
-            # model_path=Path("/home/seiffarth_l/projects/DMC/dmc-training/training/runs/detect/train62/weights/best.pt"),
+            model_path=DEFAULT_MODEL_PATH,
             roi_polygon=None,
             marker_group_pixel=None,
         )

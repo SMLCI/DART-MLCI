@@ -34,6 +34,7 @@ except ImportError:
 
 import dmc_masking
 from dmc_masking import (
+    DEFAULT_MODEL_PATH,
     ImageRotationStep,
     MarkerDetectionStep,
     MarkerMatchingStep,
@@ -426,7 +427,7 @@ CSV format (chamber_type is a structure name string):
         "--model-path",
         type=Path,
         default=None,
-        help="Path to YOLO model (default: artifacts/models/best34.pt)",
+        help="Path to YOLO model (default: artifacts/models/v8_detect_s_imgsz640.pt)",
     )
     parser.add_argument(
         "--pixel-size",
@@ -470,9 +471,7 @@ CSV format (chamber_type is a structure name string):
 
     # Set default model path
     if args.model_path is None:
-        args.model_path = (
-            Path(dmc_masking.__file__).parent.parent / "artifacts/models/v8_detect_s_imgsz640.pt"
-        )
+        args.model_path = DEFAULT_MODEL_PATH
 
     if not args.model_path.exists():
         raise FileNotFoundError(f"Model path not found: {args.model_path}")

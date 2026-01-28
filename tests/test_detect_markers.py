@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from dmc_masking import MarkerDetectionModel
+from dmc_masking import DEFAULT_MODEL_PATH, MarkerDetectionModel
 from dmc_masking.utils import load_tiff
 
 
@@ -16,7 +16,7 @@ class TestMarkerDetection(unittest.TestCase):
 
         # 1. Load yolo model
 
-        model = MarkerDetectionModel("./artifacts/models/best34.pt")
+        model = MarkerDetectionModel(DEFAULT_MODEL_PATH)
 
         # 2. Load image
         image = load_tiff("./artifacts/images/00150d6e-cecf-48f9-8b2d-a37a687ec0db.tif")
