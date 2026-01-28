@@ -19,7 +19,7 @@ lint:
 test:
   stage: test
   tags:
-    - bigmem
+    - biggpu
   before_script:
     - apt-get update && apt-get install -y git-lfs libgl1 libglib2.0-0
     - git lfs install
@@ -50,6 +50,8 @@ build:
 docker-build:
   stage: docker
   image: docker:24.0.7
+  tags:
+    - biggpu
   services:
     - docker:24.0.7-dind
   variables:
