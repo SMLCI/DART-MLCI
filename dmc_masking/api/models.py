@@ -1,6 +1,8 @@
 """Pydantic request/response models for the DMC Masking API."""
 
-from pydantic import BaseModel, Field
+import base64
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class StagePosition(BaseModel):
@@ -86,3 +88,72 @@ class ChamberType(BaseModel):
 
     name: str
     roi_pattern: str = Field(description="Regex pattern for matching ROI IDs")
+
+
+class ProcessImageRequest(BaseModel):
+    """JSON request for image processing with base64-encoded image."""
+
+    image: str = Field(description="Base64-encoded image (optionally with data URI prefix)")
+    roi_id: str = Field(description="ROI identifier (e.g., '0050')")
+    pixel_size: float = Field(default=0.065789, description="Pixel size in microns")
+    structure_library_path: str | None = Field(
+        default=None, description="Optional custom structure library path"
+    )
+    return_uncropped: bool = Field(default=False, description="Return full-size mask")
+
+    @field_validator("image")
+    @classmethod
+    def validate_base64(cls, v: str) -> str:
+        """Strip data URI prefix and validate base64."""
+        # Strip data URI prefix if present
+        if v.startswith("data:"):
+            v = v.split(",", 1)[1] if "," in v else v
+
+        # Validate base64 encoding
+        try:
+            base64.b64decode(v, validate=True)
+        except Exception as e:
+            raise ValueError(f"Invalid base64: {e}") from e
+
+        return v
+
+
+class CalibrationImageData(BaseModel):
+    """Single calibration image with base64-encoded data."""
+
+    image: str = Field(description="Base64-encoded image (optionally with data URI prefix)")
+    roi_id: str = Field(description="ROI identifier")
+    stage_position: StagePosition = Field(description="Microscope stage position")
+
+    @field_validator("image")
+    @classmethod
+    def validate_base64(cls, v: str) -> str:
+        """Strip data URI prefix and validate base64."""
+        # Strip data URI prefix if present
+        if v.startswith("data:"):
+            v = v.split(",", 1)[1] if "," in v else v
+
+        # Validate base64 encoding
+        try:
+            base64.b64decode(v, validate=True)
+        except Exception as e:
+            raise ValueError(f"Invalid base64: {e}") from e
+
+        return v
+
+
+class CalibrateRequest(BaseModel):
+    """JSON request for calibration with base64-encoded images."""
+
+    chip_name: str = Field(default="SAK", description="Name of the chip design")
+    calibration_images: list[CalibrationImageData] = Field(
+        min_length=3, description="List of calibration images (minimum 3 required)"
+    )
+    pixel_size: float = Field(default=0.065789, description="Pixel size in microns")
+    blueprint_map_path: str = Field(description="Path to the blueprint map CSV")
+    structure_library_path: str | None = Field(
+        default=None, description="Path to structure library JSON (uses default if not set)"
+    )
+    model_path: str | None = Field(
+        default=None, description="Path to YOLO model (uses default if not set)"
+    )

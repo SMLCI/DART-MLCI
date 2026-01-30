@@ -1,16 +1,14 @@
 """FastAPI application for DMC Masking calibration and image processing."""
 
-import base64
-import io
-import json
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import numpy as np
+import tifffile
 import torch
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from PIL import Image
+from fastapi.responses import HTMLResponse
 
 from dmc_masking import (
     ImageRotationStep,
@@ -19,15 +17,15 @@ from dmc_masking import (
     RoIMaskingStep,
 )
 from dmc_masking.api.models import (
-    CalibrateConfig,
+    CalibrateRequest,
     CalibrateResponse,
     ChamberType,
     HealthResponse,
     ImageResultInfo,
+    ProcessImageRequest,
     ProcessImageResponse,
 )
 from dmc_masking.api.settings import get_settings, resolve_path
-from dmc_masking.io import load_image
 from dmc_masking.mask import SAKRoIStructureLibrary
 
 
@@ -112,42 +110,43 @@ async def list_chamber_types() -> list[ChamberType]:
     return chamber_types
 
 
-@app.post("/process-image", response_model=ProcessImageResponse)
-async def process_image(
-    image: UploadFile = File(...),
-    roi_id: str = Form(...),
-    pixel_size: float = Form(default=0.065789),
-    structure_library_path: str | None = Form(default=None),
-    return_uncropped: bool = Form(default=False),
-) -> ProcessImageResponse:
-    """Process a single image to extract and mask the chamber region.
+async def _process_image_from_array(
+    img_array_hwc: np.ndarray,
+    roi_id: str,
+    pixel_size: float = 0.065789,
+    structure_library_path: str | None = None,
+    return_uncropped: bool = False,
+) -> dict:
+    """
+    Core processing pipeline accepting numpy array.
 
     Args:
-        image: Image file upload (TIFF, PNG, etc.)
-        roi_id: ROI identifier (e.g., "0050") - auto-detects chamber type
-        pixel_size: Pixel size in microns (default: 0.065789)
-        structure_library_path: Optional path to structure JSON for different chip designs
-        return_uncropped: If True, return full-size mask instead of cropped
+        img_array_hwc: HxWx3 numpy array (uint8)
+        roi_id: ROI identifier
+        pixel_size: Pixel size in microns
+        structure_library_path: Optional custom structure library
+        return_uncropped: Return full-size mask
 
     Returns:
-        Cropped image and mask as base64-encoded PNGs
+        Dict with success, cropped_img, cropped_mask, rotation_angle,
+        chamber_type, or error_message
     """
     # Check if detection model is loaded
     detection_step = getattr(app.state, "detection_step", None)
     if detection_step is None:
-        return ProcessImageResponse(
-            success=False,
-            error_message="Model not loaded - check DMC_MODEL_PATH configuration",
-        )
+        return {
+            "success": False,
+            "error_message": "Model not loaded - check DMC_MODEL_PATH configuration",
+        }
 
     # Load structure library (custom or default)
     if structure_library_path:
         lib_path = resolve_path(structure_library_path)
         if not lib_path.exists():
-            return ProcessImageResponse(
-                success=False,
-                error_message=f"Structure library not found: {structure_library_path}",
-            )
+            return {
+                "success": False,
+                "error_message": f"Structure library not found: {structure_library_path}",
+            }
         structure_library = SAKRoIStructureLibrary(
             lookup_path=str(lib_path),
             pixel_size=pixel_size,
@@ -155,60 +154,35 @@ async def process_image(
     else:
         structure_library = getattr(app.state, "structure_library", None)
         if structure_library is None:
-            return ProcessImageResponse(
-                success=False,
-                error_message="Default structure library not loaded",
-            )
-
-    # Load image using the same approach as calibrate endpoint
-    # Save to temp file and use load_image() for proper preprocessing
-    try:
-        contents = await image.read()
-
-        # Save to temporary file
-        with tempfile.NamedTemporaryFile(
-            suffix=Path(image.filename).suffix if image.filename else ".tif", delete=False
-        ) as tmp_file:
-            tmp_file.write(contents)
-            tmp_path = Path(tmp_file.name)
-
-        try:
-            # Use load_image for proper preprocessing (same as calibrate endpoint)
-            img_array_hwc = load_image(tmp_path)
-        finally:
-            # Clean up temp file
-            tmp_path.unlink(missing_ok=True)
-
-    except Exception as e:
-        return ProcessImageResponse(
-            success=False,
-            error_message=f"Failed to load image: {e}",
-        )
+            return {
+                "success": False,
+                "error_message": "Default structure library not loaded",
+            }
 
     # Get structure info for this ROI
     try:
         structure_name, roi_polygon, marker_group_configs = structure_library(roi_id)
     except Exception as e:
-        return ProcessImageResponse(
-            success=False,
-            error_message=f"Invalid ROI ID '{roi_id}': {e}",
-        )
+        return {
+            "success": False,
+            "error_message": f"Invalid ROI ID '{roi_id}': {e}",
+        }
 
-    # Run the full pipeline (same as local process_image.py script)
+    # Run the full pipeline
     # Step 1: Detection
     try:
         data = detection_step(img_array_hwc)
         markers = data.get("markers", [])
         if len(markers) < 2:
-            return ProcessImageResponse(
-                success=False,
-                error_message=f"Insufficient markers detected: {len(markers)} (need at least 2)",
-            )
+            return {
+                "success": False,
+                "error_message": f"Insufficient markers detected: {len(markers)} (need at least 2)",
+            }
     except Exception as e:
-        return ProcessImageResponse(
-            success=False,
-            error_message=f"Detection failed: {e}",
-        )
+        return {
+            "success": False,
+            "error_message": f"Detection failed: {e}",
+        }
 
     # Step 2: Matching
     try:
@@ -216,92 +190,304 @@ async def process_image(
         data = matching_step(data)
         matched_indices = data.get("matched_marker_indices", [])
         if len(matched_indices) == 0:
-            return ProcessImageResponse(
-                success=False,
-                error_message="No marker pairs could be matched",
-            )
+            return {
+                "success": False,
+                "error_message": "No marker pairs could be matched",
+            }
         rotation_angle = data.get("angle", 0.0)
     except Exception as e:
-        return ProcessImageResponse(
-            success=False,
-            error_message=f"Matching failed: {e}",
-        )
+        return {
+            "success": False,
+            "error_message": f"Matching failed: {e}",
+        }
 
-    # Step 3: Rotation (rotate the image)
+    # Step 3: Rotation
     try:
         rotation_step = ImageRotationStep()
         data = rotation_step(data)
     except Exception as e:
-        return ProcessImageResponse(
-            success=False,
-            error_message=f"Rotation failed: {e}",
-        )
+        return {
+            "success": False,
+            "error_message": f"Rotation failed: {e}",
+        }
 
-    # Step 4: Masking (apply mask to rotated image)
+    # Step 4: Masking
     try:
         masking_step = RoIMaskingStep(marker_group_configs, roi_polygon)
         data = masking_step(data)
         cropped_img = data["image"]
         cropped_mask = data["mask"]
     except Exception as e:
+        return {
+            "success": False,
+            "error_message": f"Masking failed: {e}",
+        }
+
+    return {
+        "success": True,
+        "cropped_img": cropped_img,
+        "cropped_mask": cropped_mask,
+        "rotation_angle": float(rotation_angle),
+        "chamber_type": structure_name,
+        "roi_id": roi_id,
+        "pixel_size": pixel_size,
+    }
+
+
+@app.post("/process-image", response_model=ProcessImageResponse)
+async def process_image(request: ProcessImageRequest) -> ProcessImageResponse:
+    """
+    Process image from base64-encoded JSON request.
+
+    This endpoint accepts a JSON request with a base64-encoded image and
+    returns the cropped chamber image and mask as base64-encoded PNGs.
+
+    Args:
+        request: JSON request with base64 image and parameters
+
+    Returns:
+        Base64-encoded cropped image and mask with metadata
+    """
+    from dmc_masking.api.utils import array_to_base64_png, base64_to_array
+
+    # Decode base64 to array
+    try:
+        img_array = base64_to_array(request.image)
+    except Exception as e:
         return ProcessImageResponse(
             success=False,
-            error_message=f"Masking failed: {e}",
+            error_message=f"Failed to decode base64 image: {e}",
         )
 
-    # Convert to base64 PNG
-    def array_to_base64_png(arr: np.ndarray, is_mask: bool = False) -> str:
-        # Handle different array shapes
-        if arr.ndim == 3 and arr.shape[0] in (1, 3, 4):
-            # (C, H, W) -> (H, W, C)
-            arr = np.transpose(arr, (1, 2, 0))
-        if arr.ndim == 3 and arr.shape[2] == 1:
-            arr = arr[:, :, 0]
+    # Process image
+    result = await _process_image_from_array(
+        img_array,
+        request.roi_id,
+        request.pixel_size,
+        request.structure_library_path,
+        request.return_uncropped,
+    )
 
-        # Normalize to uint8 if needed
-        if arr.dtype != np.uint8:
-            if is_mask:
-                arr = (arr > 0).astype(np.uint8) * 255
-            else:
-                arr = ((arr - arr.min()) / (arr.max() - arr.min() + 1e-8) * 255).astype(np.uint8)
+    if not result["success"]:
+        return ProcessImageResponse(
+            success=False,
+            error_message=result["error_message"],
+        )
 
-        # Encode as PNG
-        if arr.ndim == 2:
-            pil_img = Image.fromarray(arr, mode="L")
-        elif arr.shape[2] == 3:
-            pil_img = Image.fromarray(arr, mode="RGB")
-        else:
-            pil_img = Image.fromarray(arr[:, :, :3], mode="RGB")
-
-        buffer = io.BytesIO()
-        pil_img.save(buffer, format="PNG")
-        return base64.b64encode(buffer.getvalue()).decode("utf-8")
-
+    # Encode outputs to base64
     return ProcessImageResponse(
         success=True,
-        cropped_image=array_to_base64_png(cropped_img),
-        mask=array_to_base64_png(cropped_mask, is_mask=True),
-        rotation_angle=float(rotation_angle),
-        chamber_type=structure_name,
+        cropped_image=array_to_base64_png(result["cropped_img"]),
+        mask=array_to_base64_png(result["cropped_mask"], is_mask=True),
+        rotation_angle=result["rotation_angle"],
+        chamber_type=result["chamber_type"],
     )
 
 
-@app.post("/calibrate", response_model=CalibrateResponse)
-async def calibrate_map_endpoint(
-    images: list[UploadFile] = File(...),
-    config: str = Form(...),
-) -> CalibrateResponse:
-    """Calibrate a map from calibration images with known stage positions.
+@app.post("/process-image-preview", response_class=HTMLResponse)
+async def process_image_preview(request: ProcessImageRequest) -> HTMLResponse:
+    """
+    Process image and return HTML preview with side-by-side visualization.
+
+    This endpoint provides a visual preview of the processing results,
+    displaying the cropped image and mask side-by-side in an HTML page.
 
     Args:
-        images: Multiple image file uploads (order must match config)
-        config: JSON string with calibration configuration
+        request: JSON request with base64 image and parameters
 
     Returns:
-        Calibrated map CSV and statistics
+        HTML page with embedded base64 images
     """
-    # Import here to avoid circular imports and allow lazy loading
+    from dmc_masking.api.utils import array_to_base64_png, base64_to_array
+
+    # Decode base64 to array
+    try:
+        img_array = base64_to_array(request.image)
+    except Exception as e:
+        result = {
+            "success": False,
+            "error_message": f"Failed to decode base64 image: {e}",
+        }
+    else:
+        # Run the pipeline
+        result = await _process_image_from_array(
+            img_array,
+            request.roi_id,
+            request.pixel_size,
+            request.structure_library_path,
+            return_uncropped=False,
+        )
+
+    # Handle errors - return error HTML
+    if not result["success"]:
+        html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DMC Masking - Error</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; }}
+        .container {{ max-width: 1200px; margin: 0 auto; }}
+        .error {{
+            background: #fee;
+            border: 2px solid #c00;
+            color: #c00;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }}
+        h1 {{ color: #c00; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Processing Error</h1>
+        <div class="error">
+            <strong>Error:</strong> {result["error_message"]}
+        </div>
+        <p><a href="/docs">← Back to API Documentation</a></p>
+    </div>
+</body>
+</html>
+"""
+        return HTMLResponse(content=html_content, status_code=422)
+
+    # Convert images to base64
+    cropped_image_b64 = array_to_base64_png(result["cropped_img"])
+    mask_b64 = array_to_base64_png(result["cropped_mask"], is_mask=True)
+
+    # Generate success HTML
+    html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>DMC Masking - Image Preview</title>
+    <style>
+        body {{
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f9f9f9;
+        }}
+        .container {{
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }}
+        h1 {{
+            color: #333;
+            border-bottom: 3px solid #0066cc;
+            padding-bottom: 10px;
+        }}
+        .metadata {{
+            background: #f5f5f5;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 5px;
+            border-left: 4px solid #0066cc;
+        }}
+        .metadata p {{
+            margin: 8px 0;
+            font-size: 14px;
+        }}
+        .metadata strong {{
+            display: inline-block;
+            width: 150px;
+            color: #555;
+        }}
+        .images {{
+            display: flex;
+            gap: 30px;
+            margin: 30px 0;
+            flex-wrap: wrap;
+        }}
+        .image-box {{
+            flex: 1;
+            min-width: 400px;
+            background: #fafafa;
+            padding: 15px;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }}
+        .image-box h2 {{
+            margin-top: 0;
+            color: #444;
+            font-size: 18px;
+            border-bottom: 2px solid #0066cc;
+            padding-bottom: 8px;
+        }}
+        .image-box img {{
+            max-width: 100%;
+            border: 2px solid #ccc;
+            border-radius: 3px;
+            display: block;
+            margin-top: 10px;
+            background: white;
+        }}
+        .back-link {{
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+        }}
+        .back-link a {{
+            color: #0066cc;
+            text-decoration: none;
+            font-weight: bold;
+        }}
+        .back-link a:hover {{
+            text-decoration: underline;
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>DMC Masking Result</h1>
+        <div class="metadata">
+            <p><strong>ROI ID:</strong> {result["roi_id"]}</p>
+            <p><strong>Chamber Type:</strong> {result["chamber_type"]}</p>
+            <p><strong>Rotation Angle:</strong> {result["rotation_angle"]:.2f}°</p>
+            <p><strong>Pixel Size:</strong> {result["pixel_size"]:.6f} μm</p>
+        </div>
+        <div class="images">
+            <div class="image-box">
+                <h2>Cropped Image</h2>
+                <img src="data:image/png;base64,{cropped_image_b64}" alt="Cropped Image">
+            </div>
+            <div class="image-box">
+                <h2>Mask</h2>
+                <img src="data:image/png;base64,{mask_b64}" alt="Mask">
+            </div>
+        </div>
+        <div class="back-link">
+            <a href="/docs">← Back to API Documentation</a>
+        </div>
+    </div>
+</body>
+</html>
+"""
+    return HTMLResponse(content=html_content)
+
+
+@app.post("/calibrate", response_model=CalibrateResponse)
+async def calibrate_map_endpoint(request: CalibrateRequest) -> CalibrateResponse:
+    """
+    Calibrate microscope map from JSON with base64 images.
+
+    This endpoint accepts a JSON request with multiple base64-encoded calibration
+    images and their associated stage positions, then returns a calibrated map.
+
+    Args:
+        request: JSON request with base64 images and calibration config
+
+    Returns:
+        Calibrated CSV map and statistics
+    """
+    # Import calibration script
     import sys
+
+    from dmc_masking.api.utils import base64_to_array
 
     scripts_path = Path(__file__).parent.parent.parent / "scripts"
     if str(scripts_path) not in sys.path:
@@ -309,78 +495,61 @@ async def calibrate_map_endpoint(
 
     from scripts.calibrate_map import calibrate_map
 
-    # Parse config
-    try:
-        config_dict = json.loads(config)
-        calibrate_config = CalibrateConfig(**config_dict)
-    except json.JSONDecodeError as e:
-        return CalibrateResponse(
-            success=False,
-            error_message=f"Invalid JSON config: {e}",
-        )
-    except Exception as e:
-        return CalibrateResponse(
-            success=False,
-            error_message=f"Invalid config: {e}",
-        )
-
-    # Validate number of images
-    n_images = len(images)
-    n_config = len(calibrate_config.calibration_images)
-    if n_images != n_config:
-        return CalibrateResponse(
-            success=False,
-            error_message=f"Number of images ({n_images}) does not match config ({n_config})",
-        )
-
+    # Validate number of images (Pydantic should already enforce min_length=3)
+    n_images = len(request.calibration_images)
     if n_images < 3:
         return CalibrateResponse(
             success=False,
             error_message=f"At least 3 calibration images required, got {n_images}",
         )
 
-    # Save uploaded images to temp files and build config
+    # Decode all images to temp files
     settings = get_settings()
     calibration_images = []
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        for i, (upload, meta) in enumerate(
-            zip(images, calibrate_config.calibration_images, strict=False)
-        ):
-            # Save image to temp file
-            suffix = Path(upload.filename).suffix if upload.filename else ".tif"
-            img_path = Path(tmpdir) / f"image_{i}{suffix}"
-            contents = await upload.read()
-            img_path.write_bytes(contents)
+        for i, img_data in enumerate(request.calibration_images):
+            try:
+                # Decode base64
+                img_array = base64_to_array(img_data.image)
 
-            # Build calibration image entry
-            calibration_images.append(
-                {
-                    "image_path": str(img_path),
-                    "roi_id": meta.roi_id,
-                    "stage_position": {
-                        "x": meta.stage_position.x,
-                        "y": meta.stage_position.y,
-                        "z": meta.stage_position.z,
-                    },
-                }
-            )
+                # Save to temp file (calibrate_map expects file paths)
+                img_path = Path(tmpdir) / f"image_{i}.tif"
+                tifffile.imwrite(str(img_path), img_array)
+
+                # Build calibration image entry
+                calibration_images.append(
+                    {
+                        "image_path": str(img_path),
+                        "roi_id": img_data.roi_id,
+                        "stage_position": {
+                            "x": img_data.stage_position.x,
+                            "y": img_data.stage_position.y,
+                            "z": img_data.stage_position.z,
+                        },
+                    }
+                )
+            except Exception as e:
+                return CalibrateResponse(
+                    success=False,
+                    error_message=f"Failed to decode calibration image {i}: {e}",
+                )
 
         # Build full config dict
         full_config = {
             "calibration_images": calibration_images,
-            "pixel_size": calibrate_config.pixel_size,
-            "blueprint_map_path": calibrate_config.blueprint_map_path,
+            "pixel_size": request.pixel_size,
+            "blueprint_map_path": request.blueprint_map_path,
         }
 
         # Add optional fields
-        if calibrate_config.structure_library_path:
-            full_config["structure_library_path"] = calibrate_config.structure_library_path
+        if request.structure_library_path:
+            full_config["structure_library_path"] = request.structure_library_path
         else:
             full_config["structure_library_path"] = settings.structure_library_path
 
-        if calibrate_config.model_path:
-            full_config["model_path"] = calibrate_config.model_path
+        if request.model_path:
+            full_config["model_path"] = request.model_path
         else:
             full_config["model_path"] = settings.model_path
 
