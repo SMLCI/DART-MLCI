@@ -8,6 +8,8 @@ from ultralytics import YOLO
 
 from dmc_masking.mask import RoIPolygon, apply_mask
 from dmc_masking.match import match_markers
+from dmc_masking.registration import PhaseCorrelationRegistration as PhaseCorrelationRegistration
+from dmc_masking.registration import TimelapseRegistration as TimelapseRegistration
 from dmc_masking.rotation import (
     compute_marker_group_angles,
     rotate_image_and_markers,
