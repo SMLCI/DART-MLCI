@@ -4,6 +4,7 @@ validation/
 notebooks/
 examples/
 tests/test_results/
+tests/test_output/
 
 coco/
 /images/

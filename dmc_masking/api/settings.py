@@ -28,6 +28,9 @@ class Settings:
     default_pixel_size: float = field(
         default_factory=lambda: float(os.environ.get("DMC_PIXEL_SIZE", "0.065789"))
     )
+    chip_config_path: str | None = field(
+        default_factory=lambda: os.environ.get("DMC_CHIP_CONFIG_PATH", None)
+    )
     device: str | None = field(default_factory=lambda: os.environ.get("DMC_DEVICE", None))
 
     def __post_init__(self):

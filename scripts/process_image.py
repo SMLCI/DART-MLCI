@@ -23,6 +23,7 @@ import numpy as np
 import dmc_masking
 from dmc_masking import (
     DEFAULT_MODEL_PATH,
+    ChipStructureLibrary,
     ImageRotationStep,
     MarkerDetectionStep,
     MarkerMatchingStep,
@@ -304,10 +305,16 @@ Chamber ID patterns:
         help="Pixel size in micrometers (default: 0.065789)",
     )
     parser.add_argument(
+        "--chip-config",
+        type=Path,
+        default=None,
+        help="Path to unified chip config JSON file (preferred over --structure-library)",
+    )
+    parser.add_argument(
         "--structure-library",
         type=Path,
         default=None,
-        help="Path to chamber structure JSON file",
+        help="Path to chamber structure JSON file (deprecated, use --chip-config instead)",
     )
     parser.add_argument(
         "--device",
@@ -338,23 +345,42 @@ Chamber ID patterns:
         print_error(STEP_VALIDATION, f"Model not found: {args.model_path}")
         sys.exit(1)
 
-    # Set default structure library path
-    if args.structure_library is None:
-        args.structure_library = (
-            Path(dmc_masking.__file__).parent.parent / "artifacts/chamber_structure.json"
-        )
-
     # Validate that at least one chamber specification is provided
     if not args.chamber_id and not args.chamber_type:
         print_error(STEP_VALIDATION, "Either --chamber-id or --chamber-type must be provided")
         sys.exit(1)
 
-    # Initialize structure library
+    # Initialize structure library: prefer --chip-config, fall back to --structure-library
     try:
-        structure_library = SAKRoIStructureLibrary(
-            lookup_path=args.structure_library,
-            pixel_size=args.pixel_size,
-        )
+        if args.chip_config is not None:
+            if not args.chip_config.exists():
+                print_error(STEP_VALIDATION, f"Chip config not found: {args.chip_config}")
+                sys.exit(1)
+            structure_library = ChipStructureLibrary.from_file(
+                args.chip_config, pixel_size=args.pixel_size
+            )
+        else:
+            if args.structure_library is not None:
+                import warnings
+
+                warnings.warn(
+                    "--structure-library is deprecated. Use --chip-config instead.",
+                    DeprecationWarning,
+                    stacklevel=1,
+                )
+            else:
+                args.structure_library = (
+                    Path(dmc_masking.__file__).parent.parent / "artifacts/chamber_structure.json"
+                )
+
+            import warnings
+
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                structure_library = SAKRoIStructureLibrary(
+                    lookup_path=args.structure_library,
+                    pixel_size=args.pixel_size,
+                )
     except Exception as e:
         print_error(STEP_VALIDATION, f"Failed to load structure library: {e}")
         sys.exit(1)

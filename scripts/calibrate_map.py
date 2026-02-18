@@ -39,7 +39,7 @@ from matplotlib.patches import Polygon as MplPolygon
 from shapely import affinity
 
 import dmc_masking
-from dmc_masking import MarkerDetectionStep, MarkerMatchingStep
+from dmc_masking import ChipStructureLibrary, MarkerDetectionStep, MarkerMatchingStep
 from dmc_masking.io import load_image
 from dmc_masking.map import AffineTransformResult, Map, RoIPosition
 from dmc_masking.mask import RoIPolygon, SAKRoIStructureLibrary, apply_mask_rotation_free
@@ -574,13 +574,14 @@ def run_calibration(
     else:
         model_path = Path(model_path)
 
-    # Set default structure library path
+    # Set default structure library or chip config path
+    chip_config_path = config.get("chip_config_path")
     structure_library_path = config.get("structure_library_path")
-    if structure_library_path is None:
+    if chip_config_path is None and structure_library_path is None:
         structure_library_path = (
             Path(dmc_masking.__file__).parent.parent / "artifacts/chamber_structure.json"
         )
-    else:
+    elif structure_library_path is not None:
         structure_library_path = Path(structure_library_path)
 
     device = config.get("device")
@@ -602,11 +603,18 @@ def run_calibration(
         print(f"  Calibration images: {len(calibration_images)}")
         print()
 
-    # Initialize structure library and detection step
-    structure_library = SAKRoIStructureLibrary(
-        lookup_path=structure_library_path,
-        pixel_size=pixel_size,
-    )
+    # Initialize structure library: prefer chip config, fall back to legacy
+    if chip_config_path is not None:
+        structure_library = ChipStructureLibrary.from_file(chip_config_path, pixel_size=pixel_size)
+    else:
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            structure_library = SAKRoIStructureLibrary(
+                lookup_path=structure_library_path,
+                pixel_size=pixel_size,
+            )
 
     detection_step = MarkerDetectionStep(str(model_path), device=device, verbose=False)
 
@@ -1298,6 +1306,12 @@ JSON config format:
         help="Path to JSON configuration file",
     )
     parser.add_argument(
+        "--chip-config",
+        type=Path,
+        default=None,
+        help="Path to unified chip config JSON file (overrides structure_library_path in config)",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         required=True,
@@ -1330,9 +1344,19 @@ JSON config format:
     args = parser.parse_args()
 
     try:
+        # If --chip-config is provided, inject it into the config
+        config_input = args.config
+        if args.chip_config is not None:
+            # Load the config file, add chip_config_path, pass as dict
+            config_path = Path(args.config)
+            if not config_path.exists():
+                raise FileNotFoundError(f"Config file not found: {config_path}")
+            config_input = load_config(config_path)
+            config_input["chip_config_path"] = str(args.chip_config)
+
         # Run calibration using the function API
         result, _ = calibrate_map(
-            config=args.config,
+            config=config_input,
             output_path=args.output,
             stats_path=args.stats,
             output_dir=args.output_dir,

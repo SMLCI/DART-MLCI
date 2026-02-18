@@ -26,6 +26,7 @@ from dmc_masking.api.models import (
     ProcessImageResponse,
 )
 from dmc_masking.api.settings import get_settings, resolve_path
+from dmc_masking.chip import ChipStructureLibrary
 from dmc_masking.mask import SAKRoIStructureLibrary
 
 
@@ -47,15 +48,27 @@ async def lifespan(app: FastAPI):
         app.state.detection_step = None
         app.state.model_loaded = False
 
-    # Load default structure library
-    structure_library_path = resolve_path(settings.structure_library_path)
-    if structure_library_path.exists():
-        app.state.structure_library = SAKRoIStructureLibrary(
-            lookup_path=str(structure_library_path),
-            pixel_size=settings.default_pixel_size,
-        )
-    else:
-        app.state.structure_library = None
+    # Load structure library: prefer chip config, fall back to legacy
+    app.state.structure_library = None
+    if settings.chip_config_path:
+        chip_config_path = resolve_path(settings.chip_config_path)
+        if chip_config_path.exists():
+            app.state.structure_library = ChipStructureLibrary.from_file(
+                chip_config_path,
+                pixel_size=settings.default_pixel_size,
+            )
+
+    if app.state.structure_library is None:
+        structure_library_path = resolve_path(settings.structure_library_path)
+        if structure_library_path.exists():
+            import warnings
+
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", DeprecationWarning)
+                app.state.structure_library = SAKRoIStructureLibrary(
+                    lookup_path=str(structure_library_path),
+                    pixel_size=settings.default_pixel_size,
+                )
 
     # Detect GPU availability
     app.state.gpu_available = torch.cuda.is_available()
@@ -104,8 +117,8 @@ async def list_chamber_types() -> list[ChamberType]:
         raise HTTPException(status_code=503, detail="Structure library not loaded")
 
     chamber_types = []
-    for name, pattern in structure_library.patterns.items():
-        chamber_types.append(ChamberType(name=name, roi_pattern=pattern))
+    for name in structure_library.polygon_library:
+        chamber_types.append(ChamberType(name=name))
 
     return chamber_types
 
@@ -116,6 +129,7 @@ async def _process_image_from_array(
     pixel_size: float = 0.065789,
     structure_library_path: str | None = None,
     return_uncropped: bool = False,
+    chip_config_path: str | None = None,
 ) -> dict:
     """
     Core processing pipeline accepting numpy array.
@@ -139,25 +153,39 @@ async def _process_image_from_array(
             "error_message": "Model not loaded - check DMC_MODEL_PATH configuration",
         }
 
-    # Load structure library (custom or default)
-    if structure_library_path:
+    # Load structure library: prefer chip_config_path, then structure_library_path, then default
+    structure_library = None
+    if chip_config_path:
+        ccp = resolve_path(chip_config_path)
+        if not ccp.exists():
+            return {
+                "success": False,
+                "error_message": f"Chip config not found: {chip_config_path}",
+            }
+        structure_library = ChipStructureLibrary.from_file(ccp, pixel_size=pixel_size)
+    elif structure_library_path:
         lib_path = resolve_path(structure_library_path)
         if not lib_path.exists():
             return {
                 "success": False,
                 "error_message": f"Structure library not found: {structure_library_path}",
             }
-        structure_library = SAKRoIStructureLibrary(
-            lookup_path=str(lib_path),
-            pixel_size=pixel_size,
-        )
+        import warnings
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            structure_library = SAKRoIStructureLibrary(
+                lookup_path=str(lib_path),
+                pixel_size=pixel_size,
+            )
     else:
         structure_library = getattr(app.state, "structure_library", None)
-        if structure_library is None:
-            return {
-                "success": False,
-                "error_message": "Default structure library not loaded",
-            }
+
+    if structure_library is None:
+        return {
+            "success": False,
+            "error_message": "No structure library available (set chip_config_path or structure_library_path)",
+        }
 
     # Get structure info for this ROI
     try:
@@ -266,6 +294,7 @@ async def process_image(request: ProcessImageRequest) -> ProcessImageResponse:
         request.pixel_size,
         request.structure_library_path,
         request.return_uncropped,
+        chip_config_path=getattr(request, "chip_config_path", None),
     )
 
     if not result["success"]:
@@ -316,6 +345,7 @@ async def process_image_preview(request: ProcessImageRequest) -> HTMLResponse:
             request.pixel_size,
             request.structure_library_path,
             return_uncropped=False,
+            chip_config_path=getattr(request, "chip_config_path", None),
         )
 
     # Handle errors - return error HTML

@@ -6,6 +6,15 @@ import numpy as np
 import torch
 from ultralytics import YOLO
 
+from dmc_masking.chip import (
+    ChipConfig as ChipConfig,
+)
+from dmc_masking.chip import (
+    ChipStructureLibrary as ChipStructureLibrary,
+)
+from dmc_masking.chip import (
+    load_chip_config as load_chip_config,
+)
 from dmc_masking.mask import RoIPolygon, apply_mask
 from dmc_masking.match import match_markers
 from dmc_masking.registration import PhaseCorrelationRegistration as PhaseCorrelationRegistration

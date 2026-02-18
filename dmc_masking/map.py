@@ -97,6 +97,26 @@ class Map:
 
         return Map(roi_positions)
 
+    @staticmethod
+    def from_dict_list(entries: list[dict]) -> "Map":
+        """Create a Map from a list of dicts (e.g., from chip config blueprint_map).
+
+        Each dict must have 'roi_id', 'x', and 'y' keys.
+
+        Args:
+            entries: List of dicts with roi_id, x, y fields
+
+        Returns:
+            Map object with positions from the entries
+        """
+        roi_positions = []
+        for entry in entries:
+            roi_id = f"{int(entry['roi_id']):04d}"
+            roi_positions.append(
+                RoIPosition(roi_id=roi_id, position=np.array([entry["x"], entry["y"]], dtype=float))
+            )
+        return Map(roi_positions)
+
     def plot(self, ax=None):
         df = pd.DataFrame(
             [

@@ -1,6 +1,7 @@
 """Implementation of masking operations"""
 
 import re
+import warnings
 from copy import deepcopy
 
 import numpy as np
@@ -254,78 +255,77 @@ def apply_mask_rotation_free(
     return cropped_image, cropped_mask
 
 
-def gen_pattern(start_c: int, array: int):
+def _gen_pattern(start_c: int, array: int) -> str:
+    """Generate ROI ID matching pattern.
+
+    .. deprecated::
+        This function is kept for internal backward compatibility only.
+        Use ChipStructureLibrary with a chip config file instead.
+    """
     return "|".join([rf"({c}{array}\d\d)" for c in range(start_c, 8, 2)])
 
 
+# Legacy marker positions in microns (hardcoded for SAK chip)
+_SAK_MARKER_CONFIGS = {
+    "NormaleBox-inner": {"cross": (4.0, 8.0), "circle": (56.0, 8.0)},
+    "BigBox-inner": {"cross": (4.0, 8.0), "circle": (56.0, 8.0)},
+    "OpenBox-inner": {"cross": (14.0, 8.0), "circle": (66.0, 8.0)},
+    "Mothermachine-inner": {"cross": (14.0, 8.0), "circle": (66.0, 8.0)},
+    "NormaleBox-pillar-inner": {"cross": (4.0, 8.0), "circle": (56.0, 8.0)},
+    "BigBox-pillar-inner": {"cross": (4.0, 8.0), "circle": (56.0, 8.0)},
+    "OpenBox-collector-inner": {"cross": (14.0, 8.0), "circle": (66.0, 8.0)},
+    "Mothermachine-2x-inner": {"cross": (14.0, 8.0), "circle": (66.0, 8.0)},
+}
+
+_SAK_ROI_PATTERNS = {
+    "NormaleBox-inner": _gen_pattern(0, 0),
+    "BigBox-inner": _gen_pattern(0, 1),
+    "OpenBox-inner": _gen_pattern(0, 2),
+    "Mothermachine-inner": _gen_pattern(0, 3),
+    "NormaleBox-pillar-inner": _gen_pattern(1, 0),
+    "BigBox-pillar-inner": _gen_pattern(1, 1),
+    "OpenBox-collector-inner": _gen_pattern(1, 2),
+    "Mothermachine-2x-inner": _gen_pattern(1, 3),
+}
+
+
 class SAKRoIStructureLibrary:
-    """Library for SAK roi structures"""
+    """Library for SAK roi structures.
+
+    .. deprecated::
+        Use :class:`dmc_masking.chip.ChipStructureLibrary` instead.
+        This class is maintained for backward compatibility and will be
+        removed in a future release.
+    """
 
     def __init__(self, lookup_path, pixel_size):
+        warnings.warn(
+            "SAKRoIStructureLibrary is deprecated. "
+            "Use dmc_masking.chip.ChipStructureLibrary instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.pixel_size = pixel_size
 
-        # load structural information of the polygon library
+        # Build from legacy files using the same logic as before
         roi_structures = load_roi_structures(lookup_path)
         self.polygon_library = {}
         for structure_name, serialized_polygon in roi_structures.items():
             self.polygon_library[structure_name] = shape(serialized_polygon)
 
-        # load pattern matchin of id to structure name
-        self.patterns = {
-            "NormaleBox-inner": gen_pattern(0, 0),
-            "BigBox-inner": gen_pattern(0, 1),
-            "OpenBox-inner": gen_pattern(0, 2),
-            "Mothermachine-inner": gen_pattern(0, 3),
-            "NormaleBox-pillar-inner": gen_pattern(1, 0),
-            "BigBox-pillar-inner": gen_pattern(1, 1),
-            "OpenBox-collector-inner": gen_pattern(1, 2),
-            "Mothermachine-2x-inner": gen_pattern(1, 3),
-        }
+        self.patterns = dict(_SAK_ROI_PATTERNS)
 
-        self.marker_group_configs = {
-            "NormaleBox-pillar-inner": {
-                "cross": np.array((4, 8), dtype=float),
-                "circle": np.array((56, 8), dtype=float),
-            },
-            "BigBox-pillar-inner": {
-                "cross": np.array((4, 8), dtype=float),
-                "circle": np.array((56, 8), dtype=float),
-            },
-            "OpenBox-inner": {
-                "cross": np.array((14, 8), dtype=float),
-                "circle": np.array((66, 8), dtype=float),
-            },
-            "OpenBox-collector-inner": {
-                "cross": np.array((14, 8), dtype=float),
-                "circle": np.array((66, 8), dtype=float),
-            },
-            "BigBox-inner": {
-                "cross": np.array((4, 8), dtype=float),
-                "circle": np.array((56, 8), dtype=float),
-            },
-            "NormaleBox-inner": {
-                "cross": np.array((4, 8), dtype=float),
-                "circle": np.array((56, 8), dtype=float),
-            },
-            "Mothermachine-2x-inner": {
-                "cross": np.array((14, 8), dtype=float),
-                "circle": np.array((66, 8), dtype=float),
-            },
-            "Mothermachine-inner": {
-                "cross": np.array((14, 8), dtype=float),
-                "circle": np.array((66, 8), dtype=float),
-            },
-        }
+        self.marker_group_configs = {}
+        for name, markers in _SAK_MARKER_CONFIGS.items():
+            self.marker_group_configs[name] = {
+                mk: np.array(mv, dtype=float) for mk, mv in markers.items()
+            }
 
         for sn, sp in self.polygon_library.items():
             rp = RoIPolygon(sp)
-
             rp = rp.scale(1.0 / pixel_size)
             xmin, ymin, _, _ = rp.roi_polygon.bounds
-
-            # move polygon into positive coordinates
             rp = rp.translate(x=-xmin, y=-ymin)
-
             self.polygon_library[sn] = rp
 
         for _sn, sc in self.marker_group_configs.items():
@@ -334,15 +334,12 @@ class SAKRoIStructureLibrary:
 
     def _structure_name(self, roi_id: str) -> str:
         roi_id = str(roi_id)
-
         for sn, structure_pattern in self.patterns.items():
             if re.match(structure_pattern, roi_id) is not None:
                 return sn
 
     def __call__(self, roi_id: str) -> tuple[str, RoIPolygon, dict]:
-        # match id with structure patterns
         structure_name = None
-
         for sn, structure_pattern in self.patterns.items():
             if re.match(structure_pattern, roi_id) is not None:
                 structure_name = sn
@@ -358,7 +355,13 @@ class SAKRoIStructureLibrary:
 
 
 class SingleRoIStructureLibrary(SAKRoIStructureLibrary):
-    """Library for a single type of roi structure."""
+    """Library for a single type of roi structure.
+
+    .. deprecated::
+        Use :class:`dmc_masking.chip.ChipStructureLibrary` instead.
+        This class is maintained for backward compatibility and will be
+        removed in a future release.
+    """
 
     def __init__(self, lookup_path, pixel_size, structure_name: str):
         super().__init__(lookup_path, pixel_size)

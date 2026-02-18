@@ -105,8 +105,13 @@ class PathConfig:
 
     Attributes:
         model_path: Path to the YOLO detection model
-        structure_library_path: Path to chamber structure definitions
-        blueprint_map_path: Path to blueprint map CSV (optional)
+        structure_library_path: Path to chamber structure definitions (deprecated,
+            use chip_config_path instead)
+        blueprint_map_path: Path to blueprint map CSV (optional, deprecated,
+            use chip_config_path instead)
+        chip_config_path: Path to unified chip configuration JSON file.
+            When set, this takes precedence over structure_library_path and
+            blueprint_map_path.
     """
 
     model_path: Path = field(
@@ -116,6 +121,7 @@ class PathConfig:
         default_factory=lambda: Path("artifacts/chamber_structure.json")
     )
     blueprint_map_path: Path | None = None
+    chip_config_path: Path | None = None
 
     def __post_init__(self):
         # Convert strings to Path objects
@@ -125,6 +131,8 @@ class PathConfig:
             self.structure_library_path = Path(self.structure_library_path)
         if isinstance(self.blueprint_map_path, str):
             self.blueprint_map_path = Path(self.blueprint_map_path)
+        if isinstance(self.chip_config_path, str):
+            self.chip_config_path = Path(self.chip_config_path)
 
 
 @dataclass
@@ -222,6 +230,8 @@ class DMCConfig:
             config.paths.structure_library_path = Path(os.environ["DMC_STRUCTURE_LIBRARY_PATH"])
         if "DMC_BLUEPRINT_MAP_PATH" in os.environ:
             config.paths.blueprint_map_path = Path(os.environ["DMC_BLUEPRINT_MAP_PATH"])
+        if "DMC_CHIP_CONFIG_PATH" in os.environ:
+            config.paths.chip_config_path = Path(os.environ["DMC_CHIP_CONFIG_PATH"])
 
         return config
 
@@ -262,6 +272,8 @@ class DMCConfig:
                 config.paths.structure_library_path = Path(paths["structure_library_path"])
             if paths.get("blueprint_map_path"):
                 config.paths.blueprint_map_path = Path(paths["blueprint_map_path"])
+            if paths.get("chip_config_path"):
+                config.paths.chip_config_path = Path(paths["chip_config_path"])
 
         # Coordinates config
         if "coordinates" in data:
@@ -340,6 +352,9 @@ class DMCConfig:
                 "structure_library_path": str(self.paths.structure_library_path),
                 "blueprint_map_path": (
                     str(self.paths.blueprint_map_path) if self.paths.blueprint_map_path else None
+                ),
+                "chip_config_path": (
+                    str(self.paths.chip_config_path) if self.paths.chip_config_path else None
                 ),
             },
             "coordinates": {

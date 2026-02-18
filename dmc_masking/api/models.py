@@ -87,7 +87,9 @@ class ChamberType(BaseModel):
     """Information about a chamber type."""
 
     name: str
-    roi_pattern: str = Field(description="Regex pattern for matching ROI IDs")
+    roi_pattern: str | None = Field(
+        default=None, description="Regex pattern for matching ROI IDs (deprecated)"
+    )
 
 
 class ProcessImageRequest(BaseModel):
@@ -97,7 +99,12 @@ class ProcessImageRequest(BaseModel):
     roi_id: str = Field(description="ROI identifier (e.g., '0050')")
     pixel_size: float = Field(default=0.065789, description="Pixel size in microns")
     structure_library_path: str | None = Field(
-        default=None, description="Optional custom structure library path"
+        default=None,
+        description="Optional custom structure library path (deprecated, use chip_config_path)",
+    )
+    chip_config_path: str | None = Field(
+        default=None,
+        description="Optional path to unified chip config JSON (preferred over structure_library_path)",
     )
     return_uncropped: bool = Field(default=False, description="Return full-size mask")
 
@@ -152,7 +159,12 @@ class CalibrateRequest(BaseModel):
     pixel_size: float = Field(default=0.065789, description="Pixel size in microns")
     blueprint_map_path: str = Field(description="Path to the blueprint map CSV")
     structure_library_path: str | None = Field(
-        default=None, description="Path to structure library JSON (uses default if not set)"
+        default=None,
+        description="Path to structure library JSON (deprecated, use chip_config_path)",
+    )
+    chip_config_path: str | None = Field(
+        default=None,
+        description="Path to unified chip config JSON (preferred over structure_library_path and blueprint_map_path)",
     )
     model_path: str | None = Field(
         default=None, description="Path to YOLO model (uses default if not set)"
