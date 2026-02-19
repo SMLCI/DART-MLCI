@@ -46,16 +46,34 @@ class ImageResultInfo(BaseModel):
     microscope_position: list[float] | None = None
 
 
+class CalibratedROIPosition(BaseModel):
+    """A single calibrated ROI position."""
+
+    roi_id: str = Field(description="ROI identifier")
+    x: float = Field(description="Calibrated X position")
+    y: float = Field(description="Calibrated Y position")
+    z: float | None = Field(default=None, description="Calibrated Z position (if available)")
+
+
+class CalibrationStatistics(BaseModel):
+    """Statistics from the affine transform calibration."""
+
+    rmse: float = Field(description="Root mean square error of the calibration")
+    max_error: float = Field(description="Maximum residual error")
+    n_points: int = Field(description="Number of calibration points used")
+    residuals: list[float] = Field(description="Per-point residual distances")
+
+
 class CalibrateResponse(BaseModel):
     """Response from the calibrate endpoint."""
 
     success: bool
-    calibrated_map: list[dict] | None = Field(
+    calibrated_map: list[CalibratedROIPosition] | None = Field(
         default=None,
-        description="List of calibrated ROI positions, each with roi_id, x, y, and optionally z",
+        description="List of calibrated ROI positions",
     )
-    statistics: dict | None = Field(
-        default=None, description="Calibration statistics (rmse, max_error, n_points)"
+    statistics: CalibrationStatistics | None = Field(
+        default=None, description="Calibration statistics"
     )
     image_results: list[ImageResultInfo] = Field(
         default_factory=list, description="Per-image processing results"

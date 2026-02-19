@@ -17,8 +17,10 @@ from dmc_masking import (
     RoIMaskingStep,
 )
 from dmc_masking.api.models import (
+    CalibratedROIPosition,
     CalibrateRequest,
     CalibrateResponse,
+    CalibrationStatistics,
     ChamberType,
     HealthResponse,
     ImageResultInfo,
@@ -598,16 +600,18 @@ async def calibrate_map_endpoint(request: CalibrateRequest) -> CalibrateResponse
                 error_message=f"Calibration failed: {e}",
             )
 
-    # Convert calibrated map to list of dicts
+    # Convert calibrated map to typed objects
     calibrated_map = []
     for roi_id, roi_pos in result.calibrated_map.roi_positions.items():
         x, y = roi_pos.position[:2]
-        entry = {"roi_id": roi_id, "x": round(float(x), 6), "y": round(float(y), 6)}
+        z = None
         if result.z_positions:
-            z = result.z_positions.get(roi_id)
-            if z is not None:
-                entry["z"] = round(float(z), 6)
-        calibrated_map.append(entry)
+            z_val = result.z_positions.get(roi_id)
+            if z_val is not None:
+                z = round(float(z_val), 6)
+        calibrated_map.append(
+            CalibratedROIPosition(roi_id=roi_id, x=round(float(x), 6), y=round(float(y), 6), z=z)
+        )
 
     # Build per-image results
     image_results = []
@@ -625,12 +629,12 @@ async def calibrate_map_endpoint(request: CalibrateRequest) -> CalibrateResponse
         )
 
     # Build statistics
-    statistics = {
-        "rmse": float(result.transform_result.rmse),
-        "max_error": float(result.transform_result.max_error),
-        "n_points": len(result.measured_map.roi_positions),
-        "residuals": result.transform_result.residuals.tolist(),
-    }
+    statistics = CalibrationStatistics(
+        rmse=float(result.transform_result.rmse),
+        max_error=float(result.transform_result.max_error),
+        n_points=len(result.measured_map.roi_positions),
+        residuals=result.transform_result.residuals.tolist(),
+    )
 
     return CalibrateResponse(
         success=True,
