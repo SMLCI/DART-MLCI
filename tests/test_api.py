@@ -318,12 +318,12 @@ class TestCalibrateEndpoint:
 
         data = response.json()
         if data["success"]:
-            assert "calibrated_map_csv" in data
+            assert "calibrated_map" in data
             assert "statistics" in data
 
-            # Save calibrated map
-            csv_path = viz_dir / "calibrated_map.csv"
-            csv_path.write_text(data["calibrated_map_csv"])
+            # Save calibrated map as JSON
+            json_path = viz_dir / "calibrated_map.json"
+            json_path.write_text(json.dumps(data["calibrated_map"], indent=2))
 
             # Print statistics
             stats = data["statistics"]
@@ -331,7 +331,7 @@ class TestCalibrateEndpoint:
             print(f"  RMSE: {stats['rmse']:.4f}")
             print(f"  Max Error: {stats['max_error']:.4f}")
             print(f"  Points: {stats['n_points']}")
-            print(f"\nCalibrated map: {csv_path}")
+            print(f"\nCalibrated map: {json_path}")
 
     def test_calibrate_invalid_base64(self, client):
         """Invalid base64 should fail validation."""

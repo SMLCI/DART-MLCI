@@ -308,10 +308,8 @@ def test_calibrate_endpoint():
                 print_info(f"Max error: {stats.get('max_error', 'N/A'):.4f}")
                 print_info(f"Points: {stats.get('n_points', 'N/A')}")
 
-                csv_data = data.get("calibrated_map_csv", "")
-                print_info(
-                    f"Calibrated map: {len(csv_data)} chars ({len(csv_data.splitlines())} lines)"
-                )
+                cal_map = data.get("calibrated_map", [])
+                print_info(f"Calibrated map: {len(cal_map)} entries")
 
                 return True
             else:

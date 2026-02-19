@@ -598,24 +598,16 @@ async def calibrate_map_endpoint(request: CalibrateRequest) -> CalibrateResponse
                 error_message=f"Calibration failed: {e}",
             )
 
-    # Convert calibrated map to CSV string
-    csv_lines = ["roi_id,x,y"]
+    # Convert calibrated map to list of dicts
+    calibrated_map = []
     for roi_id, roi_pos in result.calibrated_map.roi_positions.items():
         x, y = roi_pos.position[:2]
-        csv_lines.append(f"{roi_id},{x:.6f},{y:.6f}")
-
-    # Add z positions if available
-    if result.z_positions:
-        csv_lines = ["roi_id,x,y,z"]
-        for roi_id, roi_pos in result.calibrated_map.roi_positions.items():
-            x, y = roi_pos.position[:2]
+        entry = {"roi_id": roi_id, "x": round(float(x), 6), "y": round(float(y), 6)}
+        if result.z_positions:
             z = result.z_positions.get(roi_id)
             if z is not None:
-                csv_lines.append(f"{roi_id},{x:.6f},{y:.6f},{z:.6f}")
-            else:
-                csv_lines.append(f"{roi_id},{x:.6f},{y:.6f},")
-
-    calibrated_map_csv = "\n".join(csv_lines)
+                entry["z"] = round(float(z), 6)
+        calibrated_map.append(entry)
 
     # Build per-image results
     image_results = []
@@ -642,7 +634,7 @@ async def calibrate_map_endpoint(request: CalibrateRequest) -> CalibrateResponse
 
     return CalibrateResponse(
         success=True,
-        calibrated_map_csv=calibrated_map_csv,
+        calibrated_map=calibrated_map,
         statistics=statistics,
         image_results=image_results,
     )

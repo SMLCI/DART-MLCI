@@ -50,7 +50,10 @@ class CalibrateResponse(BaseModel):
     """Response from the calibrate endpoint."""
 
     success: bool
-    calibrated_map_csv: str | None = Field(default=None, description="CSV content as string")
+    calibrated_map: list[dict] | None = Field(
+        default=None,
+        description="List of calibrated ROI positions, each with roi_id, x, y, and optionally z",
+    )
     statistics: dict | None = Field(
         default=None, description="Calibration statistics (rmse, max_error, n_points)"
     )

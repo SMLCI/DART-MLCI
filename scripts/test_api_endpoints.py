@@ -210,13 +210,13 @@ def test_calibrate(base_url: str, config_path: Path, data_dir: Path) -> bool:
                 else:
                     print(f"failed - {img_result.get('error_message')}")
 
-            # Show first few lines of calibrated map
-            csv_lines = result.get("calibrated_map_csv", "").split("\n")
-            print("\n  Calibrated map (first 5 lines):")
-            for line in csv_lines[:5]:
-                print(f"    {line}")
-            if len(csv_lines) > 5:
-                print(f"    ... ({len(csv_lines) - 5} more lines)")
+            # Show first few calibrated map entries
+            cal_map = result.get("calibrated_map", [])
+            print(f"\n  Calibrated map ({len(cal_map)} entries, first 5):")
+            for entry in cal_map[:5]:
+                print(f"    {entry}")
+            if len(cal_map) > 5:
+                print(f"    ... ({len(cal_map) - 5} more entries)")
 
             return True
         else:
