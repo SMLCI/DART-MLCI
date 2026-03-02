@@ -10,7 +10,7 @@ WORKDIR /app
 
 # Copy package files
 COPY pyproject.toml .
-COPY Readme.md .
+COPY README.md .
 COPY dmc_masking/ dmc_masking/
 COPY scripts/ scripts/
 
@@ -24,6 +24,7 @@ COPY artifacts/ /app/artifacts/
 ENV DMC_MODEL_PATH=/app/artifacts/models/v8_detect_s_imgsz640.pt
 ENV DMC_STRUCTURE_LIBRARY_PATH=/app/artifacts/chamber_structure.json
 ENV DMC_BLUEPRINT_MAP_PATH=/app/artifacts/sak_blueprint_map.csv
+ENV DMC_CHIP_CONFIGS_DIR=/app/artifacts/chips/
 ENV DMC_PIXEL_SIZE=0.065789
 
 # Expose port

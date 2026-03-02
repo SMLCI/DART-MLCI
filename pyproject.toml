@@ -4,9 +4,9 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dmc-masking"
-version = "0.0.1"
+version = "0.1.0"
 description = "Real-time microfluidic chamber masking library with marker detection, rotation, cropping, and masking capabilities"
-readme = "Readme.md"
+readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [
@@ -14,7 +14,7 @@ authors = [
 ]
 keywords = ["dmc-masking", "microfluidics", "image-processing", "computer-vision"]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
@@ -39,7 +39,6 @@ dependencies = [
     "matplotlib",
     "seaborn",
     "pillow",
-    "albumentations",
 ]
 
 [project.optional-dependencies]
@@ -72,8 +71,10 @@ include = [
     "dmc_masking/",
     "tests/",
     "artifacts/chamber_structure.json",
+    "artifacts/chips/",
     "artifacts/models/*.pt",
-    "Readme.md",
+    "README.md",
+    "LICENSE",
     "pyproject.toml",
 ]
 

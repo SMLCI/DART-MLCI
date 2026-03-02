@@ -185,7 +185,7 @@ class TestChipStructureLibrary(unittest.TestCase):
         """Test that every ROI in blueprint_map resolves via __call__."""
         for entry in self.new_lib.chip_config.blueprint_map:
             roi_id = entry["roi_id"]
-            name, polygon, markers = self.new_lib(roi_id)
+            name, _polygon, _markers = self.new_lib(roi_id)
             self.assertEqual(name, entry["structure_type"])
 
     def test_unknown_roi_id_not_in_blueprint(self):

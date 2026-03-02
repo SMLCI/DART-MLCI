@@ -343,10 +343,10 @@ def generate_summary(results: list[ImageResult]) -> str:
         "BATCH MASKING SUMMARY",
         "=" * 80,
         f"Total Images:     {total}",
-        f"Passed:           {passed} ({100*passed/total:.1f}%)"
+        f"Passed:           {passed} ({100 * passed / total:.1f}%)"
         if total > 0
         else "Passed:           0",
-        f"Failed:           {failed} ({100*failed/total:.1f}%)"
+        f"Failed:           {failed} ({100 * failed / total:.1f}%)"
         if total > 0
         else "Failed:           0",
         "",

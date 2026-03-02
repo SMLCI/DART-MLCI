@@ -66,7 +66,7 @@ def save_visualization(b64_string: str, output_path: Path, title: str):
     img_bytes = base64.b64decode(b64_string)
     img = Image.open(io.BytesIO(img_bytes))
 
-    fig, ax = plt.subplots(figsize=(10, 8))
+    _fig, ax = plt.subplots(figsize=(10, 8))
     ax.imshow(img, cmap="gray" if img.mode == "L" else None)
     ax.set_title(title, fontsize=14, fontweight="bold")
     ax.axis("off")

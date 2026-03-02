@@ -69,13 +69,13 @@ def add_scalebar(
     # Wrap image as THWCSequenceSource (T=1, H, W, C=3)
     source = THWCSequenceSource(image[None, :, :, :].astype(np.uint8))
 
-    # Render scalebar at bottom-right
+    # Render scalebar at bottom-right with enough space from edge
     result = render_scalebar(
         image_source=source,
-        xy_position=(0.95, 0.95),  # Relative position (bottom-right)
+        xy_position=(0.80, 0.95),  # Relative position (bottom-right, with margin)
         size_of_pixel=pixel_size * UNIT_REGISTRY.micrometer,
         bar_width=bar_um * UNIT_REGISTRY.micrometer,
-        bar_height=5 * UNIT_REGISTRY.micrometer,
+        bar_height=2 * UNIT_REGISTRY.micrometer,  # 2 micrometers high
         color=(255, 255, 255),
         font_size=20,
         show_text=True,
@@ -196,6 +196,13 @@ STEP_MASKING = "Masking"
 STEP_SEGMENTATION = "Segmentation"
 STEP_SAVING = "Saving"
 
+# Time-lapse stacking specific steps
+STEP_ROTATION_PHASE = "rotation_phase"
+STEP_REGISTRATION = "registration"
+STEP_SEGMENTATION_PHASE = "segmentation_phase"
+STEP_STACKING = "stacking"
+STEP_STACK_PROCESSING = "stack_processing"
+
 ALL_STEPS = [
     STEP_LOADING,
     STEP_STRUCTURE,
@@ -205,6 +212,11 @@ ALL_STEPS = [
     STEP_MASKING,
     STEP_SEGMENTATION,
     STEP_SAVING,
+    STEP_ROTATION_PHASE,
+    STEP_REGISTRATION,
+    STEP_SEGMENTATION_PHASE,
+    STEP_STACKING,
+    STEP_STACK_PROCESSING,
 ]
 
 
@@ -240,6 +252,15 @@ class ExperimentProcessor:
         save_cropped: bool = False,
         render_images: bool = False,
         scalebar_um: float = 10.0,
+        enable_stacking: bool = False,
+        enable_registration: bool = False,
+        registration_method: str = "ncc",
+        reference_frame: int = 0,
+        max_translation: int = 20,
+        registration_padding: int = 50,
+        max_fails: int = 5,
+        render_stacks: bool = False,
+        stack_video_fps: float = 5.0,
     ):
         """Initialize the experiment processor.
 
@@ -252,6 +273,15 @@ class ExperimentProcessor:
             save_cropped: If True, save cropped images alongside masks
             render_images: If True, save rendered visualization images
             scalebar_um: Scalebar width in micrometers for rendered images
+            enable_stacking: If True, enable time-lapse stacking mode
+            enable_registration: If True, enable translation-based registration
+            registration_method: Registration method: 'ncc' or 'phase' (default: 'ncc')
+            reference_frame: Reference timepoint index for registration
+            max_translation: Maximum translation search range in pixels
+            registration_padding: Padding around marker region in pixels
+            max_fails: Maximum failed frames before failing stack
+            render_stacks: If True, render visualizations and videos for stacks
+            stack_video_fps: Frame rate for stack time-lapse videos
         """
         self.pixel_size = pixel_size
         self.device = device
@@ -259,6 +289,15 @@ class ExperimentProcessor:
         self.save_cropped = save_cropped
         self.render_images = render_images
         self.scalebar_um = scalebar_um
+        self.enable_stacking = enable_stacking
+        self.enable_registration = enable_registration
+        self.registration_method = registration_method
+        self.reference_frame = reference_frame
+        self.max_translation = max_translation
+        self.registration_padding = registration_padding
+        self.max_fails = max_fails
+        self.render_stacks = render_stacks
+        self.stack_video_fps = stack_video_fps
 
         # Initialize SAK structure library (provides polygon and marker configs)
         self.structure_library = SAKRoIStructureLibrary(
@@ -293,13 +332,33 @@ class ExperimentProcessor:
         if structure_name not in self._chamber_cache:
             roi_polygon = self.structure_library.polygon_library[structure_name]
             marker_group = self.structure_library.marker_group_configs[structure_name]
-            self._chamber_cache[structure_name] = {
+
+            components = {
                 "roi_polygon": roi_polygon,
                 "marker_group": marker_group,
                 "matching_step": MarkerMatchingStep(marker_group, tolerance=60),
                 "rotation_step": ImageRotationStep(),
                 "masking_step": RoIMaskingStep(marker_group, roi_polygon),
             }
+
+            # Add registration if enabled
+            if self.enable_registration:
+                from dmc_masking import PhaseCorrelationRegistration, TimelapseRegistration
+
+                if self.registration_method == "phase":
+                    components["registration"] = PhaseCorrelationRegistration(
+                        marker_group_pixel=marker_group,
+                        padding=self.registration_padding,
+                    )
+                else:
+                    components["registration"] = TimelapseRegistration(
+                        marker_group_pixel=marker_group,
+                        max_translation=self.max_translation,
+                        padding=self.registration_padding,
+                        device=self.device,
+                    )
+
+            self._chamber_cache[structure_name] = components
         return self._chamber_cache[structure_name]
 
     def process_image(
@@ -339,7 +398,7 @@ class ExperimentProcessor:
 
         # Step 2: Get structure from roi_id
         try:
-            structure_name, roi_polygon, marker_group = self.structure_library(roi_id)
+            structure_name, _roi_polygon, _marker_group = self.structure_library(roi_id)
             result.structure_name = structure_name
             components = self._get_chamber_components(structure_name)
         except Exception as e:
@@ -480,6 +539,659 @@ class ExperimentProcessor:
         result.success = True
         return result
 
+    def process_timelapse_stack(
+        self,
+        timelapse_df: pd.DataFrame,
+        roi_id: str,
+        roi_output_dir: Path,
+    ) -> tuple[ImageResult, pd.DataFrame]:
+        """Process a time-lapse stack for a single ROI.
+
+        Args:
+            timelapse_df: DataFrame with metadata for all frames in this ROI
+            roi_id: ROI identifier
+            roi_output_dir: Output directory for this ROI (e.g., output_dir/roi_0000/)
+
+        Returns:
+            Tuple of (overall_result, enhanced_metadata_df)
+        """
+        # Make a copy to avoid modifying input
+        meta_df = timelapse_df.copy()
+        n_frames = len(meta_df)
+
+        if self.verbose:
+            print(f"\nProcessing time-lapse stack for ROI {roi_id} ({n_frames} frames)")
+
+        # Initialize processing status columns
+        meta_df["processing_success"] = False
+        meta_df["failed_step"] = ""
+        meta_df["error_message"] = ""
+        meta_df["n_cells"] = 0
+        meta_df["registration_dx"] = 0.0
+        meta_df["registration_dy"] = 0.0
+        meta_df["registration_score"] = float("nan")
+
+        # Overall result for the stack
+        overall_result = ImageResult(image_file=f"stack_{roi_id}", roi_id=roi_id)
+
+        # Get structure configuration
+        try:
+            structure_name, _roi_polygon, _marker_group = self.structure_library(roi_id)
+            overall_result.structure_name = structure_name
+            components = self._get_chamber_components(structure_name)
+        except Exception as e:
+            overall_result.failed_step = STEP_STRUCTURE
+            overall_result.error_message = str(e)
+            return overall_result, meta_df
+
+        # Storage for per-frame results
+        frame_results = []
+
+        # Phase 1: Process all frames through rotation (with per-frame error handling)
+        if self.verbose:
+            print("Phase 1: Loading and rotating frames...")
+
+        for _idx, row in meta_df.iterrows():
+            frame_status = {
+                "timepoint": row["timepoint"],
+                "image_path": row["image_file"],
+                "success": False,
+                "failed_step": None,
+                "error": "",
+                "has_rotation_result": False,
+                "rotation_result": None,
+                "has_segmentation_result": False,
+                "n_cells": 0,
+                "dx": 0.0,
+                "dy": 0.0,
+                "reg_score": float("nan"),
+            }
+
+            # Initialize variables for exception handling
+            detection_result = None
+            matched_indices = []
+
+            try:
+                # Load image
+                image_path = Path(row["image_file"])
+                if not image_path.is_absolute():
+                    # Assume relative to dataset dir (handled by caller)
+                    pass
+                image = load_image(image_path)
+                if image is None or image.size == 0:
+                    raise ValueError("Image is empty or failed to load")
+
+                # Detect markers
+                detection_result = self.detection_step(image)
+                # Match markers
+                matching_result = components["matching_step"](detection_result)
+                matched_indices = matching_result.get("matched_marker_indices", [])
+                if not matched_indices:
+                    raise ValueError("No valid marker pairs found")
+
+                # Rotate image
+                rotation_result = components["rotation_step"](matching_result)
+
+                # Store successful rotation result
+                frame_status["has_rotation_result"] = True
+                frame_status["rotation_result"] = rotation_result
+
+            except Exception as e:
+                # Determine which step failed
+                if detection_result is None:
+                    frame_status["failed_step"] = "marker_detection"
+                elif not matched_indices:
+                    frame_status["failed_step"] = "marker_matching"
+                else:
+                    frame_status["failed_step"] = "rotation"
+                frame_status["error"] = str(e)
+                if self.verbose:
+                    print(
+                        f"  Frame {frame_status['timepoint']}: Failed at {frame_status['failed_step']}"
+                    )
+
+            frame_results.append(frame_status)
+
+        # Check failure threshold after rotation phase
+        n_failed_rotation = sum(1 for f in frame_results if not f["has_rotation_result"])
+        if n_failed_rotation > self.max_fails:
+            overall_result.failed_step = STEP_ROTATION_PHASE
+            overall_result.error_message = (
+                f"Too many frames failed rotation: {n_failed_rotation} > {self.max_fails}"
+            )
+            # Update metadata with failure info
+            for idx, frame_status in enumerate(frame_results):
+                meta_df.loc[idx, "processing_success"] = frame_status["success"]
+                meta_df.loc[idx, "failed_step"] = frame_status["failed_step"] or ""
+                meta_df.loc[idx, "error_message"] = frame_status["error"]
+            # Save metadata even on failure for debugging
+            try:
+                roi_output_dir.mkdir(parents=True, exist_ok=True)
+                meta_df.to_csv(roi_output_dir / "meta.csv", index=False)
+            except Exception:
+                pass
+            return overall_result, meta_df
+
+        # Phase 2: Optional registration (with per-frame error handling)
+        if self.enable_registration and "registration" in components:
+            if self.verbose:
+                print("Phase 2: Computing registration translations...")
+
+            registration = components["registration"]
+
+            # Get reference frame
+            ref_idx = self.reference_frame
+            if ref_idx >= len(frame_results) or not frame_results[ref_idx]["has_rotation_result"]:
+                # Find first successful frame as reference
+                ref_idx = next(
+                    (i for i, f in enumerate(frame_results) if f["has_rotation_result"]), None
+                )
+                if ref_idx is None:
+                    overall_result.failed_step = STEP_REGISTRATION
+                    overall_result.error_message = "No successful frames for registration"
+                    return overall_result, meta_df
+
+            ref_rotation_result = frame_results[ref_idx]["rotation_result"]
+            ref_image = ref_rotation_result["image"]
+
+            # Convert to numpy HWC if tensor
+            if isinstance(ref_image, torch.Tensor):
+                ref_image_np = ref_image.cpu().numpy()
+                if ref_image_np.ndim == 3 and ref_image_np.shape[0] <= 4:
+                    ref_image_np = np.moveaxis(ref_image_np, 0, -1)  # CHW -> HWC
+            else:
+                ref_image_np = ref_image
+
+            # Set reference frame translation to identity
+            frame_results[ref_idx]["dx"] = 0.0
+            frame_results[ref_idx]["dy"] = 0.0
+            frame_results[ref_idx]["reg_score"] = 1.0
+
+            # Compute translation for each successful frame
+            for i, frame_status in enumerate(frame_results):
+                if not frame_status["has_rotation_result"]:
+                    continue
+                if i == ref_idx:
+                    continue  # Skip reference frame
+
+                try:
+                    target_result = frame_status["rotation_result"]
+                    target_image = target_result["image"]
+
+                    # Convert to numpy HWC if tensor
+                    if isinstance(target_image, torch.Tensor):
+                        target_image_np = target_image.cpu().numpy()
+                        if target_image_np.ndim == 3 and target_image_np.shape[0] <= 4:
+                            target_image_np = np.moveaxis(target_image_np, 0, -1)
+                    else:
+                        target_image_np = target_image
+
+                    # Compute translation
+                    dx, dy, score = registration.compute_translation(
+                        ref_image_np,
+                        target_image_np,
+                    )
+
+                    frame_status["dx"] = dx
+                    frame_status["dy"] = dy
+                    frame_status["reg_score"] = score
+
+                except Exception:
+                    # Registration failed, use identity translation
+                    frame_status["dx"] = 0.0
+                    frame_status["dy"] = 0.0
+                    frame_status["reg_score"] = float("nan")
+                    if self.verbose:
+                        print(
+                            f"  Frame {frame_status['timepoint']}: Registration failed, using identity"
+                        )
+
+        # Phase 3: Segment each frame with optional translation (with per-frame error handling)
+        if self.verbose:
+            print("Phase 3: Segmenting cells in each frame...")
+
+        cropped_images = []
+        cell_masks = []
+        chamber_masks = []
+
+        for _i, frame_status in enumerate(frame_results):
+            if not frame_status["has_rotation_result"]:
+                # Frame failed rotation, will be zero-filled later
+                continue
+
+            try:
+                rotation_result = frame_status["rotation_result"]
+
+                # Apply translation if registration enabled
+                if self.enable_registration and "registration" in components:
+                    registration = components["registration"]
+                    dx, dy = frame_status["dx"], frame_status["dy"]
+
+                    # Apply translation to rotated image
+                    rotated_image = rotation_result["image"]
+                    translated_image = registration.apply_translation(
+                        rotated_image,
+                        -dx,
+                        -dy,
+                        return_tensor=isinstance(rotated_image, torch.Tensor),
+                    )
+                    rotation_result["image"] = translated_image
+
+                # Apply masking and cropping
+                masking_result = components["masking_step"](rotation_result)
+
+                # Get cropped image and chamber mask
+                cropped_image = masking_result["image"]
+                chamber_mask = masking_result["mask"]
+
+                # Ensure HWC format for cropped image
+                if cropped_image.ndim == 3 and cropped_image.shape[0] <= 4:
+                    cropped_image = np.moveaxis(cropped_image, 0, -1)
+
+                # Segment cells (same format as single-image mode)
+                cropped_rgb = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB)
+                height, width = cropped_rgb.shape[:2]
+                segm_input = cropped_rgb[None, :, :, :].astype(np.uint8)  # TxHxWxC
+                source = THWCSequenceSource(segm_input)
+
+                with torch.no_grad():
+                    segmentation_result = self.segmenter(source.to_channel(0))
+
+                # Extract instance-labeled mask (binary_mask=False gives uint16 labels)
+                masks = segmentation_result.toMasks(height, width, binary_mask=False)
+                labeled_mask = masks[0]  # First (only) frame
+
+                # Store results
+                frame_status["has_segmentation_result"] = True
+                frame_status["success"] = True
+                frame_status["n_cells"] = int(np.max(labeled_mask))
+
+                cropped_images.append(cropped_image)
+                cell_masks.append(labeled_mask)
+                chamber_masks.append(chamber_mask)
+
+            except Exception as e:
+                frame_status["failed_step"] = frame_status["failed_step"] or "segmentation"
+                frame_status["error"] = str(e)
+                if self.verbose:
+                    print(f"  Frame {frame_status['timepoint']}: Segmentation failed - {e}")
+
+        # Check failure threshold after segmentation
+        n_failed_total = sum(1 for f in frame_results if not f["success"])
+        if n_failed_total > self.max_fails:
+            overall_result.failed_step = STEP_SEGMENTATION_PHASE
+            overall_result.error_message = (
+                f"Too many frames failed: {n_failed_total} > {self.max_fails}"
+            )
+            # Update metadata
+            for idx, frame_status in enumerate(frame_results):
+                meta_df.loc[idx, "processing_success"] = frame_status["success"]
+                meta_df.loc[idx, "failed_step"] = frame_status["failed_step"] or ""
+                meta_df.loc[idx, "error_message"] = frame_status["error"]
+                meta_df.loc[idx, "n_cells"] = frame_status["n_cells"]
+                meta_df.loc[idx, "registration_dx"] = frame_status["dx"]
+                meta_df.loc[idx, "registration_dy"] = frame_status["dy"]
+                meta_df.loc[idx, "registration_score"] = frame_status["reg_score"]
+            # Save metadata even on failure for debugging
+            try:
+                roi_output_dir.mkdir(parents=True, exist_ok=True)
+                meta_df.to_csv(roi_output_dir / "meta.csv", index=False)
+            except Exception:
+                pass
+            return overall_result, meta_df
+
+        # Phase 4: Homogenize sizes and create stacks (with zero-filling for failed frames)
+        if self.verbose:
+            print("Phase 4: Creating stacks...")
+
+        successful_frames = [f for f in frame_results if f["has_segmentation_result"]]
+        if not successful_frames:
+            overall_result.failed_step = STEP_STACKING
+            overall_result.error_message = "No successful frames to stack"
+            # Update metadata before returning
+            for idx, frame_status in enumerate(frame_results):
+                meta_df.loc[idx, "processing_success"] = frame_status["success"]
+                meta_df.loc[idx, "failed_step"] = frame_status["failed_step"] or ""
+                meta_df.loc[idx, "error_message"] = frame_status["error"]
+                meta_df.loc[idx, "n_cells"] = frame_status["n_cells"]
+                meta_df.loc[idx, "registration_dx"] = frame_status["dx"]
+                meta_df.loc[idx, "registration_dy"] = frame_status["dy"]
+                meta_df.loc[idx, "registration_score"] = frame_status["reg_score"]
+            # Save metadata even on failure for debugging
+            try:
+                roi_output_dir.mkdir(parents=True, exist_ok=True)
+                meta_df.to_csv(roi_output_dir / "meta.csv", index=False)
+                if self.verbose:
+                    print(f"  Saved failed stack metadata to {roi_output_dir / 'meta.csv'}")
+            except Exception:
+                pass  # Don't let metadata save failure mask the real error
+            return overall_result, meta_df
+
+        # Determine max dimensions from successful frames
+        shapes = np.array([img.shape for img in cropped_images])
+        max_height = np.max(shapes[:, 0])
+        max_width = np.max(shapes[:, 1])
+        n_channels = cropped_images[0].shape[2] if cropped_images[0].ndim == 3 else 1
+
+        # Create stacks with zero-filling for failed frames
+        image_stack_list = []
+        mask_stack_list = []
+        chamber_mask_stack_list = []
+
+        success_idx = 0  # Index into successful frame arrays
+        for _i, frame_status in enumerate(frame_results):
+            if frame_status["has_segmentation_result"]:
+                # Successful frame - pad to max dimensions
+                img = cropped_images[success_idx]
+                cell_mask = cell_masks[success_idx]
+                chamber_mask = chamber_masks[success_idx]
+
+                img_h, img_w = img.shape[:2]
+                ph = max_height - img_h
+                pw = max_width - img_w
+
+                if img.ndim == 3:
+                    img_padded = np.pad(img, [(0, ph), (0, pw), (0, 0)], mode="constant")
+                else:
+                    img_padded = np.pad(img, [(0, ph), (0, pw)], mode="constant")
+
+                cell_mask_padded = np.pad(cell_mask, [(0, ph), (0, pw)], mode="constant")
+                chamber_mask_padded = np.pad(chamber_mask, [(0, ph), (0, pw)], mode="constant")
+
+                image_stack_list.append(img_padded)
+                mask_stack_list.append(cell_mask_padded)
+                chamber_mask_stack_list.append(chamber_mask_padded)
+
+                success_idx += 1
+            else:
+                # Failed frame - create zero arrays
+                if n_channels > 1:
+                    zero_img = np.zeros((max_height, max_width, n_channels), dtype=np.uint8)
+                else:
+                    zero_img = np.zeros((max_height, max_width), dtype=np.uint8)
+                zero_cell_mask = np.zeros((max_height, max_width), dtype=np.uint16)
+                zero_chamber_mask = np.zeros((max_height, max_width), dtype=np.uint8)
+
+                image_stack_list.append(zero_img)
+                mask_stack_list.append(zero_cell_mask)
+                chamber_mask_stack_list.append(zero_chamber_mask)
+
+        # Stack into numpy arrays
+        image_stack = np.stack(image_stack_list, axis=0)  # TxHxWxC or TxHxW
+        cell_mask_stack = np.stack(mask_stack_list, axis=0)  # TxHxW
+        chamber_mask_stack = np.stack(chamber_mask_stack_list, axis=0)  # TxHxW
+
+        # Phase 5: Save outputs
+        if self.verbose:
+            print("Phase 5: Saving stacks...")
+
+        try:
+            roi_output_dir.mkdir(parents=True, exist_ok=True)
+
+            # Save cell masks (uint16, compressed)
+            tifffile.imwrite(
+                roi_output_dir / "stack.tif",
+                cell_mask_stack.astype(np.uint16),
+                compression="zlib",
+                compressionargs={"level": 6},
+                metadata={"axes": "TYX"},
+            )
+
+            # Save chamber masks (uint8, compressed)
+            tifffile.imwrite(
+                roi_output_dir / "stack_chamber.tif",
+                chamber_mask_stack.astype(np.uint8),
+                compression="zlib",
+                compressionargs={"level": 6},
+                metadata={"axes": "TYX"},
+            )
+
+            # Save cropped images (optional, uint8, compressed)
+            if self.save_cropped:
+                # Convert TxHxWxC to TxCxHxW for TIFF
+                if image_stack.ndim == 4:
+                    image_stack_tcyx = np.moveaxis(image_stack, -1, 1)
+                    axes = "TCYX"
+                else:
+                    image_stack_tcyx = image_stack[:, None, :, :]  # Add channel dim
+                    axes = "TCYX"
+
+                tifffile.imwrite(
+                    roi_output_dir / "stack_cropped.tif",
+                    image_stack_tcyx.astype(np.uint8),
+                    compression="zlib",
+                    compressionargs={"level": 6},
+                    metadata={"axes": axes},
+                )
+
+            # Render stack visualizations and create video (optional)
+            if self.render_stacks:
+                if self.verbose:
+                    print("  Rendering frame visualizations and creating video...")
+
+                render_dir = roi_output_dir / "rendered"
+                render_dir.mkdir(exist_ok=True)
+
+                rendered_frames = []
+                success_idx = 0
+
+                for t, frame_status in enumerate(frame_results):
+                    if frame_status["has_segmentation_result"]:
+                        # Get the actual frame data
+                        img = cropped_images[success_idx]
+                        mask = cell_masks[success_idx]
+                        chamber = chamber_masks[success_idx]
+
+                        # Render visualization
+                        try:
+                            rendered = render_cropped_visualization(
+                                cropped_image=img.astype(np.uint8),
+                                labeled_mask=mask,
+                                chamber_mask=chamber,
+                                pixel_size=self.pixel_size,
+                                scalebar_um=self.scalebar_um,
+                                alpha=0.5,
+                            )
+
+                            # Add frame number and timestamp annotation
+                            # Try to get timestamp from metadata
+                            if "time" in meta_df.columns:
+                                timestamp = meta_df.loc[t, "time"]
+                            elif "timestamp" in meta_df.columns:
+                                timestamp = meta_df.loc[t, "timestamp"]
+                            else:
+                                timestamp = t
+                            annotation_text = (
+                                f"Frame {t} | t={timestamp:.2f} | Cells={frame_status['n_cells']}"
+                            )
+                            cv2.putText(
+                                rendered,
+                                annotation_text,
+                                (10, 30),
+                                cv2.FONT_HERSHEY_SIMPLEX,
+                                0.7,
+                                (255, 255, 255),
+                                2,
+                                cv2.LINE_AA,
+                            )
+
+                            # Save frame
+                            frame_path = render_dir / f"frame_{t:03d}.png"
+                            cv2.imwrite(str(frame_path), cv2.cvtColor(rendered, cv2.COLOR_RGB2BGR))
+                            rendered_frames.append(rendered)
+
+                        except Exception as e:
+                            if self.verbose:
+                                print(f"    Warning: Failed to render frame {t}: {e}")
+
+                        success_idx += 1
+                    else:
+                        # Failed frame - create a black frame with error message
+                        if len(rendered_frames) > 0:
+                            # Use same size as previous frames
+                            h, w = rendered_frames[0].shape[:2]
+                        else:
+                            h, w = 512, 512  # Default size
+
+                        black_frame = np.zeros((h, w, 3), dtype=np.uint8)
+                        error_text = f"Frame {t}: FAILED"
+                        cv2.putText(
+                            black_frame,
+                            error_text,
+                            (w // 2 - 100, h // 2),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            1.0,
+                            (0, 0, 255),
+                            2,
+                            cv2.LINE_AA,
+                        )
+
+                        frame_path = render_dir / f"frame_{t:03d}.png"
+                        cv2.imwrite(str(frame_path), black_frame)
+                        rendered_frames.append(cv2.cvtColor(black_frame, cv2.COLOR_BGR2RGB))
+
+                # Create video from rendered frames
+                if rendered_frames:
+                    video_path = roi_output_dir / "timelapse.mp4"
+                    try:
+                        h, w = rendered_frames[0].shape[:2]
+                        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                        video_writer = cv2.VideoWriter(
+                            str(video_path),
+                            fourcc,
+                            self.stack_video_fps,
+                            (w, h),
+                        )
+
+                        for frame_rgb in rendered_frames:
+                            frame_bgr = cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR)
+                            video_writer.write(frame_bgr)
+
+                        video_writer.release()
+
+                        if self.verbose:
+                            print(
+                                f"    Video saved: {video_path.name} ({len(rendered_frames)} frames @ {self.stack_video_fps} fps)"
+                            )
+
+                    except Exception as e:
+                        if self.verbose:
+                            print(f"    Warning: Failed to create video: {e}")
+
+            # Update metadata DataFrame
+            for idx, frame_status in enumerate(frame_results):
+                meta_df.loc[idx, "processing_success"] = frame_status["success"]
+                meta_df.loc[idx, "failed_step"] = frame_status["failed_step"] or ""
+                meta_df.loc[idx, "error_message"] = frame_status["error"]
+                meta_df.loc[idx, "n_cells"] = frame_status["n_cells"]
+                meta_df.loc[idx, "registration_dx"] = frame_status["dx"]
+                meta_df.loc[idx, "registration_dy"] = frame_status["dy"]
+                meta_df.loc[idx, "registration_score"] = frame_status["reg_score"]
+
+            # Save enhanced metadata
+            meta_df.to_csv(roi_output_dir / "meta.csv", index=False)
+
+            # Mark overall success
+            overall_result.success = True
+            overall_result.n_cells = int(np.max(cell_mask_stack))
+
+        except Exception as e:
+            overall_result.failed_step = STEP_SAVING
+            overall_result.error_message = str(e)
+            return overall_result, meta_df
+
+        if self.verbose:
+            print(f"  Successfully processed {len(successful_frames)}/{n_frames} frames")
+
+        return overall_result, meta_df
+
+
+def validate_roi_stack_complete(
+    roi_output_dir: Path,
+    save_cropped: bool = False,
+    render_stacks: bool = False,
+    verbose: bool = False,
+) -> bool:
+    """Check if an ROI stack has been fully and correctly processed.
+
+    Args:
+        roi_output_dir: Path to ROI output directory (e.g., output/roi_0000/)
+        save_cropped: Whether cropped images should be present
+        render_stacks: Whether rendered frames should be present
+        verbose: Print validation details
+
+    Returns:
+        True if ROI is complete and valid, False otherwise
+    """
+    if not roi_output_dir.exists():
+        return False
+
+    # Check required files
+    required_files = [
+        roi_output_dir / "stack.tif",
+        roi_output_dir / "stack_chamber.tif",
+        roi_output_dir / "meta.csv",
+    ]
+
+    for file_path in required_files:
+        if not file_path.exists():
+            if verbose:
+                print(f"    Missing required file: {file_path.name}")
+            return False
+
+    # Check optional files based on settings
+    if save_cropped:
+        cropped_stack = roi_output_dir / "stack_cropped.tif"
+        if not cropped_stack.exists():
+            if verbose:
+                print(f"    Missing cropped stack: {cropped_stack.name}")
+            return False
+
+    # Validate metadata
+    try:
+        meta_df = pd.read_csv(roi_output_dir / "meta.csv")
+
+        # Check required columns
+        required_cols = ["timepoint", "processing_success", "failed_step", "n_cells"]
+        missing_cols = [col for col in required_cols if col not in meta_df.columns]
+        if missing_cols:
+            if verbose:
+                print(f"    Metadata missing columns: {missing_cols}")
+            return False
+
+        # Check if at least some frames were successful
+        n_success = meta_df["processing_success"].sum()
+        if n_success == 0:
+            if verbose:
+                print("    No successful frames in metadata")
+            return False
+
+        # Validate TIFF files are readable
+        try:
+            cell_stack = tifffile.imread(roi_output_dir / "stack.tif")
+            tifffile.imread(roi_output_dir / "stack_chamber.tif")  # verify readable
+
+            # Check dimensions match metadata
+            n_frames_meta = len(meta_df)
+            n_frames_stack = cell_stack.shape[0] if cell_stack.ndim >= 3 else 1
+
+            if n_frames_stack != n_frames_meta:
+                if verbose:
+                    print(f"    Frame count mismatch: stack={n_frames_stack}, meta={n_frames_meta}")
+                return False
+
+        except Exception as e:
+            if verbose:
+                print(f"    Failed to read stack files: {e}")
+            return False
+
+        return True
+
+    except Exception as e:
+        if verbose:
+            print(f"    Metadata validation error: {e}")
+        return False
+
 
 def save_debug_visualization(result: ImageResult, output_path: Path) -> None:
     """Save debug visualization for a failed image.
@@ -576,8 +1288,8 @@ def generate_summary(results: list[ImageResult]) -> str:
         "| Metric | Value |",
         "|--------|-------|",
         f"| Total Images | {total} |",
-        f"| Passed | {passed} ({100*passed/total:.1f}%) |" if total > 0 else "| Passed | 0 |",
-        f"| Failed | {failed} ({100*failed/total:.1f}%) |" if total > 0 else "| Failed | 0 |",
+        f"| Passed | {passed} ({100 * passed / total:.1f}%) |" if total > 0 else "| Passed | 0 |",
+        f"| Failed | {failed} ({100 * failed / total:.1f}%) |" if total > 0 else "| Failed | 0 |",
         f"| Total Cells | {total_cells} |",
         "",
     ]
@@ -716,7 +1428,13 @@ Output structure:
         "--max-images",
         type=int,
         default=None,
-        help="Limit number of images to process (for testing)",
+        help="Limit number of images to process in single-image mode (for testing)",
+    )
+    parser.add_argument(
+        "--max-rois",
+        type=int,
+        default=None,
+        help="Limit number of ROIs to process in stacking mode (for testing)",
     )
     parser.add_argument(
         "--verbose",
@@ -743,6 +1461,62 @@ Output structure:
         type=float,
         default=10.0,
         help="Scalebar width in micrometers for rendered images (default: 10)",
+    )
+    parser.add_argument(
+        "--enable-stacking",
+        action="store_true",
+        help="Enable time-lapse stacking mode (groups images by roi_id and timestamp)",
+    )
+    parser.add_argument(
+        "--enable-registration",
+        action="store_true",
+        help="Enable translation-only registration to align frames in time-lapse stacks",
+    )
+    parser.add_argument(
+        "--registration-method",
+        choices=["ncc", "phase"],
+        default="ncc",
+        help="Registration method: 'ncc' (normalized cross-correlation) or 'phase' (phase correlation). Default: ncc",
+    )
+    parser.add_argument(
+        "--reference-frame",
+        type=int,
+        default=0,
+        help="Reference timepoint index for registration (default: 0)",
+    )
+    parser.add_argument(
+        "--max-translation",
+        type=int,
+        default=20,
+        help="Maximum translation search range in pixels (default: 20)",
+    )
+    parser.add_argument(
+        "--registration-padding",
+        type=int,
+        default=50,
+        help="Padding around marker region for registration in pixels (default: 50)",
+    )
+    parser.add_argument(
+        "--max-fails",
+        type=int,
+        default=5,
+        help="Maximum number of failed frames before failing entire stack (default: 5)",
+    )
+    parser.add_argument(
+        "--render-stacks",
+        action="store_true",
+        help="Render visualizations for each frame in stacks and create time-lapse videos",
+    )
+    parser.add_argument(
+        "--stack-video-fps",
+        type=float,
+        default=5.0,
+        help="Frame rate for stack time-lapse videos (default: 5.0 fps)",
+    )
+    parser.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="Skip ROIs that have already been processed successfully",
     )
 
     args = parser.parse_args()
@@ -829,63 +1603,205 @@ Output structure:
         save_cropped=args.save_cropped,
         render_images=args.render_images,
         scalebar_um=args.scalebar_size,
+        enable_stacking=args.enable_stacking,
+        enable_registration=args.enable_registration,
+        registration_method=args.registration_method,
+        reference_frame=args.reference_frame,
+        max_translation=args.max_translation,
+        registration_padding=args.registration_padding,
+        max_fails=args.max_fails,
+        render_stacks=args.render_stacks,
+        stack_video_fps=args.stack_video_fps,
     )
 
-    # Process images
-    print(f"\nProcessing {len(df)} images...")
+    # Copy input metadata to output directory for reference
+    output_meta_path = args.output_dir / "meta.csv"
+    df.to_csv(output_meta_path, index=False)
+    print(f"Input metadata copied to: {output_meta_path}")
+
     results = []
 
-    for i, row in enumerate(df.itertuples(), 1):
-        image_file = row.image_file
-        roi_id = str(row.roi_id)
+    # Check if stacking mode is enabled
+    if args.enable_stacking:
+        # Time-lapse stacking mode
+        print("\n=== TIME-LAPSE STACKING MODE ===")
 
-        # Construct paths
-        image_path = image_base_dir / image_file
-        output_name = Path(image_file).stem + ".tif"
-        output_path = args.output_dir / output_name
-
-        cropped_output_path = None
-        if cropped_dir is not None:
-            cropped_output_path = cropped_dir / output_name
-
-        # Render output paths (PNG format)
-        render_cropped_path = None
-        render_uncropped_path = None
-        if render_cropped_dir is not None:
-            render_output_name = Path(image_file).stem + ".png"
-            render_cropped_path = render_cropped_dir / render_output_name
-        if render_uncropped_dir is not None:
-            render_output_name = Path(image_file).stem + ".png"
-            render_uncropped_path = render_uncropped_dir / render_output_name
-
-        # Progress output
-        if args.verbose:
-            print(f"[{i}/{len(df)}] Processing {image_file} (roi_id={roi_id})...")
+        # Check for time/timestamp column
+        time_col = None
+        if "time" in df.columns:
+            time_col = "time"
+        elif "timestamp" in df.columns:
+            time_col = "timestamp"
         else:
-            print(f"[{i}/{len(df)}] {image_file}", end=" ")
+            raise ValueError(
+                "Stacking mode requires 'time' or 'timestamp' column in metadata. "
+                f"Available columns: {list(df.columns)}"
+            )
 
-        # Process image
-        result = processor.process_image(
-            image_path=image_path,
-            roi_id=roi_id,
-            output_path=output_path,
-            cropped_output_path=cropped_output_path,
-            render_cropped_path=render_cropped_path,
-            render_uncropped_path=render_uncropped_path,
-        )
-        results.append(result)
+        print(f"Using '{time_col}' column for temporal ordering")
 
-        # Status output
-        if result.success:
-            if args.verbose:
-                print(f"  -> PASSED ({result.n_cells} cells)")
-            else:
-                print(f"-> OK ({result.n_cells} cells)")
+        # Make image paths absolute if they're relative
+        if "image_file" in df.columns:
+            df["image_file"] = df["image_file"].apply(
+                lambda x: str(image_base_dir / x) if not Path(x).is_absolute() else x
+            )
+
+        # Group by roi_id and sort by timestamp
+        print(f"\nGrouping by roi_id and sorting by {time_col}...")
+        grouped = df.groupby("roi_id")
+        n_rois_total = len(grouped)
+        print(f"Found {n_rois_total} unique ROI(s)")
+
+        # Limit ROIs if requested
+        if args.max_rois is not None and args.max_rois < n_rois_total:
+            # Convert to list to enable slicing
+            grouped_list = list(grouped)[: args.max_rois]
+            n_rois = args.max_rois
+            print(f"Processing first {n_rois} ROI(s) (--max-rois)")
         else:
+            grouped_list = list(grouped)
+            n_rois = n_rois_total
+
+        # Process each ROI stack
+        for roi_idx, (roi_id, roi_df) in enumerate(grouped_list, 1):
+            roi_id_str = str(roi_id).zfill(4)  # Pad with zeros
+
+            # Sort by timestamp and assign timepoint indices
+            roi_df = roi_df.sort_values(time_col).reset_index(drop=True)
+            roi_df["timepoint"] = range(len(roi_df))
+
+            print(f"\n[{roi_idx}/{n_rois}] Processing ROI {roi_id_str} ({len(roi_df)} frames)...")
+
+            # Create ROI-specific output directory
+            roi_output_dir = args.output_dir / f"roi_{roi_id_str}"
+
+            # Check if ROI should be skipped
+            if args.skip_existing and validate_roi_stack_complete(
+                roi_output_dir,
+                save_cropped=args.save_cropped,
+                render_stacks=args.render_stacks,
+                verbose=args.verbose,
+            ):
+                print("  -> SKIPPED (already processed successfully)")
+                # Load existing result for summary
+                try:
+                    meta_df_existing = pd.read_csv(roi_output_dir / "meta.csv")
+                    n_success = meta_df_existing["processing_success"].sum()
+                    n_total = len(meta_df_existing)
+                    n_cells = meta_df_existing["n_cells"].max()
+
+                    result = ImageResult(
+                        image_file=f"stack_{roi_id_str}",
+                        roi_id=roi_id_str,
+                    )
+                    result.success = True
+                    result.n_cells = int(n_cells) if not pd.isna(n_cells) else 0
+                    result.output_path = str(roi_output_dir / "stack.tif")
+                    results.append(result)
+
+                    if args.verbose:
+                        print(
+                            f"  Loaded existing result: {n_success}/{n_total} frames, {result.n_cells} cells"
+                        )
+                except Exception as e:
+                    if args.verbose:
+                        print(f"  Warning: Failed to load existing metadata: {e}")
+                continue
+
+            roi_output_dir.mkdir(parents=True, exist_ok=True)
+
+            # Process timelapse stack
+            try:
+                result, enhanced_df = processor.process_timelapse_stack(
+                    roi_df.copy(),
+                    roi_id_str,
+                    roi_output_dir,
+                )
+
+                # Store result
+                result.output_path = str(roi_output_dir / "stack.tif")
+                results.append(result)
+
+                # Report status
+                if result.success:
+                    n_success = enhanced_df["processing_success"].sum()
+                    n_total = len(enhanced_df)
+                    print(
+                        f"  -> SUCCESS: {n_success}/{n_total} frames processed ({result.n_cells} cells)"
+                    )
+                else:
+                    print(f"  -> FAILED at {result.failed_step}: {result.error_message}")
+
+            except Exception as e:
+                # Unexpected error during stack processing
+                import traceback
+
+                error_result = ImageResult(
+                    image_file=f"stack_{roi_id_str}",
+                    roi_id=roi_id_str,
+                )
+                error_result.failed_step = STEP_STACK_PROCESSING
+                error_result.error_message = str(e)
+                results.append(error_result)
+                print(f"  -> ERROR: {e}")
+                if args.verbose:
+                    traceback.print_exc()
+
+    else:
+        # Single-image processing mode (original behavior)
+        print(f"\nProcessing {len(df)} images...")
+
+        for i, row in enumerate(df.itertuples(), 1):
+            image_file = row.image_file
+            roi_id = str(row.roi_id)
+
+            # Construct paths
+            image_path = image_base_dir / image_file
+            output_name = Path(image_file).stem + ".tif"
+            output_path = args.output_dir / output_name
+
+            cropped_output_path = None
+            if cropped_dir is not None:
+                cropped_output_path = cropped_dir / output_name
+
+            # Render output paths (PNG format)
+            render_cropped_path = None
+            render_uncropped_path = None
+            if render_cropped_dir is not None:
+                render_output_name = Path(image_file).stem + ".png"
+                render_cropped_path = render_cropped_dir / render_output_name
+            if render_uncropped_dir is not None:
+                render_output_name = Path(image_file).stem + ".png"
+                render_uncropped_path = render_uncropped_dir / render_output_name
+
+            # Progress output
             if args.verbose:
-                print(f"  -> FAILED at {result.failed_step}: {result.error_message}")
+                print(f"[{i}/{len(df)}] Processing {image_file} (roi_id={roi_id})...")
             else:
-                print(f"-> FAILED [{result.failed_step}]")
+                print(f"[{i}/{len(df)}] {image_file}", end=" ")
+
+            # Process image
+            result = processor.process_image(
+                image_path=image_path,
+                roi_id=roi_id,
+                output_path=output_path,
+                cropped_output_path=cropped_output_path,
+                render_cropped_path=render_cropped_path,
+                render_uncropped_path=render_uncropped_path,
+            )
+            results.append(result)
+
+            # Status output
+            if result.success:
+                if args.verbose:
+                    print(f"  -> PASSED ({result.n_cells} cells)")
+                else:
+                    print(f"-> OK ({result.n_cells} cells)")
+            else:
+                if args.verbose:
+                    print(f"  -> FAILED at {result.failed_step}: {result.error_message}")
+                else:
+                    print(f"-> FAILED [{result.failed_step}]")
 
     # Save debug visualizations for failed images
     if debug_dir is not None:

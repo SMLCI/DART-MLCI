@@ -119,13 +119,17 @@ class ProcessImageRequest(BaseModel):
     image: str = Field(description="Base64-encoded image (optionally with data URI prefix)")
     roi_id: str = Field(description="ROI identifier (e.g., '0050')")
     pixel_size: float = Field(default=0.065789, description="Pixel size in microns")
+    chip_name: str | None = Field(
+        default=None,
+        description="Name of the chip design (e.g., 'sak'). Selects from loaded chip configs.",
+    )
     structure_library_path: str | None = Field(
         default=None,
-        description="Optional custom structure library path (deprecated, use chip_config_path)",
+        description="Optional custom structure library path (deprecated, use chip_name)",
     )
     chip_config_path: str | None = Field(
         default=None,
-        description="Optional path to unified chip config JSON (preferred over structure_library_path)",
+        description="Optional path to unified chip config JSON (deprecated, use chip_name)",
     )
     return_uncropped: bool = Field(default=False, description="Return full-size mask")
 

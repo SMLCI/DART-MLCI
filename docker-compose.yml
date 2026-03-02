@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  dmc-masking-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: dmc-masking:latest
+    container_name: dmc-masking-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DMC_MODEL_PATH=/app/artifacts/models/v8_detect_s_imgsz640.pt
+      - DMC_STRUCTURE_LIBRARY_PATH=/app/artifacts/chamber_structure.json
+      - DMC_BLUEPRINT_MAP_PATH=/app/artifacts/sak_blueprint_map.csv
+      - DMC_CHIP_CONFIGS_DIR=/app/artifacts/chips/
+      - DMC_PIXEL_SIZE=0.065789
+      # Optional: specify device (cuda:0 or cpu)
+      # - DMC_DEVICE=cpu
+    # Uncomment for GPU support (requires nvidia-docker)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

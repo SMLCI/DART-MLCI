@@ -78,20 +78,20 @@ def apply_mask(
     return_uncropped=False,
     return_bbox=False,
 ):
-    """Compute and apply mask to image
+    """Compute and apply mask to image.
 
     Args:
-        matched_marker_indices (_type_): the pair of matched marker indices
-        rotated_markers (_type_): the rotated marker information
-        marker_group_pixels (_type_): the marker group information in pixels
-        roi_polygon (_type_): the shape of the roi polygon (in pixels)
-        rotated_image (_type_): the rotated image
-        return_uncropped: If True, return the full image and mask without cropping
-        return_bbox: If True, also return the crop bounding box (minx, miny, maxx, maxy)
+        matched_marker_indices (list[tuple[int, int]]): Pairs of (cross_idx, circle_idx).
+        rotated_markers (list[dict]): Detected marker dicts after rotation.
+        marker_group_pixels (dict[str, np.ndarray]): Expected marker positions in pixels.
+        roi_polygon (RoIPolygon): The RoI polygon shape (in pixels).
+        rotated_image (np.ndarray): The rotated image (CxHxW or HxW).
+        return_uncropped: If True, return the full image and mask without cropping.
+        return_bbox: If True, also return the crop bounding box (minx, miny, maxx, maxy).
 
     Returns:
-        tuple: (cropped_image, cropped_mask) or (image, mask) if return_uncropped=True
-               If return_bbox=True, returns (image, mask, bbox) tuple
+        tuple: (cropped_image, cropped_mask) or (image, mask) if return_uncropped=True.
+               If return_bbox=True, returns (image, mask, bbox) tuple.
     """
 
     polygons = []

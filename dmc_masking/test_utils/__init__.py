@@ -1,37 +1,12 @@
-"""Test utilities for DMC Masking.
+"""Backward-compatibility shim — prefer ``tests.utils`` for new code."""
 
-This package provides utilities for testing image processing pipelines,
-including pixel-level image comparison and visual regression testing.
-"""
+import warnings
 
-from dmc_masking.test_utils.image_comparison import (
-    ImageComparisonResult,
-    compare_images,
-    compute_mse,
-    compute_psnr,
-    compute_ssim,
-)
-from dmc_masking.test_utils.visual_regression import (
-    DEFAULT_MSE_THRESHOLD,
-    DEFAULT_PSNR_THRESHOLD,
-    DEFAULT_SSIM_THRESHOLD,
-    assert_images_equal,
-    generate_diff_image,
-    load_golden_image,
-    save_golden_image,
+warnings.warn(
+    "dmc_masking.test_utils is deprecated. Use tests.utils instead.",
+    DeprecationWarning,
+    stacklevel=2,
 )
 
-__all__ = [
-    "DEFAULT_MSE_THRESHOLD",
-    "DEFAULT_PSNR_THRESHOLD",
-    "DEFAULT_SSIM_THRESHOLD",
-    "ImageComparisonResult",
-    "assert_images_equal",
-    "compare_images",
-    "compute_mse",
-    "compute_psnr",
-    "compute_ssim",
-    "generate_diff_image",
-    "load_golden_image",
-    "save_golden_image",
-]
+from tests.utils import *  # noqa: F403, E402
+from tests.utils import __all__  # noqa: F401, E402

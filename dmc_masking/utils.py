@@ -1,9 +1,6 @@
 """Utility functionality."""
 
-from pathlib import Path
-
 import numpy as np
-import tifffile
 
 
 def normalize_image(im: np.ndarray, low_quantile=0.01, high_quantile=0.99) -> np.ndarray:
@@ -25,27 +22,21 @@ def normalize_image(im: np.ndarray, low_quantile=0.01, high_quantile=0.99) -> np
     return (np.clip((im - im_min) / (im_max - im_min), 0, 1) * 255).astype(np.uint8)
 
 
-def load_tiff(image_path: Path) -> np.ndarray:
-    """Loading tiff file into uint8 numpy array
+def center_of_mask_mass(mask: np.ndarray) -> tuple[float, float]:
+    """Compute the center of mass of a binary mask.
 
     Args:
-        image_path (Path): path to the tiff file
+        mask: Binary mask array.
 
     Returns:
-        np.ndarray: loaded numpy image in uint8 range [0...255]
+        (x, y) coordinates of the mask center.
     """
-    im_raw = tifffile.imread(image_path)
-
-    return normalize_image(im_raw)
-
-
-def center_of_mask_mass(mask):
     y, x = np.nonzero(mask)
     return np.median(np.unique(x)), np.median(np.unique(y))
 
 
 def homogenize_image_size(result_images: list[np.ndarray]):
-    """Homogneize spatial image dimensions
+    """Homogenize spatial image dimensions
 
     Args:
         result_images (list[np.ndarray]): List of TxHxW images where HxW may differ

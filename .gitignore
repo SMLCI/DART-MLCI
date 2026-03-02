@@ -136,3 +136,22 @@ ENV/
 
 # IDE settings
 .vscode/
+
+# Development debris
+CLAUDE.md
+commit.md
+IMPLEMENTATION_SUMMARY.md
+PHASE_CORRELATION_SUMMARY.md
+PHASE_CORRELATION_USAGE.md
+debug/
+test_quick/
+.batch_result/
+token.env
+test_api_connection.py
+test_docker_api.sh
+upload.sh
+validation_config.json
+artifacts/images/sak/0000_base64.txt
+artifacts/images/sak/0000_request.json
+scripts/calibration_test.json
+scripts/data_prep.ipynb

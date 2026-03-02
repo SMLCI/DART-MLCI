@@ -31,6 +31,9 @@ class Settings:
     chip_config_path: str | None = field(
         default_factory=lambda: os.environ.get("DMC_CHIP_CONFIG_PATH", None)
     )
+    chip_configs_dir: str | None = field(
+        default_factory=lambda: os.environ.get("DMC_CHIP_CONFIGS_DIR", None)
+    )
     device: str | None = field(default_factory=lambda: os.environ.get("DMC_DEVICE", None))
 
     def __post_init__(self):

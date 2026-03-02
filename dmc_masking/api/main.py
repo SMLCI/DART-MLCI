@@ -50,7 +50,24 @@ async def lifespan(app: FastAPI):
         app.state.detection_step = None
         app.state.model_loaded = False
 
-    # Load structure library: prefer chip config, fall back to legacy
+    # Build chip registry from chip_configs_dir
+    app.state.chip_registry: dict[str, ChipStructureLibrary] = {}
+
+    if settings.chip_configs_dir:
+        configs_dir = resolve_path(settings.chip_configs_dir)
+        if configs_dir.is_dir():
+            for json_file in sorted(configs_dir.glob("*.json")):
+                try:
+                    lib = ChipStructureLibrary.from_file(
+                        json_file,
+                        pixel_size=settings.default_pixel_size,
+                    )
+                    chip_key = json_file.stem.lower()
+                    app.state.chip_registry[chip_key] = lib
+                except Exception:
+                    pass  # skip malformed configs
+
+    # Load structure library: prefer chip config, then registry default, then legacy
     app.state.structure_library = None
     if settings.chip_config_path:
         chip_config_path = resolve_path(settings.chip_config_path)
@@ -59,6 +76,10 @@ async def lifespan(app: FastAPI):
                 chip_config_path,
                 pixel_size=settings.default_pixel_size,
             )
+
+    if app.state.structure_library is None and app.state.chip_registry:
+        # Use first loaded chip config as default
+        app.state.structure_library = next(iter(app.state.chip_registry.values()))
 
     if app.state.structure_library is None:
         structure_library_path = resolve_path(settings.structure_library_path)
@@ -86,6 +107,7 @@ async def lifespan(app: FastAPI):
     # Cleanup (if needed)
     app.state.detection_step = None
     app.state.structure_library = None
+    app.state.chip_registry = {}
 
 
 app = FastAPI(
@@ -111,6 +133,13 @@ async def health_check() -> HealthResponse:
     )
 
 
+@app.get("/available-chips", response_model=list[str])
+async def list_available_chips() -> list[str]:
+    """List the names of all loaded chip configurations."""
+    registry = getattr(app.state, "chip_registry", {})
+    return sorted(registry.keys())
+
+
 @app.get("/chamber-types", response_model=list[ChamberType])
 async def list_chamber_types() -> list[ChamberType]:
     """List available chamber structure types and their ROI ID patterns."""
@@ -132,6 +161,7 @@ async def _process_image_from_array(
     structure_library_path: str | None = None,
     return_uncropped: bool = False,
     chip_config_path: str | None = None,
+    chip_name: str | None = None,
 ) -> dict:
     """
     Core processing pipeline accepting numpy array.
@@ -142,6 +172,8 @@ async def _process_image_from_array(
         pixel_size: Pixel size in microns
         structure_library_path: Optional custom structure library
         return_uncropped: Return full-size mask
+        chip_config_path: Optional path to chip config JSON
+        chip_name: Optional chip name to select from registry
 
     Returns:
         Dict with success, cropped_img, cropped_mask, rotation_angle,
@@ -155,9 +187,20 @@ async def _process_image_from_array(
             "error_message": "Model not loaded - check DMC_MODEL_PATH configuration",
         }
 
-    # Load structure library: prefer chip_config_path, then structure_library_path, then default
+    # Load structure library: chip_name → chip_config_path → structure_library_path → default
     structure_library = None
-    if chip_config_path:
+    if chip_name:
+        registry = getattr(app.state, "chip_registry", {})
+        key = chip_name.lower()
+        if key in registry:
+            structure_library = registry[key]
+        else:
+            available = sorted(registry.keys())
+            return {
+                "success": False,
+                "error_message": f"Unknown chip '{chip_name}'. Available: {available}",
+            }
+    elif chip_config_path:
         ccp = resolve_path(chip_config_path)
         if not ccp.exists():
             return {
@@ -297,6 +340,7 @@ async def process_image(request: ProcessImageRequest) -> ProcessImageResponse:
         request.structure_library_path,
         request.return_uncropped,
         chip_config_path=getattr(request, "chip_config_path", None),
+        chip_name=getattr(request, "chip_name", None),
     )
 
     if not result["success"]:
@@ -348,6 +392,7 @@ async def process_image_preview(request: ProcessImageRequest) -> HTMLResponse:
             request.structure_library_path,
             return_uncropped=False,
             chip_config_path=getattr(request, "chip_config_path", None),
+            chip_name=getattr(request, "chip_name", None),
         )
 
     # Handle errors - return error HTML

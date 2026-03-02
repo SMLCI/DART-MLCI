@@ -61,7 +61,7 @@ def _align_phase(reg, target, dx, dy):
 
 
 def _interior_ssim(reference, aligned, dx_true, dy_true, extra_border=5):
-    from dmc_masking.test_utils.image_comparison import compute_ssim
+    from tests.utils.image_comparison import compute_ssim
 
     border = int(max(abs(dx_true), abs(dy_true))) + extra_border
     h, w = reference.shape[:2]
@@ -208,7 +208,7 @@ class TestRegistrationMethodComparison:
         time_phase = (time.time() - start) / n_runs
 
         # Just document — no hard assertion on which is faster
-        print(f"\nNCC: {time_ncc*1000:.1f}ms, Phase: {time_phase*1000:.1f}ms")
+        print(f"\nNCC: {time_ncc * 1000:.1f}ms, Phase: {time_phase * 1000:.1f}ms")
 
 
 # ===================================================================
@@ -345,7 +345,7 @@ class TestWarpBackends:
         assert diff < 10
 
     def test_both_backends_same_direction(self, sak_reference_setup):
-        from dmc_masking.test_utils.image_comparison import compute_ssim
+        from tests.utils.image_comparison import compute_ssim
 
         ref = sak_reference_setup["reference"]
         reg_ncc = sak_reference_setup["reg_ncc"]

@@ -8,6 +8,7 @@ stages:
   - test
   - build
   - docker
+  - release
 
 lint:
   stage: lint
@@ -91,3 +92,22 @@ docker-build:
         docker tag "$CI_REGISTRY_IMAGE:$CI_COMMIT_SHA" "$CI_REGISTRY_IMAGE:$CI_COMMIT_TAG"
         docker push "$CI_REGISTRY_IMAGE:$CI_COMMIT_TAG"
       fi
+
+release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
+  needs:
+    - job: build
+      artifacts: true
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v\d+\.\d+\.\d+/
+  script:
+    - echo "Creating release for $CI_COMMIT_TAG"
+  release:
+    tag_name: $CI_COMMIT_TAG
+    name: "Release $CI_COMMIT_TAG"
+    description: "./CHANGELOG.md"
+    assets:
+      links:
+        - name: "Python wheel"
+          url: "${CI_PROJECT_URL}/-/jobs/${CI_JOB_ID}/artifacts/file/dist/"
