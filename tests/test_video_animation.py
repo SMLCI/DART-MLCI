@@ -121,7 +121,30 @@ class TestVideoAnimation(unittest.TestCase):
         write_frames(writer, frame, int(2 * FPS))
 
         # ==================== STEP 4: ROI Selection ====================
-        selected_pair_idx = 1
+        # Select the pair that apply_mask() will choose (max margin to boundaries)
+        h, w = original_image.shape[:2]
+        best_pair_idx = 0
+        best_margin = -np.inf
+        for pair_idx, (ci, oi) in enumerate(matched_indices):
+            cross_m, circle_m = markers[ci], markers[oi]
+            width = np.abs(cross_m["bbox_center"][0] - circle_m["bbox_center"][0])
+            expected_width = np.abs(
+                marker_group_pixels["cross"][0] - marker_group_pixels["circle"][0]
+            )
+            diff = width - expected_width
+            rp = roi_polygon.translate(
+                x=cross_m["bbox_center"][0] - marker_group_pixels["cross"][0] + diff,
+                y=cross_m["bbox_center"][1] + marker_group_pixels["cross"][1],
+            )
+            xmin, ymin, xmax, ymax = rp.roi_polygon.bounds
+            if xmin < 0 or xmax > w or ymin < 0 or ymax > h:
+                continue
+            margin = min(abs(xmin), abs(w - xmax), abs(ymin), abs(h - ymax))
+            if margin > best_margin:
+                best_margin = margin
+                best_pair_idx = pair_idx
+
+        selected_pair_idx = best_pair_idx
         cross_idx, circle_idx = matched_indices[selected_pair_idx]
         highlight_indices = [cross_idx, circle_idx]
 
@@ -149,7 +172,7 @@ class TestVideoAnimation(unittest.TestCase):
             rotated_result_chw, current_rotated_markers = rotate_image_and_markers(
                 original_image_chw, markers, current_angle
             )
-            rotated_img = np.moveaxis(rotated_result_chw, 0, -1)
+            rotated_img = np.clip(np.moveaxis(rotated_result_chw, 0, -1), 0, 255).astype(np.uint8)
 
             # Render with markers (same visualization as steps 2-4)
             frame = render_markers_to_frame(
@@ -171,7 +194,7 @@ class TestVideoAnimation(unittest.TestCase):
         rotated_result, rotated_markers = rotate_image_and_markers(
             rotated_image_chw, markers, rotation_angle
         )
-        rotated_image_hwc = np.moveaxis(rotated_result, 0, -1)
+        rotated_image_hwc = np.clip(np.moveaxis(rotated_result, 0, -1), 0, 255).astype(np.uint8)
 
         cross_marker = rotated_markers[cross_idx]
         circle_marker = rotated_markers[circle_idx]
