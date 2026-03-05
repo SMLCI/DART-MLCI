@@ -380,6 +380,8 @@ def process_calibration_image(
     pixel_size: float,
     verbose: bool = False,
     collect_debug: bool = False,
+    conf_threshold: float = 0.5,
+    max_angle_deviation: float = 5.0,
 ) -> ImageCalibrationResult:
     """Process a single calibration image.
 
@@ -392,6 +394,9 @@ def process_calibration_image(
         pixel_size: Pixel size in microns
         verbose: Print progress information
         collect_debug: Collect debug data for visualization
+        conf_threshold: Minimum confidence for detected markers (default: 0.5)
+        max_angle_deviation: Maximum allowed range (in degrees) between rotation angles
+            from different marker pairs. If exceeded, the image is rejected. (default: 5.0)
 
     Returns:
         ImageCalibrationResult with microscope position or error
@@ -423,8 +428,12 @@ def process_calibration_image(
         detection_result = detection_step(image)
         markers = detection_result["markers"]
 
+        # Filter markers by confidence threshold
+        markers = [m for m in markers if m.get("conf", 0.0) >= conf_threshold]
+        detection_result["markers"] = markers
+
         if verbose:
-            print(f"    - Markers detected: {len(markers)}")
+            print(f"    - Markers detected: {len(markers)} (conf >= {conf_threshold})")
 
         if debug_data:
             debug_data.markers = markers
@@ -463,6 +472,20 @@ def process_calibration_image(
         angles = compute_marker_group_angles(
             markers, matched_indices, marker_group_pixels, signed=True
         )
+
+        # Check angle consistency across pairs
+        if len(angles) >= 2:
+            angle_range = max(angles) - min(angles)
+            if angle_range > max_angle_deviation:
+                return ImageCalibrationResult(
+                    roi_id=roi_id,
+                    success=False,
+                    microscope_position=None,
+                    z_position=None,
+                    error_message=f"ANGLES: Inconsistent rotation angles (range={angle_range:.2f}° > {max_angle_deviation:.1f}°)",
+                    debug_data=debug_data,
+                )
+
         rotation_angle = np.mean(angles)
 
         if verbose:
@@ -550,7 +573,11 @@ def process_calibration_image(
 
 
 def run_calibration(
-    config: dict, verbose: bool = False, collect_debug: bool = False
+    config: dict,
+    verbose: bool = False,
+    collect_debug: bool = False,
+    conf_threshold: float = 0.5,
+    max_angle_deviation: float = 5.0,
 ) -> tuple[CalibrationResult, Map]:
     """Run the full calibration pipeline.
 
@@ -642,6 +669,8 @@ def run_calibration(
             pixel_size=pixel_size,
             verbose=verbose,
             collect_debug=collect_debug,
+            conf_threshold=conf_threshold,
+            max_angle_deviation=max_angle_deviation,
         )
 
         image_results.append(result)
@@ -1217,11 +1246,21 @@ def calibrate_map(
     if output_dir is not None:
         output_dir = Path(output_dir)
 
+    # Get conf_threshold and max_angle_deviation from config, can be overridden by caller
+    conf_threshold = config.get("conf_threshold", 0.5)
+    max_angle_deviation = config.get("max_angle_deviation", 5.0)
+
     # Collect debug data if output_dir is specified
     collect_debug = output_dir is not None
 
     # Run calibration
-    result, blueprint_map = run_calibration(config, verbose=verbose, collect_debug=collect_debug)
+    result, blueprint_map = run_calibration(
+        config,
+        verbose=verbose,
+        collect_debug=collect_debug,
+        conf_threshold=conf_threshold,
+        max_angle_deviation=max_angle_deviation,
+    )
 
     # Save calibrated map if requested
     if output_path is not None:
@@ -1340,19 +1379,41 @@ JSON config format:
         action="store_true",
         help="Print detailed progress information",
     )
+    parser.add_argument(
+        "--conf-threshold",
+        type=float,
+        default=None,
+        help="Minimum detection confidence threshold (default: 0.5, overrides config)",
+    )
+    parser.add_argument(
+        "--max-angle-deviation",
+        type=float,
+        default=None,
+        help="Maximum allowed rotation angle range across marker pairs in degrees (default: 5.0, overrides config)",
+    )
 
     args = parser.parse_args()
 
     try:
-        # If --chip-config is provided, inject it into the config
+        # If CLI overrides are provided, inject into the config
         config_input = args.config
-        if args.chip_config is not None:
-            # Load the config file, add chip_config_path, pass as dict
+        if (
+            args.chip_config is not None
+            or args.conf_threshold is not None
+            or args.max_angle_deviation is not None
+        ):
+            # Load the config file, add overrides, pass as dict
             config_path = Path(args.config)
             if not config_path.exists():
                 raise FileNotFoundError(f"Config file not found: {config_path}")
-            config_input = load_config(config_path)
-            config_input["chip_config_path"] = str(args.chip_config)
+            if isinstance(config_input, Path):
+                config_input = load_config(config_path)
+            if args.chip_config is not None:
+                config_input["chip_config_path"] = str(args.chip_config)
+            if args.conf_threshold is not None:
+                config_input["conf_threshold"] = args.conf_threshold
+            if args.max_angle_deviation is not None:
+                config_input["max_angle_deviation"] = args.max_angle_deviation
 
         # Run calibration using the function API
         result, _ = calibrate_map(

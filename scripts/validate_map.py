@@ -144,6 +144,8 @@ def process_validation_image(
     pixel_size: float,
     verbose: bool = False,
     collect_debug: bool = False,
+    conf_threshold: float = 0.5,
+    max_angle_deviation: float = 5.0,
 ) -> ValidationResult:
     """Process a single validation image and compute error.
 
@@ -157,6 +159,7 @@ def process_validation_image(
         pixel_size: Pixel size in microns
         verbose: Print progress information
         collect_debug: Collect debug data for visualization
+        conf_threshold: Minimum confidence for detected markers (default: 0.5)
 
     Returns:
         ValidationResult with error or failure reason
@@ -189,8 +192,12 @@ def process_validation_image(
         detection_result = detection_step(image)
         markers = detection_result["markers"]
 
+        # Filter markers by confidence threshold
+        markers = [m for m in markers if m.get("conf", 0.0) >= conf_threshold]
+        detection_result["markers"] = markers
+
         if verbose:
-            print(f"    - Markers detected: {len(markers)}")
+            print(f"    - Markers detected: {len(markers)} (conf >= {conf_threshold})")
 
         if collect_debug:
             debug_data.markers = markers
@@ -232,6 +239,23 @@ def process_validation_image(
         angles = compute_marker_group_angles(
             markers, matched_indices, marker_group_pixels, signed=True
         )
+
+        # Check angle consistency across pairs
+        if len(angles) >= 2:
+            angle_range = max(angles) - min(angles)
+            if angle_range > max_angle_deviation:
+                return ValidationResult(
+                    roi_id=roi_id,
+                    success=False,
+                    map_x=expected_position[0],
+                    map_y=expected_position[1],
+                    measured_x=None,
+                    measured_y=None,
+                    error=None,
+                    error_message=f"ANGLES: Inconsistent rotation angles (range={angle_range:.2f}° > {max_angle_deviation:.1f}°)",
+                    debug_data=debug_data,
+                )
+
         rotation_angle = np.mean(angles)
 
         if verbose:
@@ -335,6 +359,8 @@ def run_validation(
     max_images: int | None = None,
     collect_debug: bool = False,
     debug_output_dir: Path | None = None,
+    conf_threshold: float = 0.5,
+    max_angle_deviation: float = 5.0,
 ) -> ValidationSummary:
     """Run the full validation pipeline.
 
@@ -493,6 +519,8 @@ def run_validation(
             pixel_size=pixel_size,
             verbose=verbose,
             collect_debug=collect_debug,
+            conf_threshold=conf_threshold,
+            max_angle_deviation=max_angle_deviation,
         )
 
         results.append(result)
@@ -651,7 +679,7 @@ def plot_error_map(
         x_positions,
         y_positions,
         c=errors,
-        cmap="RdYlGn_r",
+        cmap="viridis",
         marker="+",
         s=100,
         linewidths=2,
@@ -1000,6 +1028,10 @@ def validate_map(
             print(f"  Debug images will be saved to: {debug_output_dir}")
             print()
 
+    # Get conf_threshold and max_angle_deviation from config
+    conf_threshold = config.get("conf_threshold", 0.5)
+    max_angle_deviation = config.get("max_angle_deviation", 5.0)
+
     # Run validation
     summary = run_validation(
         config,
@@ -1007,6 +1039,8 @@ def validate_map(
         max_images=max_images,
         collect_debug=debug,
         debug_output_dir=debug_output_dir,
+        conf_threshold=conf_threshold,
+        max_angle_deviation=max_angle_deviation,
     )
 
     # Generate outputs
@@ -1095,13 +1129,37 @@ JSON config format:
         action="store_true",
         help="Generate per-image debug visualizations in output_dir/images/",
     )
+    parser.add_argument(
+        "--conf-threshold",
+        type=float,
+        default=None,
+        help="Minimum detection confidence threshold (default: 0.5, overrides config)",
+    )
+    parser.add_argument(
+        "--max-angle-deviation",
+        type=float,
+        default=None,
+        help="Maximum allowed rotation angle range across marker pairs in degrees (default: 5.0, overrides config)",
+    )
 
     args = parser.parse_args()
 
     try:
+        # Override config from CLI if provided
+        config_input = args.config
+        if args.conf_threshold is not None or args.max_angle_deviation is not None:
+            config_path = Path(args.config)
+            if not config_path.exists():
+                raise FileNotFoundError(f"Config file not found: {config_path}")
+            config_input = load_config(config_path)
+            if args.conf_threshold is not None:
+                config_input["conf_threshold"] = args.conf_threshold
+            if args.max_angle_deviation is not None:
+                config_input["max_angle_deviation"] = args.max_angle_deviation
+
         # Run validation using the function API
         summary = validate_map(
-            config=args.config,
+            config=config_input,
             output_dir=args.output_dir,
             device=args.device,
             verbose=args.verbose,
