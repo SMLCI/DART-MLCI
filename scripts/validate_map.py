@@ -14,7 +14,7 @@ JSON config format:
         "calibrated_map_path": "calibrated_map.csv",
         "meta_csv_path": "/path/to/meta.csv",
         "pixel_size": 0.065789,
-        "model_path": "artifacts/models/v8_detect_s_imgsz640.pt",
+        "model_path": "artifacts/models/v26_detect_s_imgsz1280.pt",
         "structure_library_path": "artifacts/chamber_structure.json"
     }
 """
@@ -356,7 +356,7 @@ def run_validation(
     # Set default model path if not specified
     if model_path is None:
         model_path = (
-            Path(dmc_masking.__file__).parent.parent / "artifacts/models/v8_detect_s_imgsz640.pt"
+            Path(dmc_masking.__file__).parent.parent / "artifacts/models/v26_detect_s_imgsz1280.pt"
         )
     else:
         model_path = Path(model_path)
@@ -1055,7 +1055,7 @@ JSON config format:
       "calibrated_map_path": "calibrated_map.csv",
       "meta_csv_path": "/path/to/meta.csv",
       "pixel_size": 0.065789,
-      "model_path": "artifacts/models/v8_detect_s_imgsz640.pt",
+      "model_path": "artifacts/models/v26_detect_s_imgsz1280.pt",
       "structure_library_path": "artifacts/chamber_structure.json"
   }
         """,

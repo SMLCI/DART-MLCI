@@ -39,7 +39,7 @@ docker build -t dmc-masking:v1.0 .
 docker run -d \
   --name dmc-masking-api \
   -p 8000:8000 \
-  -e DMC_MODEL_PATH=/app/artifacts/models/v8_detect_s_imgsz640.pt \
+  -e DMC_MODEL_PATH=/app/artifacts/models/v26_detect_s_imgsz1280.pt \
   -e DMC_STRUCTURE_LIBRARY_PATH=/app/artifacts/chamber_structure.json \
   dmc-masking:latest
 ```
@@ -93,7 +93,7 @@ The following environment variables can be configured:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DMC_MODEL_PATH` | `/app/artifacts/models/v8_detect_s_imgsz640.pt` | Path to YOLO model |
+| `DMC_MODEL_PATH` | `/app/artifacts/models/v26_detect_s_imgsz1280.pt` | Path to YOLO model |
 | `DMC_STRUCTURE_LIBRARY_PATH` | `/app/artifacts/chamber_structure.json` | Path to structure library |
 | `DMC_BLUEPRINT_MAP_PATH` | `/app/artifacts/sak_blueprint_map.csv` | Path to blueprint map |
 | `DMC_CHIP_CONFIGS_DIR` | `/app/artifacts/chips/` | Directory of chip config JSONs (multi-chip support) |
@@ -332,7 +332,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DMC_MODEL_PATH=/app/artifacts/models/v8_detect_s_imgsz640.pt
+      - DMC_MODEL_PATH=/app/artifacts/models/v26_detect_s_imgsz1280.pt
       - DMC_STRUCTURE_LIBRARY_PATH=/app/artifacts/chamber_structure.json
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]

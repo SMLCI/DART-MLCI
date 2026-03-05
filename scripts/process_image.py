@@ -296,7 +296,7 @@ Chamber ID patterns:
         "--model-path",
         type=Path,
         default=None,
-        help="Path to YOLO model (default: artifacts/models/v8_detect_s_imgsz640.pt)",
+        help="Path to YOLO model (default: artifacts/models/v26_detect_s_imgsz1280.pt)",
     )
     parser.add_argument(
         "--pixel-size",

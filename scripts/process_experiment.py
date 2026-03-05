@@ -1410,7 +1410,7 @@ Output structure:
         "--model-path",
         type=Path,
         default=None,
-        help="Path to YOLO model (default: artifacts/models/v8_detect_s_imgsz640.pt)",
+        help="Path to YOLO model (default: artifacts/models/v26_detect_s_imgsz1280.pt)",
     )
     parser.add_argument(
         "--structure-library",
@@ -1528,7 +1528,7 @@ Output structure:
     # Set default paths
     if args.model_path is None:
         args.model_path = (
-            Path(dmc_masking.__file__).parent.parent / "artifacts/models/v8_detect_s_imgsz640.pt"
+            Path(dmc_masking.__file__).parent.parent / "artifacts/models/v26_detect_s_imgsz1280.pt"
         )
 
     if args.structure_library is None:

@@ -8,5 +8,7 @@ DEFAULT_PIXEL_SIZE_UM: float = 0.065789
 DEFAULT_MARKER_TOLERANCE_PX: int = 60
 """Default tolerance in pixels for marker matching."""
 
-DEFAULT_MODEL_PATH: Path = Path(__file__).parent.parent / "artifacts/models/v8_detect_s_imgsz640.pt"
+DEFAULT_MODEL_PATH: Path = (
+    Path(__file__).parent.parent / "artifacts/models/v26_detect_s_imgsz1280.pt"
+)
 """Default path to the YOLO marker detection model weights."""

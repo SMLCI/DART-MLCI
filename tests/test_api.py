@@ -188,7 +188,7 @@ class TestProcessImageEndpoint:
             assert "error_message" in data
 
     @pytest.mark.skipif(
-        not (Path("artifacts/models/v8_detect_s_imgsz640.pt").exists()),
+        not (Path("artifacts/models/v26_detect_s_imgsz1280.pt").exists()),
         reason="Model file not found",
     )
     def test_process_image_with_base64(self, client, test_image_base64, viz_dir):
@@ -393,7 +393,7 @@ class TestIntegration:
 
     @pytest.mark.skipif(
         not (
-            Path("artifacts/models/v8_detect_s_imgsz640.pt").exists()
+            Path("artifacts/models/v26_detect_s_imgsz1280.pt").exists()
             and Path("artifacts/chamber_structure.json").exists()
         ),
         reason="Artifacts not found",

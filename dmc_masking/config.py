@@ -115,7 +115,7 @@ class PathConfig:
     """
 
     model_path: Path = field(
-        default_factory=lambda: Path("artifacts/models/v8_detect_s_imgsz640.pt")
+        default_factory=lambda: Path("artifacts/models/v26_detect_s_imgsz1280.pt")
     )
     structure_library_path: Path = field(
         default_factory=lambda: Path("artifacts/chamber_structure.json")

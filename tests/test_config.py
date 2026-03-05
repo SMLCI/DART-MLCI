@@ -56,7 +56,7 @@ class TestPathConfig(unittest.TestCase):
     def test_default_paths(self):
         """Test default path values."""
         config = PathConfig()
-        self.assertEqual(config.model_path, Path("artifacts/models/v8_detect_s_imgsz640.pt"))
+        self.assertEqual(config.model_path, Path("artifacts/models/v26_detect_s_imgsz1280.pt"))
         self.assertEqual(config.structure_library_path, Path("artifacts/chamber_structure.json"))
         self.assertIsNone(config.blueprint_map_path)
 

@@ -21,7 +21,7 @@ JSON config format:
         ],
         "pixel_size": 0.065789,
         "blueprint_map_path": "artifacts/sak_blueprint_map.csv",
-        "model_path": "artifacts/models/v8_detect_s_imgsz640.pt"
+        "model_path": "artifacts/models/v26_detect_s_imgsz1280.pt"
     }
 """
 
@@ -569,7 +569,7 @@ def run_calibration(
     # Set default model path if not specified
     if model_path is None:
         model_path = (
-            Path(dmc_masking.__file__).parent.parent / "artifacts/models/v8_detect_s_imgsz640.pt"
+            Path(dmc_masking.__file__).parent.parent / "artifacts/models/v26_detect_s_imgsz1280.pt"
         )
     else:
         model_path = Path(model_path)
@@ -1294,7 +1294,7 @@ JSON config format:
       ],
       "pixel_size": 0.065789,
       "blueprint_map_path": "artifacts/sak_blueprint_map.csv",
-      "model_path": "artifacts/models/v8_detect_s_imgsz640.pt"
+      "model_path": "artifacts/models/v26_detect_s_imgsz1280.pt"
   }
         """,
     )

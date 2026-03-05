@@ -12,7 +12,7 @@ class Settings:
 
     model_path: str = field(
         default_factory=lambda: os.environ.get(
-            "DMC_MODEL_PATH", "/app/artifacts/models/v8_detect_s_imgsz640.pt"
+            "DMC_MODEL_PATH", "/app/artifacts/models/v26_detect_s_imgsz1280.pt"
         )
     )
     structure_library_path: str = field(

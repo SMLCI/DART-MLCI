@@ -10,7 +10,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DMC_MODEL_PATH=/app/artifacts/models/v8_detect_s_imgsz640.pt
+      - DMC_MODEL_PATH=/app/artifacts/models/v26_detect_s_imgsz1280.pt
       - DMC_STRUCTURE_LIBRARY_PATH=/app/artifacts/chamber_structure.json
       - DMC_BLUEPRINT_MAP_PATH=/app/artifacts/sak_blueprint_map.csv
       - DMC_CHIP_CONFIGS_DIR=/app/artifacts/chips/
