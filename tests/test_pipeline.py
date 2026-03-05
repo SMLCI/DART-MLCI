@@ -140,8 +140,8 @@ class TestFullPipeline(unittest.TestCase):
 
         _, roi_polygon, marker_group_pixels = srsl("0000")
 
-        # build the pipeline
-        step1 = MarkerDetectionStep(DEFAULT_MODEL_PATH)
+        # build the pipeline (bright images have lower detection confidence)
+        step1 = MarkerDetectionStep(DEFAULT_MODEL_PATH, conf_threshold=0.3)
         step2 = MarkerMatchingStep(marker_group_pixels, tolerance=60)
         step3 = ImageRotationStep()
         step4 = RoIMaskingStep(marker_group_pixels, roi_polygon)
