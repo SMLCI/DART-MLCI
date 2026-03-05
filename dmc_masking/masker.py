@@ -1,5 +1,12 @@
-"""High-level masking classes that compose the detection/matching/rotation/masking steps."""
+"""High-level masking classes that compose the detection/matching/rotation/masking steps.
 
+.. deprecated::
+    ``RoIMasker`` and ``SingleStructureRoIMasker`` are deprecated.
+    Use the step-based pipeline (``MarkerDetectionStep``, ``MarkerMatchingStep``,
+    ``ImageRotationStep``, ``RoIMaskingStep``) instead.
+"""
+
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -15,13 +22,18 @@ from .mask import SingleRoIStructureLibrary
 
 
 class RoIMasker:
-    """Perform the complete masking pipeline on an image stack."""
+    """Perform the complete masking pipeline on an image stack.
+
+    .. deprecated::
+        Use the step-based pipeline instead.
+    """
 
     def __init__(
         self,
         model_path: Path | None = None,
         roi_polygon: RoIPolygon | None = None,
         marker_group_pixel: dict[str, np.ndarray] | None = None,
+        max_angle_deviation: float = 5.0,
     ):
         """Create new masking instance.
 
@@ -30,6 +42,13 @@ class RoIMasker:
             roi_polygon: Polygon information for the RoI shape.
             marker_group_pixel: Marker placement relative to the RoI shape in pixel coordinates.
         """
+        warnings.warn(
+            "RoIMasker is deprecated. Use the step-based pipeline "
+            "(MarkerDetectionStep, MarkerMatchingStep, ImageRotationStep, "
+            "RoIMaskingStep) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         if model_path is None:
             model_path = DEFAULT_MODEL_PATH
 
@@ -37,6 +56,7 @@ class RoIMasker:
         self.roi_polygon = roi_polygon
         self.marker_group_pixel = marker_group_pixel
 
+        self.max_angle_deviation = max_angle_deviation
         self.detection_model = MarkerDetectionModel(self.model_path)
 
     def __call__(
@@ -90,6 +110,14 @@ class RoIMasker:
             angles = compute_marker_group_angles(
                 markers, matched_marker_indices, marker_group_pixel
             )
+
+            if len(angles) >= 2:
+                angle_range = max(angles) - min(angles)
+                if angle_range > self.max_angle_deviation:
+                    raise ValueError(
+                        f"Inconsistent rotation angles: range={angle_range:.2f}° exceeds {self.max_angle_deviation:.1f}°"
+                    )
+
             mean_angle = np.mean(angles)
 
             # 4. Rotate image
@@ -145,7 +173,11 @@ def compute_marker_angles(markers, marker_group_pixel):
 
 
 class SingleStructureRoIMasker:
-    """Masker for a chip with a single structure type."""
+    """Masker for a chip with a single structure type.
+
+    .. deprecated::
+        Use the step-based pipeline instead.
+    """
 
     def __init__(
         self,
@@ -162,6 +194,13 @@ class SingleStructureRoIMasker:
             structure_name: Name of the structure. Defaults to "OpenBox-inner".
             pixel_size: Size of a pixel in micrometers. Defaults to 0.065789.
         """
+        warnings.warn(
+            "SingleStructureRoIMasker is deprecated. Use the step-based pipeline "
+            "(MarkerDetectionStep, MarkerMatchingStep, ImageRotationStep, "
+            "RoIMaskingStep) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
         if structure_library is None:
             structure_library = Path(__file__).parent.parent / "artifacts/chamber_structure.json"
