@@ -19,6 +19,7 @@ class MarkerDetectionStep:
         device: str | None = None,
         verbose: bool = False,
         use_gpu_tensor: bool = False,
+        conf_threshold: float = 0.5,
     ):
         """Initialize detection step.
 
@@ -29,11 +30,12 @@ class MarkerDetectionStep:
             use_gpu_tensor: Keep image on GPU for downstream steps to avoid redundant
                            transfers. Set True for performance, False for compatibility
                            with code expecting numpy arrays. (default: False)
+            conf_threshold: Minimum confidence for detected markers (default: 0.5).
         """
         if model_path is None:
             model_path = DEFAULT_MODEL_PATH
         self.mdm = MarkerDetectionModel(model_path, device=device, verbose=verbose)
-        self.mdm.model.conf = 0.6
+        self.conf_threshold = conf_threshold
         self.use_gpu_tensor = use_gpu_tensor
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -41,6 +43,7 @@ class MarkerDetectionStep:
         # YOLO requires numpy input for proper preprocessing (resize, normalize, etc.)
         # After detection, convert to GPU tensor for downstream steps (rotation, etc.)
         markers = self.mdm.predict_markers(image)
+        markers = [m for m in markers if m.get("conf", 0.0) >= self.conf_threshold]
 
         # Convert to GPU tensor for downstream steps to avoid redundant transfers
         # YOLO has already done its work; now we keep on GPU through rotation
@@ -60,9 +63,10 @@ class MarkerDetectionStep:
 class MarkerMatchingStep:
     """Match markers into pairs."""
 
-    def __init__(self, marker_group_pixel, tolerance=60):
+    def __init__(self, marker_group_pixel, tolerance=60, max_angle_deviation=5.0):
         self.marker_group_pixel = marker_group_pixel
         self.tolerance = tolerance
+        self.max_angle_deviation = max_angle_deviation
 
     def __call__(self, data):
         markers = data["markers"]
@@ -76,6 +80,14 @@ class MarkerMatchingStep:
         angles = compute_marker_group_angles(
             markers, matched_marker_indices, self.marker_group_pixel
         )
+
+        if len(angles) >= 2:
+            angle_range = max(angles) - min(angles)
+            if angle_range > self.max_angle_deviation:
+                raise ValueError(
+                    f"Inconsistent rotation angles: range={angle_range:.2f}° exceeds {self.max_angle_deviation:.1f}°"
+                )
+
         mean_angle = np.mean(angles)
 
         data["angle"] = mean_angle
