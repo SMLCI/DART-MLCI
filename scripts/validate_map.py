@@ -88,6 +88,7 @@ class ValidationSummary:
     std_error: float
     max_error: float
     min_error: float
+    p90_error: float
     n_success: int
     n_failed: int
 
@@ -550,6 +551,7 @@ def run_validation(
             std_error=float(np.std(errors)),
             max_error=float(np.max(errors)),
             min_error=float(np.min(errors)),
+            p90_error=float(np.percentile(errors, 90)),
             n_success=len(successful_results),
             n_failed=len(results) - len(successful_results),
         )
@@ -561,6 +563,7 @@ def run_validation(
             std_error=0.0,
             max_error=0.0,
             min_error=0.0,
+            p90_error=0.0,
             n_success=0,
             n_failed=len(results),
         )
@@ -573,6 +576,7 @@ def run_validation(
             print(f"  Mean error: {summary.mean_error:.3f} microns")
             print(f"  Median error: {summary.median_error:.3f} microns")
             print(f"  Std error: {summary.std_error:.3f} microns")
+            print(f"  P90 error: {summary.p90_error:.3f} microns")
             print(f"  Max error: {summary.max_error:.3f} microns")
             print(f"  Min error: {summary.min_error:.3f} microns")
         print()
@@ -583,12 +587,28 @@ def run_validation(
 def plot_error_histogram(
     summary: ValidationSummary,
     output_path: Path,
+    figsize: tuple[float, float] = (10, 6),
+    label_fontsize: float = 12,
+    title_fontsize: float = 14,
+    tick_fontsize: float = 10,
+    legend_fontsize: float = 10,
+    stats_fontsize: float = 10,
+    font_family: str | None = None,
+    dpi: int = 150,
 ) -> None:
     """Generate histogram of L2 errors.
 
     Args:
         summary: ValidationSummary with results
         output_path: Path to save the plot
+        figsize: Figure size (width, height) in inches
+        label_fontsize: Font size for axis labels
+        title_fontsize: Font size for the title
+        tick_fontsize: Font size for axis tick labels
+        legend_fontsize: Font size for legend text
+        stats_fontsize: Font size for the stats annotation box
+        font_family: Font family for the plot
+        dpi: DPI for PNG output
     """
     errors = [r.error for r in summary.results if r.success and r.error is not None]
 
@@ -596,7 +616,10 @@ def plot_error_histogram(
         print("Warning: No successful results to plot histogram")
         return
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    if font_family is not None:
+        plt.rcParams["font.family"] = font_family
+
+    fig, ax = plt.subplots(figsize=figsize)
 
     # Plot histogram
     n_bins = min(30, len(errors) // 2 + 1)
@@ -610,56 +633,84 @@ def plot_error_histogram(
         color="red",
         linestyle="--",
         linewidth=2,
-        label=f"Mean: {summary.mean_error:.3f} um",
+        label=rf"Mean: {summary.mean_error:.3f} $\mu$m",
     )
     ax.axvline(
         summary.median_error,
         color="green",
         linestyle="-.",
         linewidth=2,
-        label=f"Median: {summary.median_error:.3f} um",
+        label=rf"Median: {summary.median_error:.3f} $\mu$m",
+    )
+    ax.axvline(
+        summary.p90_error,
+        color="purple",
+        linestyle=":",
+        linewidth=2,
+        label=rf"P90: {summary.p90_error:.3f} $\mu$m",
     )
 
-    ax.set_xlabel("L2 Error (microns)", fontsize=12)
-    ax.set_ylabel("Count", fontsize=12)
-    ax.set_title("Distribution of Position Errors", fontsize=14)
+    ax.set_xlabel(r"L2 Error [$\mu$m]", fontsize=label_fontsize)
+    ax.set_ylabel("Count", fontsize=label_fontsize)
+    ax.set_title("Distribution of Position Errors", fontsize=title_fontsize)
+    ax.tick_params(axis="both", labelsize=tick_fontsize)
 
     # Add stats annotation
     stats_text = (
         f"N = {summary.n_success}\n"
-        f"Mean = {summary.mean_error:.3f} um\n"
-        f"Median = {summary.median_error:.3f} um\n"
-        f"Std = {summary.std_error:.3f} um\n"
-        f"Max = {summary.max_error:.3f} um"
+        rf"Mean = {summary.mean_error:.3f} $\mu$m" + "\n"
+        rf"Median = {summary.median_error:.3f} $\mu$m" + "\n"
+        rf"Std = {summary.std_error:.3f} $\mu$m" + "\n"
+        rf"P90 = {summary.p90_error:.3f} $\mu$m" + "\n"
+        rf"Max = {summary.max_error:.3f} $\mu$m"
     )
     ax.text(
         0.95,
         0.95,
         stats_text,
         transform=ax.transAxes,
-        fontsize=10,
+        fontsize=stats_fontsize,
         verticalalignment="top",
         horizontalalignment="right",
         bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.8),
     )
 
-    ax.legend(loc="upper right", bbox_to_anchor=(0.95, 0.75))
+    ax.legend(loc="upper right", bbox_to_anchor=(0.95, 0.70), fontsize=legend_fontsize)
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.savefig(output_path, dpi=dpi, bbox_inches=None)
+    svg_path = output_path.with_suffix(".svg")
+    plt.savefig(svg_path, bbox_inches=None)
     plt.close()
 
 
 def plot_error_map(
     summary: ValidationSummary,
     output_path: Path,
+    figsize: tuple[float, float] | None = None,
+    label_fontsize: float = 12,
+    title_fontsize: float = 14,
+    colorbar_fontsize: float = 12,
+    marker_size: float = 100,
+    marker_linewidth: float = 2,
+    tick_fontsize: float = 10,
+    colorbar_tick_fontsize: float = 10,
+    font_family: str | None = None,
+    dpi: int = 150,
 ) -> None:
     """Generate map visualization with crosses colored by error.
 
     Args:
         summary: ValidationSummary with results
         output_path: Path to save the plot
+        figsize: Figure size (width, height) in inches
+        label_fontsize: Font size for axis labels
+        title_fontsize: Font size for the title
+        colorbar_fontsize: Font size for the colorbar label
+        marker_size: Size of the scatter markers
+        marker_linewidth: Line width of the scatter markers
+        dpi: DPI for PNG output
     """
     successful_results = [r for r in summary.results if r.success]
 
@@ -667,12 +718,25 @@ def plot_error_map(
         print("Warning: No successful results to plot error map")
         return
 
-    fig, ax = plt.subplots(figsize=(12, 10))
-
     # Extract positions and errors
     x_positions = [r.map_x for r in successful_results]
     y_positions = [r.map_y for r in successful_results]
     errors = [r.error for r in successful_results]
+
+    # Auto-calculate figure size from data aspect ratio if not overridden
+    if figsize is None:
+        x_range = max(x_positions) - min(x_positions)
+        y_range = max(y_positions) - min(y_positions)
+        data_aspect = x_range / y_range if y_range > 0 else 1.0
+        fig_height = 10
+        # Extra width for colorbar
+        fig_width = fig_height * data_aspect + 2
+        figsize = (fig_width, fig_height)
+
+    if font_family is not None:
+        plt.rcParams["font.family"] = font_family
+
+    fig, ax = plt.subplots(figsize=figsize)
 
     # Create scatter plot with cross markers colored by error
     scatter = ax.scatter(
@@ -681,12 +745,14 @@ def plot_error_map(
         c=errors,
         cmap="viridis",
         marker="+",
-        s=100,
-        linewidths=2,
+        s=marker_size,
+        linewidths=marker_linewidth,
     )
 
     # Add colorbar
-    plt.colorbar(scatter, ax=ax, label="L2 Error (microns)")
+    cbar = plt.colorbar(scatter, ax=ax)
+    cbar.set_label(r"L2 Error [$\mu$m]", fontsize=colorbar_fontsize)
+    cbar.ax.tick_params(labelsize=colorbar_tick_fontsize)
 
     # Also plot failed results as gray X markers
     failed_results = [r for r in summary.results if not r.success and r.map_x is not None]
@@ -705,17 +771,21 @@ def plot_error_map(
         )
         ax.legend(loc="upper right")
 
-    ax.set_xlabel("X (microns)", fontsize=12)
-    ax.set_ylabel("Y (microns)", fontsize=12)
+    ax.set_xlabel(r"X [$\mu$m]", fontsize=label_fontsize)
+    ax.set_ylabel(r"Y [$\mu$m]", fontsize=label_fontsize)
+    ax.tick_params(axis="both", labelsize=tick_fontsize)
     ax.set_title(
-        f"Validation Error Map (N={summary.n_success}, Mean Error={summary.mean_error:.3f} um)",
-        fontsize=14,
+        rf"Validation Error Map (N={summary.n_success}, Mean Error={summary.mean_error:.3f} $\mu$m)",
+        fontsize=title_fontsize,
     )
-    ax.set_aspect("equal")
+    ax.invert_xaxis()
+    ax.invert_yaxis()
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.savefig(output_path, dpi=dpi, bbox_inches=None)
+    svg_path = output_path.with_suffix(".svg")
+    plt.savefig(svg_path, bbox_inches=None)
     plt.close()
 
 
@@ -936,7 +1006,7 @@ def plot_validation_debug(
 
     ax.axis("off")
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.savefig(output_path, dpi=150, bbox_inches=None)
     plt.close()
 
 
@@ -969,6 +1039,47 @@ def save_validation_results(
     df.to_csv(output_path, index=False)
 
 
+def load_validation_results(csv_path: Path) -> ValidationSummary:
+    """Load validation results from a previously saved CSV file.
+
+    Args:
+        csv_path: Path to the validation_results.csv file
+
+    Returns:
+        ValidationSummary reconstructed from the CSV
+    """
+    df = pd.read_csv(csv_path)
+    results = []
+    for _, row in df.iterrows():
+        results.append(
+            ValidationResult(
+                roi_id=str(row["roi_id"]),
+                success=bool(row["success"]),
+                map_x=row["map_x"] if pd.notna(row["map_x"]) else None,
+                map_y=row["map_y"] if pd.notna(row["map_y"]) else None,
+                measured_x=row["measured_x"] if pd.notna(row["measured_x"]) else None,
+                measured_y=row["measured_y"] if pd.notna(row["measured_y"]) else None,
+                error=row["error"] if pd.notna(row["error"]) else None,
+                error_message=row["error_message"] if pd.notna(row["error_message"]) else None,
+            )
+        )
+
+    successful = [r for r in results if r.success and r.error is not None]
+    errors = [r.error for r in successful]
+
+    return ValidationSummary(
+        results=results,
+        mean_error=float(np.mean(errors)) if errors else 0.0,
+        median_error=float(np.median(errors)) if errors else 0.0,
+        std_error=float(np.std(errors)) if errors else 0.0,
+        max_error=float(np.max(errors)) if errors else 0.0,
+        min_error=float(np.min(errors)) if errors else 0.0,
+        p90_error=float(np.percentile(errors, 90)) if errors else 0.0,
+        n_success=len(successful),
+        n_failed=len(results) - len(successful),
+    )
+
+
 def validate_map(
     config: dict | Path | str,
     output_dir: Path | str,
@@ -976,6 +1087,8 @@ def validate_map(
     verbose: bool = False,
     max_images: int | None = None,
     debug: bool = False,
+    plot_kwargs: dict | None = None,
+    hist_kwargs: dict | None = None,
 ) -> ValidationSummary:
     """Validate a calibrated map against validation images.
 
@@ -1056,13 +1169,13 @@ def validate_map(
 
     # Generate error histogram
     histogram_path = output_dir / "error_histogram.png"
-    plot_error_histogram(summary, histogram_path)
+    plot_error_histogram(summary, histogram_path, **(hist_kwargs or {}))
     if verbose:
         print(f"  Histogram saved to: {histogram_path}")
 
     # Generate error map
     map_path = output_dir / "error_map.png"
-    plot_error_map(summary, map_path)
+    plot_error_map(summary, map_path, **(plot_kwargs or {}))
     if verbose:
         print(f"  Error map saved to: {map_path}")
 
@@ -1098,8 +1211,8 @@ JSON config format:
     parser.add_argument(
         "--config",
         type=Path,
-        required=True,
-        help="Path to JSON configuration file",
+        default=None,
+        help="Path to JSON configuration file (not required with --replot)",
     )
     parser.add_argument(
         "--output-dir",
@@ -1141,31 +1254,144 @@ JSON config format:
         default=None,
         help="Maximum allowed rotation angle range across marker pairs in degrees (default: 5.0, overrides config)",
     )
+    parser.add_argument(
+        "--replot",
+        action="store_true",
+        help="Regenerate figures from existing validation_results.csv without re-running validation",
+    )
+    parser.add_argument(
+        "--map-figsize",
+        type=float,
+        nargs=2,
+        default=None,
+        metavar=("WIDTH", "HEIGHT"),
+        help="Error map figure size in inches (default: auto from data)",
+    )
+    parser.add_argument(
+        "--hist-figsize",
+        type=float,
+        nargs=2,
+        default=None,
+        metavar=("WIDTH", "HEIGHT"),
+        help="Histogram figure size in inches (default: 10 6)",
+    )
+    parser.add_argument(
+        "--label-fontsize",
+        type=float,
+        default=12,
+        help="Font size for axis labels (default: 12)",
+    )
+    parser.add_argument(
+        "--title-fontsize",
+        type=float,
+        default=14,
+        help="Font size for the title (default: 14)",
+    )
+    parser.add_argument(
+        "--colorbar-fontsize",
+        type=float,
+        default=12,
+        help="Font size for colorbar label (default: 12)",
+    )
+    parser.add_argument(
+        "--marker-size",
+        type=float,
+        default=100,
+        help="Scatter marker size (default: 100)",
+    )
+    parser.add_argument(
+        "--tick-fontsize",
+        type=float,
+        default=10,
+        help="Font size for axis tick labels (default: 10)",
+    )
+    parser.add_argument(
+        "--colorbar-tick-fontsize",
+        type=float,
+        default=10,
+        help="Font size for colorbar tick labels (default: 10)",
+    )
+    parser.add_argument(
+        "--font-family",
+        type=str,
+        default=None,
+        help="Font family for the plot (e.g., 'serif', 'sans-serif', 'Times New Roman', 'Arial')",
+    )
+    parser.add_argument(
+        "--dpi",
+        type=int,
+        default=150,
+        help="DPI for PNG output (default: 150)",
+    )
 
     args = parser.parse_args()
 
-    try:
-        # Override config from CLI if provided
-        config_input = args.config
-        if args.conf_threshold is not None or args.max_angle_deviation is not None:
-            config_path = Path(args.config)
-            if not config_path.exists():
-                raise FileNotFoundError(f"Config file not found: {config_path}")
-            config_input = load_config(config_path)
-            if args.conf_threshold is not None:
-                config_input["conf_threshold"] = args.conf_threshold
-            if args.max_angle_deviation is not None:
-                config_input["max_angle_deviation"] = args.max_angle_deviation
+    if not args.replot and args.config is None:
+        parser.error("--config is required unless --replot is used")
 
-        # Run validation using the function API
-        summary = validate_map(
-            config=config_input,
-            output_dir=args.output_dir,
-            device=args.device,
-            verbose=args.verbose,
-            max_images=args.max_images,
-            debug=args.debug,
-        )
+    shared_kwargs = dict(
+        label_fontsize=args.label_fontsize,
+        title_fontsize=args.title_fontsize,
+        tick_fontsize=args.tick_fontsize,
+        font_family=args.font_family,
+        dpi=args.dpi,
+    )
+    map_kwargs = dict(
+        **shared_kwargs,
+        figsize=tuple(args.map_figsize) if args.map_figsize else None,
+        colorbar_fontsize=args.colorbar_fontsize,
+        colorbar_tick_fontsize=args.colorbar_tick_fontsize,
+        marker_size=args.marker_size,
+    )
+    hist_kwargs = dict(
+        **shared_kwargs,
+        figsize=tuple(args.hist_figsize) if args.hist_figsize else (10, 6),
+    )
+
+    try:
+        output_dir = Path(args.output_dir)
+
+        if args.replot:
+            # Regenerate figures from existing CSV
+            csv_path = output_dir / "validation_results.csv"
+            if not csv_path.exists():
+                raise FileNotFoundError(f"No validation results found at: {csv_path}")
+
+            summary = load_validation_results(csv_path)
+            print(f"Loaded {len(summary.results)} results from {csv_path}")
+
+            histogram_path = output_dir / "error_histogram.png"
+            plot_error_histogram(summary, histogram_path, **hist_kwargs)
+            print(f"  Histogram saved to: {histogram_path}")
+
+            map_path = output_dir / "error_map.png"
+            plot_error_map(summary, map_path, **map_kwargs)
+            print(f"  Error map saved to: {map_path}")
+            print(f"  Error map saved to: {map_path.with_suffix('.svg')}")
+        else:
+            # Override config from CLI if provided
+            config_input = args.config
+            if args.conf_threshold is not None or args.max_angle_deviation is not None:
+                config_path = Path(args.config)
+                if not config_path.exists():
+                    raise FileNotFoundError(f"Config file not found: {config_path}")
+                config_input = load_config(config_path)
+                if args.conf_threshold is not None:
+                    config_input["conf_threshold"] = args.conf_threshold
+                if args.max_angle_deviation is not None:
+                    config_input["max_angle_deviation"] = args.max_angle_deviation
+
+            # Run validation using the function API
+            summary = validate_map(
+                config=config_input,
+                output_dir=args.output_dir,
+                device=args.device,
+                verbose=args.verbose,
+                max_images=args.max_images,
+                debug=args.debug,
+                plot_kwargs=map_kwargs,
+                hist_kwargs=hist_kwargs,
+            )
 
         # Print summary (always print, even if not verbose)
         print(
@@ -1174,6 +1400,7 @@ JSON config format:
         if summary.n_success > 0:
             print(f"Mean error: {summary.mean_error:.3f} microns")
             print(f"Median error: {summary.median_error:.3f} microns")
+            print(f"P90 error: {summary.p90_error:.3f} microns")
             print(f"Max error: {summary.max_error:.3f} microns")
 
         # Report failures
