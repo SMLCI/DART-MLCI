@@ -1,4 +1,4 @@
-"""Generate pipeline walkthrough videos for all 8 SAK chamber types."""
+"""Generate pipeline walkthrough videos for all SAK chamber types."""
 
 import argparse
 import warnings
@@ -16,7 +16,7 @@ try:
     import torch
     from acia.segm.local import THWCSequenceSource
     from acia.segm.processor.cellpose_sam import CellposeSAMSegmenter
-    from acia.viz import render_segmentation_mask
+    from acia.viz import colorize_instance_mask
 
     ACIA_AVAILABLE = True
 except ImportError:
@@ -25,7 +25,7 @@ except ImportError:
 import dmc_masking
 from dmc_masking import DEFAULT_MODEL_PATH, MarkerDetectionModel
 from dmc_masking.chip import ChipStructureLibrary
-from dmc_masking.mask import apply_mask
+from dmc_masking.mask import apply_mask, filter_segmentation_by_mask
 from dmc_masking.match import match_markers
 from dmc_masking.rotation import compute_marker_group_angles, rotate_image_and_markers
 from dmc_masking.utils import normalize_image
@@ -79,7 +79,7 @@ def generate_pipeline_video(
     output_path: Path,
 ):
     """Generate a pipeline walkthrough video for one chamber type."""
-    total_steps = 8 if ACIA_AVAILABLE else 7
+    total_steps = 5
 
     # Run pipeline
     markers = model.predict_markers(image)
@@ -96,19 +96,18 @@ def generate_pipeline_video(
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     writer = cv2.VideoWriter(str(output_path), fourcc, FPS, (FRAME_WIDTH, FRAME_HEIGHT))
 
-    # ==================== STEP 1: Raw Image ====================
+    # ==================== STEP 1: Detection ====================
     frame, scale, offset = prepare_frame(image)
-    frame = add_step_title(frame, "Raw Input Image")
-    frame = draw_progress_bar(frame, 1, total_steps, "Raw Image")
+    frame = add_step_title(frame, "Detection: Raw Input Image")
+    frame = draw_progress_bar(frame, 1, total_steps, "Detection", step_progress=0.0)
     write_frames(writer, frame, int(1.5 * FPS))
 
-    # ==================== STEP 2: Marker Detection ====================
     frame = render_markers_to_frame(image, markers, [])
-    frame = add_step_title(frame, "Marker Detection")
-    frame = draw_progress_bar(frame, 2, total_steps, "Marker Detection")
+    frame = add_step_title(frame, "Detection: Marker Detection")
+    frame = draw_progress_bar(frame, 1, total_steps, "Detection", step_progress=1.0)
     write_frames(writer, frame, int(2 * FPS))
 
-    # ==================== STEP 3: Marker Pair Matching ====================
+    # ==================== STEP 2: Matching ====================
     matched_marker_indices = set()
     for cross_idx, circle_idx in matched_indices:
         matched_marker_indices.add(cross_idx)
@@ -118,11 +117,9 @@ def generate_pipeline_video(
     frame = render_markers_to_frame(
         image, markers, matched_indices, faded_indices=unmatched_indices
     )
-    frame = add_step_title(frame, "Marker Pair Matching")
-    frame = draw_progress_bar(frame, 3, total_steps, "Marker Matching")
+    frame = add_step_title(frame, "Matching: Marker Pair Matching")
+    frame = draw_progress_bar(frame, 2, total_steps, "Matching", step_progress=0.5)
     write_frames(writer, frame, int(2 * FPS))
-
-    # ==================== STEP 4: ROI Selection ====================
     h, w = image.shape[:2]
     best_pair_idx = 0
     best_margin = -np.inf
@@ -154,11 +151,11 @@ def generate_pipeline_video(
         highlight_indices=highlight_indices,
         selected_pair_idx=selected_pair_idx,
     )
-    frame = add_step_title(frame, "ROI Selection (Valid Marker Pair)")
-    frame = draw_progress_bar(frame, 4, total_steps, "ROI Selection")
+    frame = add_step_title(frame, "Matching: ROI Selection (Valid Marker Pair)")
+    frame = draw_progress_bar(frame, 2, total_steps, "Matching", step_progress=1.0)
     write_frames(writer, frame, int(2 * FPS))
 
-    # ==================== STEP 5: Rotation Animation ====================
+    # ==================== STEP 3: Rotation ====================
     num_rotation_frames = int(2 * FPS)
     image_chw = np.moveaxis(image, -1, 0)
 
@@ -180,13 +177,11 @@ def generate_pipeline_video(
             selected_pair_idx=selected_pair_idx,
             faded_indices=unmatched_indices,
         )
-        frame = add_step_title(
-            frame, f"Rotation: {current_angle:.1f}\u00b0 / {rotation_angle:.1f}\u00b0"
-        )
-        frame = draw_progress_bar(frame, 5, total_steps, "Image Rotation", step_progress=progress)
+        frame = add_step_title(frame, f"Rotation: {current_angle:.1f}deg / {rotation_angle:.1f}deg")
+        frame = draw_progress_bar(frame, 3, total_steps, "Rotation", step_progress=progress)
         writer.write(frame)
 
-    # ==================== STEP 6: Masking ====================
+    # ==================== STEP 4: Masking ====================
     rotated_result, rotated_markers = rotate_image_and_markers(image_chw, markers, rotation_angle)
     rotated_image_hwc = np.clip(np.moveaxis(rotated_result, 0, -1), 0, 255).astype(np.uint8)
 
@@ -217,19 +212,19 @@ def generate_pipeline_video(
         ).astype(np.uint8)
 
         frame, scale, offset = prepare_frame(masked_overlay)
-        frame = add_step_title(frame, "ROI Mask Applied")
-        frame = draw_progress_bar(frame, 6, total_steps, "Masking")
+        frame = add_step_title(frame, "Masking: ROI Mask Applied")
+        frame = draw_progress_bar(frame, 4, total_steps, "Masking", step_progress=0.3)
         write_frames(writer, frame, int(2 * FPS))
 
     except ValueError as e:
-        print(f"  Could not compute mask for step 6: {e}")
+        print(f"  Could not compute mask for step 4: {e}")
         frame, scale, offset = prepare_frame(rotated_image_hwc)
         frame = draw_roi_polygon(frame, translated_polygon, scale, offset, inverted=True)
-        frame = add_step_title(frame, "ROI Mask Overlay")
-        frame = draw_progress_bar(frame, 6, total_steps, "Masking")
+        frame = add_step_title(frame, "Masking: ROI Mask Overlay")
+        frame = draw_progress_bar(frame, 4, total_steps, "Masking", step_progress=0.3)
         write_frames(writer, frame, int(2 * FPS))
 
-    # ==================== STEP 7: Cropping with Zoom Animation ====================
+    # Step 4 continued: Cropping with Zoom Animation
     try:
         roi_bounds = tuple(map(int, map(np.round, translated_polygon.roi_polygon.bounds)))
 
@@ -252,9 +247,9 @@ def generate_pipeline_video(
 
         for i, zoom_frame in enumerate(zoom_frames):
             progress = i / max(num_zoom_frames - 1, 1)
-            zoom_frame = add_step_title(zoom_frame, "Zooming to ROI Region")
+            zoom_frame = add_step_title(zoom_frame, "Masking: Zooming to ROI Region")
             zoom_frame = draw_progress_bar(
-                zoom_frame, 7, total_steps, "Cropping", step_progress=progress
+                zoom_frame, 4, total_steps, "Masking", step_progress=0.3 + 0.7 * progress
             )
             writer.write(zoom_frame)
 
@@ -273,15 +268,15 @@ def generate_pipeline_video(
         ).astype(np.uint8)
 
         frame, scale, offset = prepare_frame(masked_display)
-        frame = add_step_title(frame, "Final Cropped Result with Mask")
-        frame = draw_progress_bar(frame, 7, total_steps, "Cropping", step_progress=1.0)
+        frame = add_step_title(frame, "Masking: Final Cropped Result")
+        frame = draw_progress_bar(frame, 4, total_steps, "Masking", step_progress=1.0)
         write_frames(writer, frame, int(1.5 * FPS))
 
     except ValueError as e:
         print(f"  Could not apply mask: {e}")
         write_frames(writer, frame, int(3.5 * FPS))
 
-    # ==================== STEP 8: Cell Segmentation ====================
+    # ==================== STEP 5: Segmentation ====================
     if ACIA_AVAILABLE:
         try:
             cropped_rgb = cv2.cvtColor(cropped_hwc, cv2.COLOR_BGR2RGB)
@@ -293,18 +288,41 @@ def generate_pipeline_video(
             with torch.no_grad():
                 segmentation_result = segmenter(source.to_channel(0))
 
-            rendered = render_segmentation_mask(source, segmentation_result, alpha=0.5)
-            segmented_frame = rendered.image_stack[0]
-            segmented_bgr = cv2.cvtColor(segmented_frame, cv2.COLOR_RGB2BGR)
+            h, w = cropped_rgb.shape[:2]
+            labeled_mask = segmentation_result.toMasks(h, w, binary_mask=False)[0]
 
-            final_display = segmented_bgr.copy()
-            final_display[cropped_mask] = (
-                0.3 * final_display[cropped_mask] + 0.7 * np.array([128, 128, 128])
-            ).astype(np.uint8)
+            # --- Substep 5a: Raw Instance Segmentation ---
+            # Build color LUT from raw mask so surviving cells keep
+            # the same colors after filtering in substep 5b.
+            rng = np.random.default_rng(42)
+            n_ids = int(labeled_mask.max()) + 1
+            color_lut = rng.integers(0, 256, size=(n_ids, 3), dtype=np.uint8)
+            color_lut[0] = (0, 0, 0)
 
-            frame, scale, offset = prepare_frame(final_display)
-            frame = add_step_title(frame, "Cell Segmentation with ROI Mask")
-            frame = draw_progress_bar(frame, 8, total_steps, "Segmentation", step_progress=1.0)
+            colored_cells = colorize_instance_mask(labeled_mask, color_lut=color_lut)
+            output = cropped_rgb.copy().astype(np.float32)
+            cell_area = labeled_mask > 0
+            output[cell_area] = 0.5 * colored_cells[cell_area] + 0.5 * output[cell_area]
+            output[cropped_mask] = 0.3 * output[cropped_mask] + 0.7 * np.array([128, 128, 128])
+            display_bgr = cv2.cvtColor(output.astype(np.uint8), cv2.COLOR_RGB2BGR)
+
+            frame, scale, offset = prepare_frame(display_bgr)
+            frame = add_step_title(frame, "Segmentation: Raw Instance Segmentation")
+            frame = draw_progress_bar(frame, 5, total_steps, "Segmentation", step_progress=0.5)
+            write_frames(writer, frame, int(2 * FPS))
+
+            # --- Substep 5b: Structure-Aware Filtering ---
+            filtered_mask = filter_segmentation_by_mask(labeled_mask, cropped_mask, relabel=False)
+            colored_filtered = colorize_instance_mask(filtered_mask, color_lut=color_lut)
+            output = cropped_rgb.copy().astype(np.float32)
+            cell_area = filtered_mask > 0
+            output[cell_area] = 0.5 * colored_filtered[cell_area] + 0.5 * output[cell_area]
+            output[cropped_mask] = 0.3 * output[cropped_mask] + 0.7 * np.array([128, 128, 128])
+            display_bgr = cv2.cvtColor(output.astype(np.uint8), cv2.COLOR_RGB2BGR)
+
+            frame, scale, offset = prepare_frame(display_bgr)
+            frame = add_step_title(frame, "Segmentation: Structure-Aware Filtering")
+            frame = draw_progress_bar(frame, 5, total_steps, "Segmentation", step_progress=1.0)
             write_frames(writer, frame, int(2 * FPS))
 
         except Exception as e:
@@ -316,7 +334,7 @@ def generate_pipeline_video(
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate pipeline videos for all 8 SAK chamber types."
+        description="Generate pipeline videos for all SAK chamber types."
     )
     parser.add_argument(
         "--output-dir",
