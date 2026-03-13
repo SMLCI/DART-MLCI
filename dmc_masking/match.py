@@ -1,9 +1,7 @@
 """Implementation of marker matching."""
 
-from collections import deque
-from itertools import product
-
 import numpy as np
+from scipy.optimize import linear_sum_assignment
 
 
 def marker_group_to_pixel_coordinates(marker_group, pixel_size: float):
@@ -24,28 +22,36 @@ def match_markers(markers, marker_group: dict[str, np.ndarray], on="bbox_center"
 
     expected_distance = np.linalg.norm(cross_pos - circle_pos)
 
-    data = deque()
+    cross_indices = [i for i in range(len(markers)) if markers[i]["label"] == "cross"]
+    circle_indices = [i for i in range(len(markers)) if markers[i]["label"] == "circle"]
 
-    cross_marker_indices = filter(lambda i: markers[i]["label"] == "cross", range(len(markers)))
-    circle_marker_indices = filter(lambda i: markers[i]["label"] == "circle", range(len(markers)))
+    if not cross_indices or not circle_indices:
+        return []
 
-    for iCross, iCircle in product(cross_marker_indices, circle_marker_indices):
-        dist = np.linalg.norm(markers[iCross][on] - markers[iCircle][on])
+    cost_matrix = np.full((len(cross_indices), len(circle_indices)), np.inf)
 
-        if np.abs(dist - expected_distance) < tolerance:
-            data.append((iCross, iCircle, dist))
+    for ci, iCross in enumerate(cross_indices):
+        for cj, iCircle in enumerate(circle_indices):
+            dist = np.linalg.norm(markers[iCross][on] - markers[iCircle][on])
+            distance_error = abs(dist - expected_distance)
 
-    data = deque(sorted(data, key=lambda x: x[2]))
+            if distance_error < tolerance:
+                conf_cross = markers[iCross].get("conf", 1.0)
+                conf_circle = markers[iCircle].get("conf", 1.0)
+                cost_matrix[ci, cj] = distance_error / (conf_cross * conf_circle)
 
-    used_marker_indices = set()
+    # Replace inf with a large finite value for the solver, then filter after
+    finite_mask = np.isfinite(cost_matrix)
+    if not finite_mask.any():
+        return []
+
+    large_cost = cost_matrix[finite_mask].max() + 1e6
+    solver_matrix = np.where(finite_mask, cost_matrix, large_cost)
+    row_ind, col_ind = linear_sum_assignment(solver_matrix)
+
     matches = []
-    while len(data) > 0:
-        iCross, iCircle, dist = data.popleft()
-
-        if len(used_marker_indices.intersection({iCross, iCircle})) == 0:
-            matches.append((iCross, iCircle))
-
-        used_marker_indices.add(iCross)
-        used_marker_indices.add(iCircle)
+    for r, c in zip(row_ind, col_ind, strict=False):
+        if finite_mask[r, c]:
+            matches.append((cross_indices[r], circle_indices[c]))
 
     return matches
