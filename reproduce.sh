@@ -33,6 +33,7 @@ OUTPUT_DIR="dart_experiment/output_reproduce"
 DATA_DIR="dart_experiment/DART_Experiment"
 ZIP_URL="https://fz-juelich.sciebo.de/s/Tq5SW76WG9zqMJi/download"
 ZIP_FILE="DART_Experiment.zip"
+CONDA_ENV="dmc-reproduce"
 
 PASS=0
 FAIL=0
@@ -40,12 +41,21 @@ FAIL=0
 step_pass() { PASS=$((PASS + 1)); echo "  -> PASS"; }
 step_fail() { FAIL=$((FAIL + 1)); echo "  -> FAIL: $1"; }
 
+# Helper: run a command inside the conda environment
+run() { conda run -n "$CONDA_ENV" --live-stream "$@"; }
+
 # ---------------------------------------------------------------------------
-# Step 1: Install dependencies
+# Step 1: Create conda environment and install dependencies
 # ---------------------------------------------------------------------------
 echo ""
-echo "--- Step 1: Install dependencies ---"
-pip install . && pip install acia
+echo "--- Step 1: Create conda env and install dependencies ---"
+if ! conda env list | grep -q "^${CONDA_ENV} "; then
+    echo "  Creating conda environment '$CONDA_ENV' with Python 3.10 ..."
+    conda create -y -n "$CONDA_ENV" python=3.10 -q
+fi
+echo "  Using Python: $(run python --version)"
+run pip install --upgrade pip -q
+run pip install -e . && run pip install acia cellpose
 echo "  -> done"
 
 # ---------------------------------------------------------------------------
@@ -61,6 +71,11 @@ else
     echo "  Unzipping..."
     unzip -q "$ZIP_FILE" -d dart_experiment/
     rm -f "$ZIP_FILE"
+    # The zip contains DMC_Experiment/ — rename to match config's input_dir
+    if [ -d "dart_experiment/DMC_Experiment" ] && [ ! -d "$DATA_DIR" ]; then
+        mv "dart_experiment/DMC_Experiment" "$DATA_DIR"
+        echo "  Renamed DMC_Experiment -> DART_Experiment"
+    fi
     echo "  -> done"
 fi
 
@@ -96,7 +111,7 @@ fi
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Step 4: Pixel calibration ---"
-if python scripts/calibrate_pixel_scale.py --config "$CONFIG"; then
+if run python scripts/calibrate_pixel_scale.py --config "$CONFIG"; then
     step_pass
 else
     step_fail "calibrate_pixel_scale.py failed"
@@ -108,7 +123,7 @@ fi
 echo ""
 echo "--- Step 5: Prepare output config ---"
 REPRO_CONFIG="dart_experiment/folder_config_reproduce.json"
-python -c "
+run python -c "
 import json, pathlib
 cfg = json.loads(pathlib.Path('$CONFIG').read_text())
 cfg['output_dir'] = '$OUTPUT_DIR'
@@ -121,12 +136,12 @@ print('  Wrote', '$REPRO_CONFIG', 'with output_dir =', '$OUTPUT_DIR')
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Step 6: Run processing ---"
-PROCESS_CMD="python scripts/process_folder.py --config $REPRO_CONFIG --save-cropped --verbose"
+PROCESS_ARGS="--config $REPRO_CONFIG --save-cropped --verbose"
 if ! $FULL; then
-    PROCESS_CMD="$PROCESS_CMD --max-files 1"
+    PROCESS_ARGS="$PROCESS_ARGS --max-files 1"
 fi
-echo "  $PROCESS_CMD"
-if $PROCESS_CMD; then
+echo "  python scripts/process_folder.py $PROCESS_ARGS"
+if run python scripts/process_folder.py $PROCESS_ARGS; then
     step_pass
 else
     step_fail "process_folder.py failed"
