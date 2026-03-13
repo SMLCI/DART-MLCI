@@ -889,65 +889,79 @@ def plot_calibration_result(
     # Left panel: Blueprint map
     ax1.set_title("Blueprint Map (Design Coordinates)", fontsize=14)
 
-    # Plot all chambers as gray dots
+    # Plot all chambers as gray + markers
     blueprint_df = blueprint_map.to_df()
     ax1.scatter(
-        blueprint_df["x"], blueprint_df["y"], c="gray", s=10, alpha=0.5, label="All chambers"
+        blueprint_df["x"],
+        blueprint_df["y"],
+        c="gray",
+        s=20,
+        alpha=0.5,
+        marker="+",
+        label="All chambers",
     )
 
-    # Highlight calibration chambers
+    # Highlight calibration chambers with distinct colors per ROI
     cal_blueprint = blueprint_df[blueprint_df["roi_id"].isin(calibration_ids)]
-    ax1.scatter(
-        cal_blueprint["x"],
-        cal_blueprint["y"],
-        c="red",
-        s=100,
-        marker="o",
-        edgecolors="black",
-        linewidths=1,
-        label="Calibration points",
-        zorder=5,
-    )
-
-    # Add labels for calibration points
+    cal_colors = ["#377eb8", "#ff7f00", "#984ea3", "#e41a1c", "#4daf4a"]
+    roi_color_map = {
+        roi_id: cal_colors[i % len(cal_colors)] for i, roi_id in enumerate(sorted(calibration_ids))
+    }
     for _, row in cal_blueprint.iterrows():
+        color = roi_color_map[row["roi_id"]]
+        ax1.scatter(
+            row["x"],
+            row["y"],
+            c=color,
+            s=100,
+            marker="+",
+            linewidths=2,
+            label=row["roi_id"],
+            zorder=5,
+        )
         ax1.annotate(
             row["roi_id"],
             (row["x"], row["y"]),
             xytext=(5, 5),
             textcoords="offset points",
             fontsize=8,
-            color="red",
+            color=color,
         )
 
-    ax1.set_xlabel("X (microns)")
-    ax1.set_ylabel("Y (microns)")
-    ax1.legend(loc="upper right")
+    ax1.set_xlabel(r"X ($\mu m$)")
+    ax1.set_ylabel(r"Y ($\mu m$)")
     ax1.set_aspect("equal")
     ax1.grid(True, alpha=0.3)
 
     # Right panel: Calibrated map
     ax2.set_title("Calibrated Map (Microscope Coordinates)", fontsize=14)
 
-    # Plot all chambers as gray dots
+    # Plot all chambers as gray + markers
     calibrated_df = calibrated_map.to_df()
     ax2.scatter(
-        calibrated_df["x"], calibrated_df["y"], c="gray", s=10, alpha=0.5, label="All chambers"
+        calibrated_df["x"],
+        calibrated_df["y"],
+        c="gray",
+        s=20,
+        alpha=0.5,
+        marker="+",
+        label="All chambers",
     )
 
-    # Plot calibration points (measured positions)
+    # Plot calibration points (measured positions) with distinct colors per ROI
     measured_df = measured_map.to_df()
-    ax2.scatter(
-        measured_df["x"],
-        measured_df["y"],
-        c="red",
-        s=100,
-        marker="o",
-        edgecolors="black",
-        linewidths=1,
-        label="Measured positions",
-        zorder=5,
-    )
+    for _, row in measured_df.iterrows():
+        color = roi_color_map[row["roi_id"]]
+        ax2.scatter(
+            row["x"],
+            row["y"],
+            c=color,
+            s=100,
+            marker="+",
+            linewidths=2,
+            label=row["roi_id"],
+            zorder=5,
+        )
 
     # Draw residual arrows from transformed blueprint to measured
     for roi_id in measured_map.roi_positions:
@@ -970,30 +984,62 @@ def plot_calibration_result(
 
     # Add labels for calibration points
     for _, row in measured_df.iterrows():
+        color = roi_color_map[row["roi_id"]]
         ax2.annotate(
             row["roi_id"],
             (row["x"], row["y"]),
             xytext=(5, 5),
             textcoords="offset points",
             fontsize=8,
-            color="red",
+            color=color,
         )
 
-    ax2.set_xlabel("X (microns)")
-    ax2.set_ylabel("Y (microns)")
-    ax2.legend(loc="upper right")
+    ax2.set_xlabel(r"X ($\mu m$)")
+    ax2.set_ylabel(r"Y ($\mu m$)")
     ax2.set_aspect("equal")
     ax2.grid(True, alpha=0.3)
 
-    # Add stats to figure
+    # Decompose affine transform parameters
+    origin = transform_result.transform(np.array([0.0, 0.0]))
+    e1 = transform_result.transform(np.array([1.0, 0.0])) - origin
+    e2 = transform_result.transform(np.array([0.0, 1.0])) - origin
+    A = np.column_stack([e1, e2])  # 2x2 linear part
+    translation = origin
+
+    rotation_rad = np.arctan2(A[1, 0], A[0, 0])
+    rotation_deg = np.degrees(rotation_rad)
+    sx = np.linalg.norm(A[:, 0])
+    sy = np.linalg.norm(A[:, 1])
+
     fig.suptitle(
-        f"Calibration Result: RMSE = {transform_result.rmse:.3f} µm, "
-        f"Max Error = {transform_result.max_error:.3f} µm",
-        fontsize=12,
-        y=0.98,
+        f"Rotation: {rotation_deg:.2f}° | Scale: ({sx:.4f}, {sy:.4f})"
+        f" | Translation: ({translation[0]:.1f}, {translation[1]:.1f}) $\\mu m$\n"
+        f"Matrix: [[{A[0,0]:.4f}, {A[0,1]:.4f}], [{A[1,0]:.4f}, {A[1,1]:.4f}]]"
+        f" | RMSE = {transform_result.rmse:.3f} $\\mu m$,"
+        f" Max Error = {transform_result.max_error:.3f} $\\mu m$",
+        fontsize=11,
+        y=1.02,
     )
 
-    plt.tight_layout()
+    # Single shared legend below both panels (deduplicated)
+    handles, labels = ax1.get_legend_handles_labels()
+    seen = {}
+    unique_handles, unique_labels = [], []
+    for h, lbl in zip(handles, labels, strict=False):
+        if lbl not in seen:
+            seen[lbl] = True
+            unique_handles.append(h)
+            unique_labels.append(lbl)
+    fig.legend(
+        unique_handles,
+        unique_labels,
+        loc="lower center",
+        ncol=min(len(unique_labels), 6),
+        bbox_to_anchor=(0.5, -0.02),
+        fontsize=9,
+    )
+
+    fig.subplots_adjust(bottom=0.12)
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close()
 
