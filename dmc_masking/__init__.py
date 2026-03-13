@@ -19,6 +19,7 @@ from dmc_masking.detection import extract_data as extract_data
 from dmc_masking.mask import RoIPolygon as RoIPolygon
 from dmc_masking.mask import SingleRoIStructureLibrary as SingleRoIStructureLibrary
 from dmc_masking.mask import apply_mask as apply_mask
+from dmc_masking.mask import filter_segmentation_by_mask as filter_segmentation_by_mask
 from dmc_masking.masker import RoIMasker as RoIMasker
 from dmc_masking.masker import SingleStructureRoIMasker as SingleStructureRoIMasker
 from dmc_masking.masker import compute_marker_angles as compute_marker_angles
@@ -48,5 +49,6 @@ __all__ = [
     "apply_mask",
     "compute_marker_angles",
     "extract_data",
+    "filter_segmentation_by_mask",
     "load_chip_config",
 ]

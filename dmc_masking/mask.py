@@ -77,6 +77,7 @@ def apply_mask(
     rotated_image,
     return_uncropped=False,
     return_bbox=False,
+    allow_truncation=False,
 ):
     """Compute and apply mask to image.
 
@@ -88,6 +89,8 @@ def apply_mask(
         rotated_image (np.ndarray): The rotated image (CxHxW or HxW).
         return_uncropped: If True, return the full image and mask without cropping.
         return_bbox: If True, also return the crop bounding box (minx, miny, maxx, maxy).
+        allow_truncation: If True, allow the ROI to extend beyond image boundaries
+                          by clipping the crop region to the image. Default is False.
 
     Returns:
         tuple: (cropped_image, cropped_mask) or (image, mask) if return_uncropped=True.
@@ -104,8 +107,6 @@ def apply_mask(
         cross_marker = rotated_markers[cross_index]
         circle_marker = rotated_markers[circle_index]
 
-        # print(cross_marker["bbox_center"][0])
-
         # correct for difference in expected width
         width = np.abs(cross_marker["bbox_center"][0] - circle_marker["bbox_center"][0])
         expected_width = np.abs(marker_group_pixels["cross"][0] - marker_group_pixels["circle"][0])
@@ -120,7 +121,7 @@ def apply_mask(
         # check whether roi polygon in image
         xmin, ymin, xmax, ymax = rp.roi_polygon.bounds
 
-        if xmin < 0 or xmax > im_width or ymin < 0 or ymax > im_height:
+        if not allow_truncation and (xmin < 0 or xmax > im_width or ymin < 0 or ymax > im_height):
             # roi is out of image bounds
             continue
 
@@ -136,13 +137,22 @@ def apply_mask(
         raise ValueError("No roi lies completely inside the image")
 
     # use the RoI with maximum margin to the image boundaries
+    # (or least overflow when allow_truncation is True)
     index = np.argmax(min_dists)
 
     mask = masks[index]
     polygon: RoIPolygon = polygons[index]
 
-    # 8. Cropping (compute bbox even if not cropping, for return_bbox)
+    # Cropping (compute bbox even if not cropping, for return_bbox)
     minx, miny, maxx, maxy = tuple(map(int, map(np.round, polygon.roi_polygon.bounds)))
+
+    # Clip to image bounds when truncation is allowed
+    if allow_truncation:
+        minx = max(minx, 0)
+        miny = max(miny, 0)
+        maxx = min(maxx, im_width)
+        maxy = min(maxy, im_height)
+
     bbox = (minx, miny, maxx, maxy)
 
     if return_uncropped:
@@ -157,6 +167,50 @@ def apply_mask(
     if return_bbox:
         return cropped_image, cropped_mask, bbox
     return cropped_image, cropped_mask
+
+
+def filter_segmentation_by_mask(
+    labeled_mask: np.ndarray,
+    chamber_mask: np.ndarray,
+    threshold: float = 0.5,
+    relabel: bool = True,
+) -> np.ndarray:
+    """Remove segmented objects that significantly overlap with masked-out regions.
+
+    Args:
+        labeled_mask: HxW uint16 instance mask (0=bg, 1..N=cells)
+        chamber_mask: HxW bool mask (True=outside ROI / internal structures)
+        threshold: Fraction of object area that must be in valid region to keep it
+        relabel: If True (default), relabel remaining IDs to be contiguous.
+            If False, keep original label IDs (removed cells are zeroed out).
+
+    Returns:
+        Filtered instance mask.
+    """
+    if labeled_mask.max() == 0:
+        return labeled_mask
+
+    filtered = labeled_mask.copy()
+    for label_id in range(1, int(labeled_mask.max()) + 1):
+        obj_pixels = labeled_mask == label_id
+        n_total = np.sum(obj_pixels)
+        if n_total == 0:
+            continue
+        n_masked = np.sum(obj_pixels & chamber_mask)
+        if n_masked / n_total > threshold:
+            filtered[obj_pixels] = 0
+
+    if not relabel:
+        return filtered
+
+    # Relabel to keep IDs contiguous
+    unique_labels = np.unique(filtered)
+    unique_labels = unique_labels[unique_labels > 0]
+    relabeled = np.zeros_like(filtered)
+    for new_id, old_id in enumerate(unique_labels, 1):
+        relabeled[filtered == old_id] = new_id
+
+    return relabeled
 
 
 def apply_mask_rotation_free(

@@ -139,11 +139,12 @@ class ImageRotationStep:
 class RoIMaskingStep:
     """Apply RoI mask to a rotated image."""
 
-    def __init__(self, marker_group_pixels, roi_polygon):
+    def __init__(self, marker_group_pixels, roi_polygon, allow_truncation=False):
         super().__init__()
 
         self.marker_group_pixels = marker_group_pixels
         self.roi_polygon = roi_polygon
+        self.allow_truncation = allow_truncation
 
     def __call__(self, data, cropped=True, return_bbox=False):
         image = data["image"]
@@ -165,6 +166,7 @@ class RoIMaskingStep:
             rotated_image=image,
             return_uncropped=not cropped,
             return_bbox=return_bbox,
+            allow_truncation=self.allow_truncation,
         )
 
         if return_bbox:
