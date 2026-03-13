@@ -155,5 +155,7 @@ artifacts/images/sak/0000_base64.txt
 artifacts/images/sak/0000_request.json
 scripts/calibration_test.json
 scripts/data_prep.ipynb
-dart_experiment/
+dart_experiment/DART_Experiment/
+dart_experiment/DART_Experiment_old/
+dart_experiment/output*/
 validation_output/

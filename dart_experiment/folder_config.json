@@ -1,0 +1,21 @@
+{
+  "input_dir": "dart_experiment/DART_Experiment",
+  "output_dir": "dart_experiment/output",
+  "pixel_size": 0.092766,
+  "chip_config": "artifacts/chips/sak.json",
+  "model_path": "artifacts/models/v26_detect_s_imgsz1280.pt",
+  "flip": true,
+  "allow_truncation": true,
+  "registration": true,
+  "registration_method": "ncc",
+  "segmenter": "omnipose",
+  "folders": {
+    "Small Chambers": "NormaleBox-inner",
+    "Big Chambers": "BigBox-inner",
+    "Big Chambers + Pillars": "BigBox-pillar-inner",
+    "Open Chambers": "OpenBox-inner",
+    "Open Chambers + Structures": "OpenBox-collector-inner",
+    "Mother Machines": "Mothermachine-2x-inner",
+    "Small Chambers + Pillar": "NormaleBox-pillar-inner"
+  }
+}
