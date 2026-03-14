@@ -1,4 +1,4 @@
-# Docker Guide for DMC Masking API
+# Docker Guide for DART API
 
 ## Quick Start with Docker Compose
 
@@ -26,10 +26,10 @@ The API will be available at http://localhost:8000
 
 ```bash
 # Build the Docker image
-docker build -t dmc-masking:latest .
+docker build -t dart:latest .
 
 # Build with a specific tag
-docker build -t dmc-masking:v1.0 .
+docker build -t dart:v1.0 .
 ```
 
 ### Run the Container
@@ -37,54 +37,54 @@ docker build -t dmc-masking:v1.0 .
 #### CPU Mode (Default)
 ```bash
 docker run -d \
-  --name dmc-masking-api \
+  --name dart-api \
   -p 8000:8000 \
   -e DMC_MODEL_PATH=/app/artifacts/models/v26_detect_s_imgsz1280.pt \
   -e DMC_STRUCTURE_LIBRARY_PATH=/app/artifacts/chamber_structure.json \
-  dmc-masking:latest
+  dart:latest
 ```
 
 #### GPU Mode (Requires nvidia-docker)
 ```bash
 docker run -d \
-  --name dmc-masking-api \
+  --name dart-api \
   --gpus all \
   -p 8000:8000 \
   -e DMC_DEVICE=cuda:0 \
-  dmc-masking:latest
+  dart:latest
 ```
 
 #### Custom Port
 ```bash
 docker run -d \
-  --name dmc-masking-api \
+  --name dart-api \
   -p 8888:8000 \
-  dmc-masking:latest
+  dart:latest
 ```
 
 ### Container Management
 
 ```bash
 # View logs
-docker logs -f dmc-masking-api
+docker logs -f dart-api
 
 # Stop the container
-docker stop dmc-masking-api
+docker stop dart-api
 
 # Start the container
-docker start dmc-masking-api
+docker start dart-api
 
 # Restart the container
-docker restart dmc-masking-api
+docker restart dart-api
 
 # Remove the container
-docker rm -f dmc-masking-api
+docker rm -f dart-api
 
 # Execute commands inside container
-docker exec -it dmc-masking-api bash
+docker exec -it dart-api bash
 
 # Check container health
-docker inspect --format='{{.State.Health.Status}}' dmc-masking-api
+docker inspect --format='{{.State.Health.Status}}' dart-api
 ```
 
 ## Environment Variables
@@ -112,11 +112,11 @@ Example with custom environment variables:
 
 ```bash
 docker run -d \
-  --name dmc-masking-api \
+  --name dart-api \
   -p 8000:8000 \
   -e DMC_PIXEL_SIZE=0.05 \
   -e DMC_DEVICE=cpu \
-  dmc-masking:latest
+  dart:latest
 ```
 
 ## Volume Mounts
@@ -125,21 +125,21 @@ docker run -d \
 
 ```bash
 docker run -d \
-  --name dmc-masking-api \
+  --name dart-api \
   -p 8000:8000 \
   -v /path/to/custom/model.pt:/app/custom_model.pt \
   -e DMC_MODEL_PATH=/app/custom_model.pt \
-  dmc-masking:latest
+  dart:latest
 ```
 
 ### Persistent Logs
 
 ```bash
 docker run -d \
-  --name dmc-masking-api \
+  --name dart-api \
   -p 8000:8000 \
   -v /path/to/logs:/app/logs \
-  dmc-masking:latest
+  dart:latest
 ```
 
 ## Testing the Dockerized API
@@ -181,7 +181,7 @@ EOF
 
 ```bash
 # Enter the container
-docker exec -it dmc-masking-api bash
+docker exec -it dart-api bash
 
 # Inside container - test health
 curl http://localhost:8000/health
@@ -222,11 +222,11 @@ docker-compose up --build
 Or using Docker CLI:
 ```bash
 docker run -d \
-  --name dmc-masking-api \
+  --name dart-api \
   --gpus all \
   -p 8000:8000 \
   -e DMC_DEVICE=cuda:0 \
-  dmc-masking:latest
+  dart:latest
 ```
 
 ### Verify GPU Usage
@@ -252,7 +252,7 @@ docker buildx create --name multiarch --use
 # Build for multiple platforms
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  -t dmc-masking:latest \
+  -t dart:latest \
   --push \
   .
 ```
@@ -266,14 +266,14 @@ docker buildx build \
 lsof -i :8000
 
 # Use a different port
-docker run -d -p 8888:8000 dmc-masking:latest
+docker run -d -p 8888:8000 dart:latest
 ```
 
 ### Container Won't Start
 
 ```bash
 # Check logs
-docker logs dmc-masking-api
+docker logs dart-api
 
 # Common issues:
 # - Model file not found: Check DMC_MODEL_PATH
@@ -285,10 +285,10 @@ docker logs dmc-masking-api
 
 ```bash
 # Verify model file exists in container
-docker exec dmc-masking-api ls -lh /app/artifacts/models/
+docker exec dart-api ls -lh /app/artifacts/models/
 
 # Check environment variables
-docker exec dmc-masking-api env | grep DMC_
+docker exec dart-api env | grep DMC_
 
 # Test health endpoint
 curl http://localhost:8000/health
@@ -299,18 +299,18 @@ curl http://localhost:8000/health
 ```bash
 # Limit container memory
 docker run -d \
-  --name dmc-masking-api \
+  --name dart-api \
   -p 8000:8000 \
   --memory=4g \
   --memory-swap=4g \
-  dmc-masking:latest
+  dart:latest
 ```
 
 ### Rebuild Without Cache
 
 ```bash
 # Force complete rebuild
-docker build --no-cache -t dmc-masking:latest .
+docker build --no-cache -t dart:latest .
 
 # Or with docker-compose
 docker-compose build --no-cache
@@ -325,9 +325,9 @@ docker-compose build --no-cache
 version: '3.8'
 
 services:
-  dmc-masking-api:
-    image: dmc-masking:latest
-    container_name: dmc-masking-api
+  dart-api:
+    image: dart:latest
+    container_name: dart-api
     restart: always
     ports:
       - "8000:8000"
@@ -376,13 +376,13 @@ server {
 
 ```bash
 docker run -d \
-  --name dmc-masking-api \
+  --name dart-api \
   -p 8000:8000 \
   --memory=4g \
   --memory-swap=4g \
   --cpus=2 \
   --restart=unless-stopped \
-  dmc-masking:latest
+  dart:latest
 ```
 
 ## CI/CD Integration
@@ -410,7 +410,7 @@ jobs:
         with:
           context: .
           push: true
-          tags: dmc-masking:latest
+          tags: dart:latest
 ```
 
 ## Additional Resources

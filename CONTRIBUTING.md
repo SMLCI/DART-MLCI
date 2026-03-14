@@ -42,3 +42,30 @@ ruff format dmc_masking/ tests/
 pip install pre-commit
 pre-commit install
 ```
+
+## Project Structure
+
+```
+dmc_masking/
+  __init__.py          # Public API re-exports
+  constants.py         # DEFAULT_MODEL_PATH, pixel sizes, tolerances
+  detection.py         # MarkerDetectionModel, extract_data
+  masker.py            # RoIMasker, SingleStructureRoIMasker
+  pipeline.py          # Step classes (detect → match → rotate → mask)
+  mask.py              # RoIPolygon, apply_mask
+  map.py               # Map, calibration transforms
+  chip.py              # ChipStructureLibrary (unified chip config)
+  config.py            # DMCConfig dataclasses
+  io.py                # Image / structure file loading
+  rotation.py          # Image and marker rotation
+  match.py             # Marker pair matching
+  registration.py      # Phase-correlation & timelapse registration
+  utils.py             # normalize_image, helpers
+  visualization/       # Plotting, OpenCV drawing, video generation
+  api/                 # FastAPI REST endpoints
+artifacts/
+  models/              # YOLO weights
+  chips/               # Chip config JSONs (sak.json, …)
+scripts/               # CLI tools (calibrate_map, process_image, …)
+tests/                 # Pytest suite
+```

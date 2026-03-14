@@ -1,12 +1,12 @@
 version: '3.8'
 
 services:
-  dmc-masking-api:
+  dart-api:
     build:
       context: .
       dockerfile: Dockerfile
-    image: dmc-masking:latest
-    container_name: dmc-masking-api
+    image: dart:latest
+    container_name: dart-api
     ports:
       - "8000:8000"
     environment:

@@ -1,8 +1,8 @@
-# dmc-masking Architecture
+# DART Architecture
 
 ## Overview
 
-dmc-masking provides two core capabilities for microfluidic chip microscopy:
+DART provides two core capabilities for microfluidic chip microscopy:
 
 1. **Masking pipeline** — detect alignment markers, match pairs, correct image rotation, apply a polygon mask, and crop the region of interest (ROI).
 2. **Map calibration** — compute an affine transform between chip blueprint coordinates and microscope stage coordinates so every chamber can be automatically revisited.

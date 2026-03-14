@@ -1,9 +1,8 @@
-# dmc-masking
+# DART
 
 Real-time microfluidic chamber image processing library with two core capabilities:
-
-1. **Masking pipeline** — detect YOLO markers, match pairs, correct rotation, apply polygon mask, and crop the region of interest.
-2. **Map calibration** — align a chip blueprint with microscope stage coordinates via affine transform so every chamber can be revisited automatically.
+masking pipeline (marker detection, rotation correction, polygon masking, and cropping)
+and map calibration (affine alignment of chip blueprints with microscope stage coordinates).
 
 ## Installation
 
@@ -18,9 +17,9 @@ pip install ".[api]"
 pip install ".[dev]"
 ```
 
-## Quick Start
+## Usage
 
-### Python
+### Python API
 
 ```python
 from dmc_masking import MarkerDetectionModel, ChipStructureLibrary
@@ -33,7 +32,7 @@ model = MarkerDetectionModel()
 markers = model.predict_markers(image)
 ```
 
-### Pipeline steps
+### Pipeline Steps
 
 ```python
 from dmc_masking import (
@@ -59,13 +58,13 @@ cropped_image = data["image"]
 cropped_mask  = data["mask"]
 ```
 
-### CLI — calibrate a map
+### CLI — Calibrate a Map
 
 ```bash
 python scripts/calibrate_map.py --config calibration.json
 ```
 
-### CLI — process images
+### CLI — Process Images
 
 ```bash
 python scripts/process_image.py --image image.tif --roi-id 0050
@@ -98,62 +97,7 @@ docker-compose up --build
 # API available at http://localhost:8000
 ```
 
-## Documentation
-
-| Guide | Description |
-|-------|-------------|
-| [Architecture overview](docs/index.md) | Module map, pipeline diagrams |
-| [API Quick Start](docs/API_QUICK_START.md) | REST API usage examples |
-| [Docker Guide](docs/DOCKER_GUIDE.md) | Container deployment |
-| [API Migration](docs/API_BASE64_MIGRATION.md) | Base64 encoding migration notes |
-| [Contributing](CONTRIBUTING.md) | Dev setup, tests, adding chip designs |
-| [Changelog](CHANGELOG.md) | Release history |
-
-## Project Structure
-
-```
-dmc_masking/
-  __init__.py          # Public API re-exports
-  constants.py         # DEFAULT_MODEL_PATH, pixel sizes, tolerances
-  detection.py         # MarkerDetectionModel, extract_data
-  masker.py            # RoIMasker, SingleStructureRoIMasker
-  pipeline.py          # Step classes (detect → match → rotate → mask)
-  mask.py              # RoIPolygon, apply_mask
-  map.py               # Map, calibration transforms
-  chip.py              # ChipStructureLibrary (unified chip config)
-  config.py            # DMCConfig dataclasses
-  io.py                # Image / structure file loading
-  rotation.py          # Image and marker rotation
-  match.py             # Marker pair matching
-  registration.py      # Phase-correlation & timelapse registration
-  utils.py             # normalize_image, helpers
-  visualization/       # Plotting, OpenCV drawing, video generation
-  api/                 # FastAPI REST endpoints
-artifacts/
-  models/              # YOLO weights
-  chips/               # Chip config JSONs (sak.json, …)
-scripts/               # CLI tools (calibrate_map, process_image, …)
-tests/                 # Pytest suite
-```
-
-## License
-
-[MIT](LICENSE) — Copyright (c) 2025 Johannes Seiffarth, Forschungszentrum Juelich GmbH
-
-## Citation
-
-If you use dmc-masking in your research, please cite:
-
-```
-@software{dmc_masking,
-  author  = {Seiffarth, Johannes},
-  title   = {dmc-masking: Real-time microfluidic chamber image processing},
-  year    = {2025},
-  url     = {https://github.com/JojoDevel/dmc-masking}
-}
-```
-
-## Reproducing the DART Experiment
+## Reproducible Experiments
 
 Step-by-step instructions to reproduce the automated analysis of all seven DART chamber types.
 
@@ -326,3 +270,20 @@ python scripts/calibrate_pixel_scale.py --config dart_experiment/folder_config_c
 ```
 
 This detects markers in the first frame of each subfolder and compares the detected pixel distance to the expected physical distance, reporting any calibration error.
+
+## License
+
+[MIT](LICENSE) — Copyright (c) 2025 Johannes Seiffarth, Forschungszentrum Juelich GmbH
+
+## Citation
+
+If you use DART in your research, please cite:
+
+```
+@software{dart,
+  author  = {Seiffarth, Johannes},
+  title   = {DART: Real-time microfluidic chamber image processing},
+  year    = {2025},
+  url     = {https://github.com/JojoDevel/dmc-masking}
+}
+```
