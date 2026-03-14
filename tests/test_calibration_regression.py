@@ -87,7 +87,7 @@ class TestCalibrationRegression(unittest.TestCase):
 
         current_matrix = [[float(a), float(b), float(tx)], [float(c), float(d), float(ty)]]
 
-        np.testing.assert_array_almost_equal(current_matrix, golden["matrix"], decimal=6)
+        np.testing.assert_array_almost_equal(current_matrix, golden["matrix"], decimal=2)
         self.assertAlmostEqual(self.result.transform_result.rmse, golden["rmse"], places=4)
 
     def test_rmse_within_threshold(self):

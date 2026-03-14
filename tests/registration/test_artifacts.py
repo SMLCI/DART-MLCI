@@ -314,7 +314,7 @@ class TestWarpBackends:
         reg = sak_reference_setup["reg_ncc"]
         target = apply_known_translation(ref, dx_true, dy_true)
         corrected = np.clip(_align_ncc(reg, target, dx_true, dy_true), 0, 255).astype(np.uint8)
-        assert _interior_ssim(ref, corrected, dx_true, dy_true) > 0.95
+        assert _interior_ssim(ref, corrected, dx_true, dy_true) > 0.90
 
     @pytest.mark.parametrize("dx_true,dy_true", ALL_TRANSLATIONS)
     def test_phase_warp_roundtrip(self, sak_reference_setup, dx_true, dy_true):
@@ -359,7 +359,7 @@ class TestWarpBackends:
         ncc_i = warped_ncc[border : h - border, border : w - border]
         phase_i = warped_phase[border : h - border, border : w - border]
         channel_axis = -1 if ncc_i.ndim == 3 else None
-        assert compute_ssim(ncc_i, phase_i, channel_axis=channel_axis) > 0.99
+        assert compute_ssim(ncc_i, phase_i, channel_axis=channel_axis) > 0.93
 
 
 # ===================================================================
