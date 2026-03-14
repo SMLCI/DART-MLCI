@@ -5,6 +5,7 @@
 #   bash reproduce.sh            # smoke test (processes 1 stack per folder)
 #   bash reproduce.sh --full     # full experiment (all stacks)
 #   bash reproduce.sh --map-only # run only map calibration/validation (steps 1,4-6)
+#   bash reproduce.sh --ci       # CI mode: skip conda, install directly, use remote URLs
 
 set -euo pipefail
 
@@ -13,13 +14,15 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 FULL=false
 MAP_ONLY=false
+CI_MODE=false
 for arg in "$@"; do
     case "$arg" in
         --full) FULL=true ;;
         --map-only) MAP_ONLY=true ;;
+        --ci) CI_MODE=true ;;
         *)
             echo "Unknown flag: $arg"
-            echo "Usage: bash reproduce.sh [--full] [--map-only]"
+            echo "Usage: bash reproduce.sh [--full] [--map-only] [--ci]"
             exit 1
             ;;
     esac
@@ -42,8 +45,8 @@ CONDA_ENV="dmc-reproduce"
 
 # Map calibration data
 CAL_DATA_DIR="dart_experiment/calibration_data"
-CAL_SUBSET_URL="file://$(pwd)/calibration_zips/calibration_data_subset.zip"
-CAL_FULL_URL="file://$(pwd)/calibration_zips/calibration_data_full.zip"
+CAL_SUBSET_URL="https://fz-juelich.sciebo.de/s/zztReT8yHPF6CfH/download"
+CAL_FULL_URL="https://fz-juelich.sciebo.de/s/9bRnA364D8KgixE/download"
 CAL_ZIP_FILE="calibration_data.zip"
 
 PASS=0
@@ -52,21 +55,30 @@ FAIL=0
 step_pass() { PASS=$((PASS + 1)); echo "  -> PASS"; }
 step_fail() { FAIL=$((FAIL + 1)); echo "  -> FAIL: $1"; }
 
-# Helper: run a command inside the conda environment
-run() { conda run -n "$CONDA_ENV" --live-stream "$@"; }
+# Helper: run a command inside the conda environment (or directly in CI mode)
+if $CI_MODE; then
+    run() { "$@"; }
+else
+    run() { conda run -n "$CONDA_ENV" --live-stream "$@"; }
+fi
 
 # ---------------------------------------------------------------------------
 # Step 1: Create conda environment and install dependencies
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- Step 1: Create conda env and install dependencies ---"
-if ! conda env list | grep -q "^${CONDA_ENV} "; then
-    echo "  Creating conda environment '$CONDA_ENV' with Python 3.10 ..."
-    conda create -y -n "$CONDA_ENV" python=3.10 -q
+if $CI_MODE; then
+    echo "  CI mode: installing directly (no conda)"
+    pip install -e . && pip install acia cellpose
+else
+    if ! conda env list | grep -q "^${CONDA_ENV} "; then
+        echo "  Creating conda environment '$CONDA_ENV' with Python 3.10 ..."
+        conda create -y -n "$CONDA_ENV" python=3.10 -q
+    fi
+    echo "  Using Python: $(run python --version)"
+    run pip install --upgrade pip -q
+    run pip install -e . && run pip install acia cellpose
 fi
-echo "  Using Python: $(run python --version)"
-run pip install --upgrade pip -q
-run pip install -e . && run pip install acia cellpose
 echo "  -> done"
 
 # ---------------------------------------------------------------------------
@@ -137,11 +149,7 @@ else
         CAL_URL="$CAL_SUBSET_URL"
         echo "  Using subset calibration data..."
     fi
-    if [[ "$CAL_URL" == file://* ]]; then
-        cp "${CAL_URL#file://}" "$CAL_ZIP_FILE"
-    else
-        wget -q --show-progress -O "$CAL_ZIP_FILE" "$CAL_URL"
-    fi
+    wget -q --show-progress -O "$CAL_ZIP_FILE" "$CAL_URL"
     echo "  Unzipping..."
     unzip -q "$CAL_ZIP_FILE" -d dart_experiment/
     rm -f "$CAL_ZIP_FILE"
