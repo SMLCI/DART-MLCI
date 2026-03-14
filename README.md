@@ -277,6 +277,46 @@ pip install cellpose_omni
 python scripts/process_folder.py --config dart_experiment/folder_config.json --save-cropped --verbose
 ```
 
+### Map Calibration
+
+The second core contribution is **map calibration**: aligning the chip blueprint
+with microscope stage coordinates so every chamber can be revisited automatically.
+The `reproduce.sh` script includes these steps (steps 4–6), but they can also be
+run manually.
+
+#### 1. Download calibration data
+
+The calibration dataset contains microscope images with known stage positions.
+A **subset** (~250 MB, 23 images) is used for the smoke test; the **full** dataset
+(~9 GB, 1164 images) is used with `--full`.
+
+#### 2. Run map calibration
+
+```bash
+python scripts/calibrate_map.py \
+    --config dart_experiment/calibration_data/calibration_config.json \
+    --output dart_experiment/output_reproduce/calibrated_map.csv \
+    --output-dir dart_experiment/output_reproduce/calibration \
+    --verbose
+```
+
+This uses 3 calibration images to compute an affine transform from the chip
+blueprint (in `artifacts/chips/sak.json`) to microscope coordinates, producing
+`calibrated_map.csv` with positions for all 1164 chambers.
+
+#### 3. Validate calibrated map
+
+```bash
+python scripts/validate_map.py \
+    --config dart_experiment/output_reproduce/validation_config.json \
+    --output-dir dart_experiment/output_reproduce/validation \
+    --verbose
+```
+
+This compares the calibrated map predictions against measured positions from
+independent validation images, producing `validation_results.csv`,
+`error_histogram.png`, and `error_map.png`.
+
 ### Verify Pixel Calibration (Optional)
 
 To verify that the configured pixel size matches the physical marker distances:

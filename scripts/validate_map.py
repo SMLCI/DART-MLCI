@@ -417,8 +417,13 @@ def run_validation(
     # Handle roi_id formatting (ensure 4-digit format)
     meta_df["roi_id"] = meta_df["roi_id"].apply(lambda rid: f"{int(rid):04d}")
 
-    # Get the directory containing meta.csv for resolving relative image paths
-    meta_dir = meta_csv_path.parent
+    # Get the directory for resolving relative image paths
+    # Use images_dir from config if provided, otherwise fall back to meta.csv parent
+    images_dir = config.get("images_dir")
+    if images_dir is not None:
+        meta_dir = Path(images_dir)
+    else:
+        meta_dir = meta_csv_path.parent
 
     # Limit number of images if specified
     if max_images is not None:

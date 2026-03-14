@@ -20,9 +20,13 @@ JSON config format:
             }
         ],
         "pixel_size": 0.065789,
-        "blueprint_map_path": "artifacts/sak_blueprint_map.csv",
+        "chip_config_path": "artifacts/chips/sak.json",
         "model_path": "artifacts/models/v26_detect_s_imgsz1280.pt"
     }
+
+    Note: Provide either "chip_config_path" (unified chip JSON with blueprint_map)
+    or "blueprint_map_path" (CSV). chip_config_path is preferred as it also provides
+    the structure library for chamber type lookup.
 """
 
 import argparse
@@ -112,7 +116,7 @@ def validate_config(config: dict, config_path: Path | None = None) -> None:
     source = f" in '{config_path}'" if config_path else ""
 
     # Check required top-level fields
-    required_fields = ["calibration_images", "pixel_size", "blueprint_map_path"]
+    required_fields = ["calibration_images", "pixel_size"]
     missing_fields = [f for f in required_fields if f not in config]
     if missing_fields:
         raise ValueError(
@@ -120,7 +124,14 @@ def validate_config(config: dict, config_path: Path | None = None) -> None:
             f"Required fields are:\n"
             f"  - calibration_images: List of calibration image configurations\n"
             f"  - pixel_size: Pixel size in microns (e.g., 0.065789)\n"
-            f"  - blueprint_map_path: Path to the blueprint map CSV file"
+            f"  - blueprint_map_path OR chip_config_path: Source for the blueprint map"
+        )
+
+    # Ensure at least one blueprint map source is provided
+    if "blueprint_map_path" not in config and "chip_config_path" not in config:
+        raise ValueError(
+            f"Must provide either 'blueprint_map_path' (CSV) or 'chip_config_path' "
+            f"(chip JSON with blueprint_map){source}"
         )
 
     # Validate calibration_images
@@ -181,10 +192,17 @@ def validate_config(config: dict, config_path: Path | None = None) -> None:
     if not isinstance(pixel_size, int | float) or pixel_size <= 0:
         raise ValueError(f"'pixel_size'{source} must be a positive number, got {pixel_size}")
 
-    # Validate blueprint_map_path exists
-    blueprint_path = Path(config["blueprint_map_path"])
-    if not blueprint_path.exists():
-        raise ValueError(f"'blueprint_map_path'{source}: File not found: {blueprint_path}")
+    # Validate blueprint_map_path exists (if provided)
+    if "blueprint_map_path" in config:
+        blueprint_path = Path(config["blueprint_map_path"])
+        if not blueprint_path.exists():
+            raise ValueError(f"'blueprint_map_path'{source}: File not found: {blueprint_path}")
+
+    # Validate chip_config_path exists (if provided)
+    if "chip_config_path" in config and config["chip_config_path"] is not None:
+        chip_config_path = Path(config["chip_config_path"])
+        if not chip_config_path.exists():
+            raise ValueError(f"'chip_config_path'{source}: File not found: {chip_config_path}")
 
     # Validate optional model_path if provided
     if "model_path" in config and config["model_path"] is not None:
@@ -590,7 +608,7 @@ def run_calibration(
         Tuple of (CalibrationResult with calibrated map and statistics, blueprint_map)
     """
     pixel_size = config["pixel_size"]
-    blueprint_map_path = Path(config["blueprint_map_path"])
+    blueprint_map_path = config.get("blueprint_map_path")
     model_path = config.get("model_path")
 
     # Set default model path if not specified
@@ -618,10 +636,20 @@ def run_calibration(
         print("=== Calibration Pipeline ===")
         print()
         print("[Step 1/4] Loading configuration")
-        print(f"  Blueprint map: {blueprint_map_path} ", end="")
 
-    # Load blueprint map
-    blueprint_map = Map.from_csv(blueprint_map_path)
+    # Load blueprint map: prefer chip_config_path, fall back to blueprint_map_path CSV
+    if chip_config_path is not None:
+        structure_library = ChipStructureLibrary.from_file(chip_config_path, pixel_size=pixel_size)
+        blueprint_map = structure_library.get_blueprint_map()
+        blueprint_map_source = chip_config_path
+    elif blueprint_map_path is not None:
+        blueprint_map = Map.from_csv(Path(blueprint_map_path))
+        blueprint_map_source = blueprint_map_path
+    else:
+        raise ValueError("Must provide either 'chip_config_path' or 'blueprint_map_path'")
+
+    if verbose:
+        print(f"  Blueprint map: {blueprint_map_source} ", end="")
 
     if verbose:
         print(f"({len(blueprint_map.roi_positions)} chambers)")
@@ -630,10 +658,8 @@ def run_calibration(
         print(f"  Calibration images: {len(calibration_images)}")
         print()
 
-    # Initialize structure library: prefer chip config, fall back to legacy
-    if chip_config_path is not None:
-        structure_library = ChipStructureLibrary.from_file(chip_config_path, pixel_size=pixel_size)
-    else:
+    # Initialize structure library if not already loaded from chip config
+    if chip_config_path is None:
         import warnings
 
         with warnings.catch_warnings():
@@ -1277,6 +1303,14 @@ def calibrate_map(
             raise FileNotFoundError(f"Config file not found: {config_path}")
         config = load_config(config_path)
 
+    # Resolve relative image paths against config file directory
+    if config_path is not None:
+        config_dir = config_path.resolve().parent
+        for img_config in config.get("calibration_images", []):
+            img_path = Path(img_config["image_path"])
+            if not img_path.is_absolute():
+                img_config["image_path"] = str(config_dir / img_path)
+
     # Validate configuration
     validate_config(config, config_path)
 
@@ -1378,9 +1412,12 @@ JSON config format:
           }
       ],
       "pixel_size": 0.065789,
-      "blueprint_map_path": "artifacts/sak_blueprint_map.csv",
+      "chip_config_path": "artifacts/chips/sak.json",
       "model_path": "artifacts/models/v26_detect_s_imgsz1280.pt"
   }
+
+  Note: Provide either "chip_config_path" (unified chip JSON) or
+  "blueprint_map_path" (CSV). chip_config_path is preferred.
         """,
     )
 
