@@ -225,7 +225,12 @@ needs the `segmentation` extras (`pip install -e ".[api,segmentation]"`).
 - `filter_threshold` (float, default 0.5): Fraction of cell area in masked region to trigger removal (0.0–1.0)
 - `relabel` (bool, default true): Relabel remaining instance IDs to be contiguous
 
-**Response:** 16-bit grayscale PNG where each pixel value is an instance ID (0 = background).
+**Response fields:**
+- `success` (bool): Whether segmentation succeeded
+- `segmentation_mask` (str): Base64-encoded 16-bit grayscale PNG (pixel value = instance ID, 0 = background)
+- `cell_count` (int): Number of detected cell instances
+- `total_cell_area` (int): Total area of all cells in pixels
+- `error_message` (str | null): Error details if `success` is false
 
 ```python
 import base64
@@ -270,53 +275,6 @@ if seg_result["success"]:
     print(f"Instance IDs: {np.unique(labeled_mask)}")
 else:
     print(f"Error: {seg_result['error_message']}")
-```
-
-#### Java Example
-
-```java
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.Base64;
-import org.json.JSONObject;
-
-public class DartSegment {
-    public static void main(String[] args) throws Exception {
-        HttpClient client = HttpClient.newHttpClient();
-
-        // Assume procResult is a JSONObject from a prior /process-image call
-        JSONObject segBody = new JSONObject();
-        segBody.put("image", procResult.getString("cropped_image"));
-        segBody.put("mask", procResult.getString("mask"));
-        segBody.put("filter_threshold", 0.5);
-
-        HttpRequest segRequest = HttpRequest.newBuilder()
-                .uri(URI.create("http://localhost:8000/segment"))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(segBody.toString()))
-                .build();
-
-        HttpResponse<String> segResponse = client.send(
-                segRequest, HttpResponse.BodyHandlers.ofString());
-
-        JSONObject segResult = new JSONObject(segResponse.body());
-
-        if (segResult.getBoolean("success")) {
-            System.out.println("Cell count: " + segResult.getInt("cell_count"));
-
-            // Save 16-bit PNG segmentation mask
-            byte[] maskBytes = Base64.getDecoder().decode(
-                    segResult.getString("segmentation_mask"));
-            Files.write(Path.of("segmentation_mask.png"), maskBytes);
-        } else {
-            System.err.println("Error: " + segResult.getString("error_message"));
-        }
-    }
-}
 ```
 
 ### Chip Selection (Multi-Chip)
@@ -561,6 +519,54 @@ public class DartCalibrate {
             System.out.printf("  Points: %d%n", stats.getInt("n_points"));
         } else {
             System.err.println("Error: " + result.getString("error_message"));
+        }
+    }
+}
+```
+
+### Instance Segmentation (Process Image + Segment)
+
+```java
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Base64;
+import org.json.JSONObject;
+
+public class DartSegment {
+    public static void main(String[] args) throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+
+        // Assume procResult is a JSONObject from a prior /process-image call
+        JSONObject segBody = new JSONObject();
+        segBody.put("image", procResult.getString("cropped_image"));
+        segBody.put("mask", procResult.getString("mask"));
+        segBody.put("filter_threshold", 0.5);
+
+        HttpRequest segRequest = HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:8000/segment"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(segBody.toString()))
+                .build();
+
+        HttpResponse<String> segResponse = client.send(
+                segRequest, HttpResponse.BodyHandlers.ofString());
+
+        JSONObject segResult = new JSONObject(segResponse.body());
+
+        if (segResult.getBoolean("success")) {
+            System.out.println("Cell count: " + segResult.getInt("cell_count"));
+            System.out.println("Total cell area: " + segResult.getInt("total_cell_area") + " px");
+
+            // Save 16-bit PNG segmentation mask
+            byte[] maskBytes = Base64.getDecoder().decode(
+                    segResult.getString("segmentation_mask"));
+            Files.write(Path.of("segmentation_mask.png"), maskBytes);
+        } else {
+            System.err.println("Error: " + segResult.getString("error_message"));
         }
     }
 }
