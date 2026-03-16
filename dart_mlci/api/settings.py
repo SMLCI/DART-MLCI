@@ -35,6 +35,10 @@ class Settings:
         default_factory=lambda: os.environ.get("DART_CHIP_CONFIGS_DIR", None)
     )
     device: str | None = field(default_factory=lambda: os.environ.get("DART_DEVICE", None))
+    segmenter: str | None = field(default_factory=lambda: os.environ.get("DART_SEGMENTER", None))
+    segmentation_filter_threshold: float = field(
+        default_factory=lambda: float(os.environ.get("DART_SEGMENTATION_FILTER_THRESHOLD", "0.5"))
+    )
 
     def __post_init__(self):
         """Validate paths exist where required."""

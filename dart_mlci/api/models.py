@@ -98,6 +98,8 @@ class HealthResponse(BaseModel):
     default_structure_library: str
     gpu_available: bool
     device: str = Field(description="e.g., 'cuda:0' or 'cpu'")
+    segmenter_loaded: bool = False
+    segmenter: str | None = None
 
 
 class ChamberType(BaseModel):
@@ -168,6 +170,59 @@ class CalibrationImageData(BaseModel):
             raise ValueError(f"Invalid base64: {e}") from e
 
         return v
+
+
+class SegmentRequest(BaseModel):
+    """JSON request for instance segmentation."""
+
+    image: str = Field(description="Base64-encoded cropped image (HxWx3 uint8 PNG)")
+    mask: str = Field(description="Base64-encoded chamber mask (HxW bool PNG)")
+    filter_threshold: float = Field(
+        default=0.5,
+        ge=0.0,
+        le=1.0,
+        description="Fraction of cell area in masked region to trigger removal",
+    )
+    relabel: bool = Field(default=True, description="Relabel remaining IDs to be contiguous")
+
+    @field_validator("image")
+    @classmethod
+    def validate_image_base64(cls, v: str) -> str:
+        """Strip data URI prefix and validate base64."""
+        if v.startswith("data:"):
+            v = v.split(",", 1)[1] if "," in v else v
+        try:
+            base64.b64decode(v, validate=True)
+        except Exception as e:
+            raise ValueError(f"Invalid base64: {e}") from e
+        return v
+
+    @field_validator("mask")
+    @classmethod
+    def validate_mask_base64(cls, v: str) -> str:
+        """Strip data URI prefix and validate base64."""
+        if v.startswith("data:"):
+            v = v.split(",", 1)[1] if "," in v else v
+        try:
+            base64.b64decode(v, validate=True)
+        except Exception as e:
+            raise ValueError(f"Invalid base64: {e}") from e
+        return v
+
+
+class SegmentResponse(BaseModel):
+    """Response from the segment endpoint."""
+
+    success: bool
+    segmentation_mask: str | None = Field(
+        default=None,
+        description="Base64-encoded 16-bit grayscale PNG (pixel value = instance ID, 0 = background)",
+    )
+    cell_count: int | None = None
+    total_cell_area: int | None = Field(
+        default=None, description="Total area of all cell instances in pixels"
+    )
+    error_message: str | None = None
 
 
 class CalibrateRequest(BaseModel):

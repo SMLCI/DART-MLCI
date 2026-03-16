@@ -50,6 +50,7 @@ Visit http://localhost:8000/docs for interactive Swagger UI documentation.
 | `/chamber-types` | GET | List available chamber types |
 | `/process-image` | POST | Process a single image (JSON with base64) |
 | `/process-image-preview` | POST | Get HTML preview of processing result |
+| `/segment` | POST | Run instance segmentation on cropped image + mask |
 | `/calibrate` | POST | Calibrate microscope map from images |
 | `/docs` | GET | Interactive Swagger API documentation |
 
@@ -209,6 +210,113 @@ with open("preview.html", "w") as f:
     f.write(response.text)
 
 print("Open preview.html in your browser")
+```
+
+### Instance Segmentation (Process Image + Segment)
+
+The `/segment` endpoint runs cell instance segmentation on the cropped image
+and chamber mask returned by `/process-image`. It requires the server to be
+started with `DART_SEGMENTER` set (e.g., `cellpose-sam` or `omnipose`), which
+needs the `segmentation` extras (`pip install -e ".[api,segmentation]"`).
+
+**Parameters:**
+- `image` (str, required): Base64-encoded cropped image (HxWx3 uint8 PNG)
+- `mask` (str, required): Base64-encoded chamber mask (HxW bool PNG, from `/process-image`)
+- `filter_threshold` (float, default 0.5): Fraction of cell area in masked region to trigger removal (0.0–1.0)
+- `relabel` (bool, default true): Relabel remaining instance IDs to be contiguous
+
+**Response:** 16-bit grayscale PNG where each pixel value is an instance ID (0 = background).
+
+```python
+import base64
+import requests
+import numpy as np
+from PIL import Image
+import io
+
+# Step 1: Process image to get cropped image and mask
+proc_response = requests.post(
+    "http://localhost:8000/process-image",
+    json={
+        "image": load_image_b64("my_image.tif"),
+        "roi_id": "0050",
+        "pixel_size": 0.065789,
+    }
+)
+proc_result = proc_response.json()
+assert proc_result["success"]
+
+# Step 2: Segment the cropped image
+seg_response = requests.post(
+    "http://localhost:8000/segment",
+    json={
+        "image": proc_result["cropped_image"],
+        "mask": proc_result["mask"],
+        "filter_threshold": 0.5,
+    }
+)
+seg_result = seg_response.json()
+
+if seg_result["success"]:
+    print(f"Detected {seg_result['cell_count']} cells")
+    print(f"Total cell area: {seg_result['total_cell_area']} px")
+
+    # Decode 16-bit PNG to numpy array
+    mask_bytes = base64.b64decode(seg_result["segmentation_mask"])
+    mask_img = Image.open(io.BytesIO(mask_bytes))
+    labeled_mask = np.array(mask_img, dtype=np.uint16)
+
+    # Each unique non-zero value is a cell instance
+    print(f"Instance IDs: {np.unique(labeled_mask)}")
+else:
+    print(f"Error: {seg_result['error_message']}")
+```
+
+#### Java Example
+
+```java
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Base64;
+import org.json.JSONObject;
+
+public class DartSegment {
+    public static void main(String[] args) throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+
+        // Assume procResult is a JSONObject from a prior /process-image call
+        JSONObject segBody = new JSONObject();
+        segBody.put("image", procResult.getString("cropped_image"));
+        segBody.put("mask", procResult.getString("mask"));
+        segBody.put("filter_threshold", 0.5);
+
+        HttpRequest segRequest = HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:8000/segment"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(segBody.toString()))
+                .build();
+
+        HttpResponse<String> segResponse = client.send(
+                segRequest, HttpResponse.BodyHandlers.ofString());
+
+        JSONObject segResult = new JSONObject(segResponse.body());
+
+        if (segResult.getBoolean("success")) {
+            System.out.println("Cell count: " + segResult.getInt("cell_count"));
+
+            // Save 16-bit PNG segmentation mask
+            byte[] maskBytes = Base64.getDecoder().decode(
+                    segResult.getString("segmentation_mask"));
+            Files.write(Path.of("segmentation_mask.png"), maskBytes);
+        } else {
+            System.err.println("Error: " + segResult.getString("error_message"));
+        }
+    }
+}
 ```
 
 ### Chip Selection (Multi-Chip)

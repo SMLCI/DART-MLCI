@@ -4,7 +4,7 @@
 # Builds the image, starts a container on port 8001, and exercises every
 # endpoint documented in docs/API_QUICK_START.md:
 #   /health, /available-chips, /chamber-types,
-#   /process-image, /process-image-preview, /calibrate
+#   /process-image, /process-image-preview, /segment, /calibrate
 #
 # Usage:
 #   ./test_docker_api.sh                  # build + test
@@ -258,7 +258,91 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 6. /calibrate  (requires 3 calibration images — use same image 3x as smoke test)
+# 6. /segment  (requires test fixture + segmenter loaded)
+# ---------------------------------------------------------------------------
+echo ""
+echo "--- /segment (POST, pipeline: process-image -> segment) ---"
+if [ -f "$TEST_FIXTURE" ]; then
+    SEG_PIPELINE_RESP=$(python3 -c "
+import base64, json, urllib.request, io, sys
+
+with open('$TEST_FIXTURE', 'rb') as f:
+    image_b64 = base64.b64encode(f.read()).decode()
+
+# Step 1: process image
+body = json.dumps({
+    'image': image_b64,
+    'roi_id': '0000',
+    'pixel_size': 0.065789
+}).encode()
+req = urllib.request.Request(
+    '$BASE/process-image',
+    data=body,
+    headers={'Content-Type': 'application/json'},
+    method='POST'
+)
+with urllib.request.urlopen(req, timeout=120) as resp:
+    proc = json.loads(resp.read().decode())
+
+if not proc['success']:
+    print(f\"SKIP_PROCESS process-image failed: {proc.get('error_message', 'unknown')}\")
+    sys.exit(0)
+
+# Step 2: segment
+seg_body = json.dumps({
+    'image': proc['cropped_image'],
+    'mask': proc['mask'],
+}).encode()
+req = urllib.request.Request(
+    '$BASE/segment',
+    data=seg_body,
+    headers={'Content-Type': 'application/json'},
+    method='POST'
+)
+with urllib.request.urlopen(req, timeout=120) as resp:
+    seg = json.loads(resp.read().decode())
+
+if not seg['success']:
+    # Segmenter may not be loaded
+    msg = seg.get('error_message', 'unknown')
+    if 'not loaded' in msg:
+        print(f'SKIP_SEGMENTER {msg}')
+    else:
+        print(f'FAIL {msg}')
+    sys.exit(0)
+
+cell_count = seg['cell_count']
+total_area = seg['total_cell_area']
+
+# Fixture assertions (~185 cells, ~135913 px area, generous tolerance)
+EXPECTED_CELLS = 185
+EXPECTED_AREA = 135913
+count_ok = EXPECTED_CELLS * 0.7 <= cell_count <= EXPECTED_CELLS * 1.3
+area_ok = EXPECTED_AREA * 0.6 <= total_area <= EXPECTED_AREA * 1.4
+
+if count_ok and area_ok:
+    print(f'OK cells={cell_count} area={total_area}')
+elif not count_ok:
+    print(f'FIXTURE_MISMATCH cell_count={cell_count} expected=~{EXPECTED_CELLS}')
+elif not area_ok:
+    print(f'FIXTURE_MISMATCH total_area={total_area} expected=~{EXPECTED_AREA}')
+" 2>/dev/null || echo "ERROR")
+
+    if echo "$SEG_PIPELINE_RESP" | grep -q "^OK"; then
+        pass "/segment pipeline succeeded ($SEG_PIPELINE_RESP)"
+    elif echo "$SEG_PIPELINE_RESP" | grep -q "^SKIP"; then
+        skip "/segment — $SEG_PIPELINE_RESP"
+    elif echo "$SEG_PIPELINE_RESP" | grep -q "^FIXTURE_MISMATCH"; then
+        fail "/segment fixture mismatch: $SEG_PIPELINE_RESP"
+    else
+        fail "/segment returned unexpected response: $SEG_PIPELINE_RESP"
+    fi
+else
+    skip "/segment — test fixture not found: $TEST_FIXTURE"
+fi
+
+# ---------------------------------------------------------------------------
+# 7. /calibrate  (requires 3 calibration images -- use same image 3x as smoke test)
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- /calibrate (POST) ---"
@@ -319,7 +403,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 7. /docs  (Swagger UI)
+# 8. /docs  (Swagger UI)
 # ---------------------------------------------------------------------------
 echo ""
 echo "--- /docs (GET) ---"

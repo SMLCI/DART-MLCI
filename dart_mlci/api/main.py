@@ -26,6 +26,8 @@ from dart_mlci.api.models import (
     ImageResultInfo,
     ProcessImageRequest,
     ProcessImageResponse,
+    SegmentRequest,
+    SegmentResponse,
 )
 from dart_mlci.api.settings import get_settings, resolve_path
 from dart_mlci.chip import ChipStructureLibrary
@@ -102,12 +104,31 @@ async def lifespan(app: FastAPI):
     else:
         app.state.device = "cpu"
 
+    # Load segmentation model (optional)
+    app.state.segmenter = None
+    app.state.segmenter_type = None
+    if settings.segmenter:
+        try:
+            if settings.segmenter == "cellpose-sam":
+                from acia.segm.processor.cellpose_sam import CellposeSAMSegmenter
+
+                app.state.segmenter = CellposeSAMSegmenter()
+            elif settings.segmenter == "omnipose":
+                from acia.segm.processor.omnipose import OmniposeSegmenter
+
+                app.state.segmenter = OmniposeSegmenter()
+            app.state.segmenter_type = settings.segmenter
+        except ImportError:
+            pass  # segmenter stays None
+
     yield
 
     # Cleanup (if needed)
     app.state.detection_step = None
     app.state.structure_library = None
     app.state.chip_registry = {}
+    app.state.segmenter = None
+    app.state.segmenter_type = None
 
 
 app = FastAPI(
@@ -130,6 +151,8 @@ async def health_check() -> HealthResponse:
         default_structure_library=settings.structure_library_path,
         gpu_available=getattr(app.state, "gpu_available", False),
         device=getattr(app.state, "device", "cpu"),
+        segmenter_loaded=getattr(app.state, "segmenter", None) is not None,
+        segmenter=getattr(app.state, "segmenter_type", None),
     )
 
 
@@ -545,6 +568,92 @@ async def process_image_preview(request: ProcessImageRequest) -> HTMLResponse:
 </html>
 """
     return HTMLResponse(content=html_content)
+
+
+@app.post("/segment", response_model=SegmentResponse)
+async def segment(request: SegmentRequest) -> SegmentResponse:
+    """
+    Run instance segmentation on a cropped chamber image.
+
+    Accepts the cropped image and mask from /process-image and returns
+    a labeled instance segmentation mask using cellpose/omnipose via acia.
+
+    Args:
+        request: JSON request with base64 cropped image and chamber mask
+
+    Returns:
+        Base64-encoded 16-bit grayscale PNG with instance labels
+    """
+    from dart_mlci.api.utils import (
+        array_to_base64_uint16_png,
+        base64_to_array,
+        base64_to_mask,
+    )
+    from dart_mlci.mask import filter_segmentation_by_mask
+
+    segmenter = getattr(app.state, "segmenter", None)
+    if segmenter is None:
+        return SegmentResponse(
+            success=False,
+            error_message="Segmentation model not loaded. Set DART_SEGMENTER env var.",
+        )
+
+    # Decode inputs
+    try:
+        img_array = base64_to_array(request.image)
+    except Exception as e:
+        return SegmentResponse(
+            success=False,
+            error_message=f"Failed to decode base64 image: {e}",
+        )
+
+    try:
+        chamber_mask = base64_to_mask(request.mask)
+    except Exception as e:
+        return SegmentResponse(
+            success=False,
+            error_message=f"Failed to decode base64 mask: {e}",
+        )
+
+    # Run segmentation
+    try:
+        from acia.segm.local import THWCSequenceSource
+
+        height, width = img_array.shape[:2]
+        segm_input = img_array[None, :, :, :].astype(np.uint8)  # 1xHxWxC
+        source = THWCSequenceSource(segm_input)
+
+        with torch.no_grad():
+            seg_result = segmenter(source.to_channel(0))
+
+        masks = seg_result.toMasks(height, width, binary_mask=False)
+        labeled_mask = masks[0].astype(np.uint16)
+    except Exception as e:
+        return SegmentResponse(
+            success=False,
+            error_message=f"Segmentation failed: {e}",
+        )
+
+    # Filter by chamber mask
+    try:
+        labeled_mask = filter_segmentation_by_mask(
+            labeled_mask,
+            chamber_mask,
+            threshold=request.filter_threshold,
+            relabel=request.relabel,
+        )
+    except Exception as e:
+        return SegmentResponse(
+            success=False,
+            error_message=f"Mask filtering failed: {e}",
+        )
+
+    return SegmentResponse(
+        success=True,
+        segmentation_mask=array_to_base64_uint16_png(labeled_mask),
+        cell_count=int(labeled_mask.max()),
+        total_cell_area=int(np.sum(labeled_mask > 0)),
+    )
 
 
 @app.post("/calibrate", response_model=CalibrateResponse)

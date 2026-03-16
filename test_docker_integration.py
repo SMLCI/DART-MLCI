@@ -326,6 +326,133 @@ def test_calibrate_endpoint():
         return False
 
 
+def test_segment_pipeline():
+    """Test the /process-image -> /segment pipeline with fixture assertions."""
+    print_header("Testing Segment Pipeline (process-image -> segment)")
+
+    # Use the calibration test fixture
+    test_image_path = FIXTURES_DIR / "calibration_image_0000.tif"
+
+    if not test_image_path.exists():
+        print_warning(f"Test image not found: {test_image_path}")
+        return False
+
+    print_info(f"Using test image: {test_image_path}")
+
+    # Expected fixture values (from local pipeline run with cellpose-sam)
+    EXPECTED_CELL_COUNT = 185
+    EXPECTED_TOTAL_CELL_AREA = 135913
+    CELL_COUNT_TOLERANCE = 0.30  # 30%
+    CELL_AREA_TOLERANCE = 0.40  # 40%
+
+    # Encode image
+    try:
+        image_b64 = encode_image_to_base64(test_image_path)
+    except Exception as e:
+        print_error(f"Failed to encode image: {e}")
+        return False
+
+    # Step 1: Check health for segmenter status
+    try:
+        health_resp = requests.get(f"{API_URL}/health", timeout=10)
+        health = health_resp.json()
+        if not health.get("segmenter_loaded"):
+            print_warning("Segmenter not loaded in container (DART_SEGMENTER not set?)")
+            return False
+        print_success(f"Segmenter loaded: {health.get('segmenter')}")
+    except Exception as e:
+        print_error(f"Health check failed: {e}")
+        return False
+
+    # Step 2: Process image
+    print_info("Step 1: Processing image via /process-image...")
+    try:
+        proc_resp = requests.post(
+            f"{API_URL}/process-image",
+            json={
+                "image": image_b64,
+                "roi_id": "0000",
+                "pixel_size": 0.065789,
+            },
+            timeout=120,
+        )
+        proc_data = proc_resp.json()
+        if not proc_data.get("success"):
+            print_error(f"Process image failed: {proc_data.get('error_message')}")
+            return False
+        print_success(f"Process image succeeded (chamber: {proc_data['chamber_type']})")
+    except Exception as e:
+        print_error(f"Process image request failed: {e}")
+        return False
+
+    # Step 3: Segment
+    print_info("Step 2: Running segmentation via /segment...")
+    try:
+        seg_resp = requests.post(
+            f"{API_URL}/segment",
+            json={
+                "image": proc_data["cropped_image"],
+                "mask": proc_data["mask"],
+            },
+            timeout=120,
+        )
+        seg_data = seg_resp.json()
+        if not seg_data.get("success"):
+            print_error(f"Segmentation failed: {seg_data.get('error_message')}")
+            return False
+
+        cell_count = seg_data["cell_count"]
+        total_area = seg_data["total_cell_area"]
+        print_success(f"Segmentation succeeded: {cell_count} cells, {total_area} px total area")
+    except Exception as e:
+        print_error(f"Segment request failed: {e}")
+        return False
+
+    # Step 4: Validate against expected fixtures
+    ok = True
+
+    count_lo = EXPECTED_CELL_COUNT * (1 - CELL_COUNT_TOLERANCE)
+    count_hi = EXPECTED_CELL_COUNT * (1 + CELL_COUNT_TOLERANCE)
+    if count_lo <= cell_count <= count_hi:
+        print_success(
+            f"Cell count {cell_count} within expected range "
+            f"[{count_lo:.0f}, {count_hi:.0f}] (expected ~{EXPECTED_CELL_COUNT})"
+        )
+    else:
+        print_error(
+            f"Cell count {cell_count} OUTSIDE expected range "
+            f"[{count_lo:.0f}, {count_hi:.0f}] (expected ~{EXPECTED_CELL_COUNT})"
+        )
+        ok = False
+
+    area_lo = EXPECTED_TOTAL_CELL_AREA * (1 - CELL_AREA_TOLERANCE)
+    area_hi = EXPECTED_TOTAL_CELL_AREA * (1 + CELL_AREA_TOLERANCE)
+    if area_lo <= total_area <= area_hi:
+        print_success(
+            f"Total cell area {total_area} within expected range "
+            f"[{area_lo:.0f}, {area_hi:.0f}] (expected ~{EXPECTED_TOTAL_CELL_AREA})"
+        )
+    else:
+        print_error(
+            f"Total cell area {total_area} OUTSIDE expected range "
+            f"[{area_lo:.0f}, {area_hi:.0f}] (expected ~{EXPECTED_TOTAL_CELL_AREA})"
+        )
+        ok = False
+
+    # Step 5: Validate the mask can be decoded as 16-bit PNG
+    try:
+        mask_bytes = base64.b64decode(seg_data["segmentation_mask"])
+        mask_img = Image.open(io.BytesIO(mask_bytes))
+        print_success(
+            f"Segmentation mask is valid PNG (mode={mask_img.mode}, size={mask_img.size})"
+        )
+    except Exception as e:
+        print_error(f"Failed to decode segmentation mask: {e}")
+        ok = False
+
+    return ok
+
+
 def main():
     """Run all tests."""
     print(f"\n{Colors.BOLD}DMC Masking Docker API Integration Tests{Colors.RESET}")
@@ -343,6 +470,7 @@ def main():
     results["health"] = test_health_endpoint()
     results["chamber_types"] = test_chamber_types_endpoint()
     results["process_image"] = test_process_image_endpoint()
+    results["segment_pipeline"] = test_segment_pipeline()
     results["calibrate"] = test_calibrate_endpoint()
 
     # Summary

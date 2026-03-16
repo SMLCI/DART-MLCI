@@ -57,6 +57,10 @@ api = [
     "uvicorn[standard]>=0.27.0",
     "python-multipart>=0.0.6",
 ]
+segmentation = [
+    "acia",
+    "cellpose",
+]
 
 [project.urls]
 Homepage = "https://github.com/JojoDevel/dart-mlci"

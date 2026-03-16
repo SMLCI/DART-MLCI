@@ -93,6 +93,62 @@ def base64_to_array(b64_string: str) -> np.ndarray:
     return arr
 
 
+def base64_to_mask(b64_string: str) -> np.ndarray:
+    """
+    Decode base64 PNG to HxW bool array.
+
+    Args:
+        b64_string: Base64-encoded PNG string (grayscale, values 0 or 255)
+
+    Returns:
+        HxW bool numpy array (True where mask > 0)
+
+    Raises:
+        ValueError: For invalid base64 or unsupported formats
+    """
+    # Strip data URI prefix if present
+    if b64_string.startswith("data:"):
+        if "," in b64_string:
+            b64_string = b64_string.split(",", 1)[1]
+        else:
+            raise ValueError("Invalid data URI format: missing comma separator")
+
+    try:
+        img_bytes = base64.b64decode(b64_string, validate=True)
+    except Exception as e:
+        raise ValueError(f"Invalid base64 encoding: {e}") from e
+
+    if len(img_bytes) == 0:
+        raise ValueError("Decoded mask is empty")
+
+    try:
+        img = Image.open(io.BytesIO(img_bytes)).convert("L")
+    except Exception as e:
+        raise ValueError(f"Failed to decode mask image: {e}") from e
+
+    arr = np.array(img)
+    return arr > 0
+
+
+def array_to_base64_uint16_png(arr: np.ndarray) -> str:
+    """
+    Encode HxW uint16 array as 16-bit grayscale PNG.
+
+    Preserves instance label values (0..N) without lossy normalization.
+
+    Args:
+        arr: HxW array with instance IDs
+
+    Returns:
+        Base64-encoded 16-bit PNG string (without data URI prefix)
+    """
+    arr_u16 = arr.astype(np.uint16)
+    pil_img = Image.fromarray(arr_u16, mode="I;16")
+    buffer = io.BytesIO()
+    pil_img.save(buffer, format="PNG")
+    return base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+
 def array_to_base64_png(arr: np.ndarray, is_mask: bool = False) -> str:
     """
     Convert numpy array to base64-encoded PNG string.

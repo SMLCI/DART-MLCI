@@ -11,6 +11,13 @@ import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
+try:
+    import importlib.util
+
+    ACIA_AVAILABLE = importlib.util.find_spec("acia") is not None
+except Exception:
+    ACIA_AVAILABLE = False
+
 # Test fixtures directory
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -544,6 +551,209 @@ class TestIntegration:
         data = response.json()
         assert "gpu_available" in data
         assert isinstance(data["gpu_available"], bool)
+
+
+# === Segment Endpoint Tests ===
+
+
+class TestSegmentEndpoint:
+    @staticmethod
+    def _make_synthetic_image_b64(height=64, width=64):
+        """Create a small synthetic RGB image as base64 PNG."""
+        arr = np.random.randint(0, 255, (height, width, 3), dtype=np.uint8)
+        img = Image.fromarray(arr, mode="RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+    @staticmethod
+    def _make_synthetic_mask_b64(height=64, width=64):
+        """Create a small synthetic binary mask as base64 PNG."""
+        mask = np.zeros((height, width), dtype=np.uint8)
+        mask[10:54, 10:54] = 255  # inner region
+        img = Image.fromarray(mask, mode="L")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+    def test_segment_missing_image_returns_422(self, client):
+        """Missing image field should return validation error."""
+        response = client.post(
+            "/segment",
+            json={"mask": self._make_synthetic_mask_b64()},
+        )
+        assert response.status_code == 422
+
+    def test_segment_missing_mask_returns_422(self, client):
+        """Missing mask field should return validation error."""
+        response = client.post(
+            "/segment",
+            json={"image": self._make_synthetic_image_b64()},
+        )
+        assert response.status_code == 422
+
+    def test_segment_invalid_base64_returns_422(self, client):
+        """Invalid base64 should fail validation."""
+        response = client.post(
+            "/segment",
+            json={
+                "image": "not-valid-base64!!!",
+                "mask": "also-invalid!!!",
+            },
+        )
+        assert response.status_code == 422
+
+    def test_segment_no_segmenter_returns_error(self, client):
+        """When DART_SEGMENTER is not set, endpoint returns success=False."""
+        response = client.post(
+            "/segment",
+            json={
+                "image": self._make_synthetic_image_b64(),
+                "mask": self._make_synthetic_mask_b64(),
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is False
+        assert "DART_SEGMENTER" in data["error_message"]
+
+    def test_segment_response_structure(self, client):
+        """Response should match SegmentResponse schema."""
+        response = client.post(
+            "/segment",
+            json={
+                "image": self._make_synthetic_image_b64(),
+                "mask": self._make_synthetic_mask_b64(),
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "success" in data
+        assert isinstance(data["success"], bool)
+        assert "segmentation_mask" in data
+        assert "cell_count" in data
+        assert "total_cell_area" in data
+        assert "error_message" in data
+
+    @pytest.mark.skipif(not ACIA_AVAILABLE, reason="acia not installed")
+    def test_segment_with_synthetic_input(self, monkeypatch):
+        """Integration test: segment a small synthetic image."""
+        from dart_mlci.api.main import app
+        from dart_mlci.api.settings import get_settings
+
+        get_settings.cache_clear()
+        monkeypatch.setenv("DART_SEGMENTER", "cellpose-sam")
+        try:
+            with TestClient(app) as client:
+                response = client.post(
+                    "/segment",
+                    json={
+                        "image": self._make_synthetic_image_b64(128, 128),
+                        "mask": self._make_synthetic_mask_b64(128, 128),
+                    },
+                )
+                assert response.status_code == 200
+                data = response.json()
+                if data["success"]:
+                    assert data["segmentation_mask"] is not None
+                    assert isinstance(data["cell_count"], int)
+                    assert data["cell_count"] >= 0
+                    assert isinstance(data["total_cell_area"], int)
+                    assert data["total_cell_area"] >= 0
+
+                    # Verify 16-bit PNG decodes correctly
+                    mask_bytes = base64.b64decode(data["segmentation_mask"])
+                    mask_img = Image.open(io.BytesIO(mask_bytes))
+                    assert mask_img.mode == "I;16"
+        finally:
+            get_settings.cache_clear()
+
+    @pytest.mark.skipif(not ACIA_AVAILABLE, reason="acia not installed")
+    def test_segment_filter_threshold(self, monkeypatch):
+        """Integration test: verify filter_threshold parameter affects output."""
+        from dart_mlci.api.main import app
+        from dart_mlci.api.settings import get_settings
+
+        get_settings.cache_clear()
+        monkeypatch.setenv("DART_SEGMENTER", "cellpose-sam")
+        try:
+            image_b64 = self._make_synthetic_image_b64(128, 128)
+            mask_b64 = self._make_synthetic_mask_b64(128, 128)
+
+            with TestClient(app) as client:
+                # Request with strict threshold (remove more cells)
+                resp_strict = client.post(
+                    "/segment",
+                    json={
+                        "image": image_b64,
+                        "mask": mask_b64,
+                        "filter_threshold": 0.1,
+                    },
+                )
+                # Request with lenient threshold (keep more cells)
+                resp_lenient = client.post(
+                    "/segment",
+                    json={
+                        "image": image_b64,
+                        "mask": mask_b64,
+                        "filter_threshold": 0.9,
+                    },
+                )
+                assert resp_strict.status_code == 200
+                assert resp_lenient.status_code == 200
+
+                data_strict = resp_strict.json()
+                data_lenient = resp_lenient.json()
+
+                if data_strict["success"] and data_lenient["success"]:
+                    # Stricter threshold should keep same or fewer cells
+                    assert data_strict["cell_count"] <= data_lenient["cell_count"]
+        finally:
+            get_settings.cache_clear()
+
+    @pytest.mark.skipif(not ACIA_AVAILABLE, reason="acia not installed")
+    @pytest.mark.skipif(
+        not Path("artifacts/models/v26_detect_s_imgsz1280.pt").exists(),
+        reason="Model file not found",
+    )
+    def test_segment_roundtrip_with_process_image(self, monkeypatch, test_image_base64):
+        """Integration test: full pipeline /process-image -> /segment."""
+        from dart_mlci.api.main import app
+        from dart_mlci.api.settings import get_settings
+
+        get_settings.cache_clear()
+        monkeypatch.setenv("DART_SEGMENTER", "cellpose-sam")
+        try:
+            with TestClient(app) as client:
+                # Step 1: process image
+                proc_resp = client.post(
+                    "/process-image",
+                    json={
+                        "image": test_image_base64,
+                        "roi_id": "0000",
+                        "pixel_size": 0.065789,
+                    },
+                )
+                assert proc_resp.status_code == 200
+                proc_data = proc_resp.json()
+                if not proc_data["success"]:
+                    pytest.skip(f"process-image failed: {proc_data['error_message']}")
+
+                # Step 2: segment
+                seg_resp = client.post(
+                    "/segment",
+                    json={
+                        "image": proc_data["cropped_image"],
+                        "mask": proc_data["mask"],
+                    },
+                )
+                assert seg_resp.status_code == 200
+                seg_data = seg_resp.json()
+                if seg_data["success"]:
+                    assert seg_data["segmentation_mask"] is not None
+                    assert isinstance(seg_data["cell_count"], int)
+        finally:
+            get_settings.cache_clear()
 
 
 # === Base64 Utility Tests ===

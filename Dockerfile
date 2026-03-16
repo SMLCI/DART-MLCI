@@ -14,8 +14,8 @@ COPY README.md .
 COPY dart_mlci/ dart_mlci/
 COPY scripts/ scripts/
 
-# Install the package with API dependencies
-RUN pip install --no-cache-dir -e ".[api]"
+# Install the package with API and segmentation dependencies
+RUN pip install --no-cache-dir -e ".[api,segmentation]"
 
 # Copy artifacts (model, structure library, blueprint map)
 COPY artifacts/ /app/artifacts/
@@ -26,6 +26,7 @@ ENV DART_STRUCTURE_LIBRARY_PATH=/app/artifacts/chamber_structure.json
 ENV DART_BLUEPRINT_MAP_PATH=/app/artifacts/sak_blueprint_map.csv
 ENV DART_CHIP_CONFIGS_DIR=/app/artifacts/chips/
 ENV DART_PIXEL_SIZE=0.065789
+ENV DART_SEGMENTER=cellpose-sam
 
 # Expose port
 EXPOSE 8000
