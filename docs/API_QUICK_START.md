@@ -1,27 +1,109 @@
-# DMC Masking API - Quick Start Guide
+# DART API -- Quick Start Guide
+
+## Installation
+
+```bash
+# Clone the repository
+git clone <repo-url> && cd dmc-masking
+
+# Install the package with API dependencies
+pip install -e ".[api]"
+```
+
+Or with conda:
+
+```bash
+conda create -n dart python=3.10
+conda activate dart
+pip install -e ".[api]"
+```
 
 ## Start the API Server
 
+### Local
+
 ```bash
-conda activate dmc-masking-claude
 uvicorn dart_mlci.api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-Visit http://localhost:8000/docs for interactive API documentation.
+### Docker
 
-## Quick Examples
+```bash
+docker-compose up -d
+```
 
-### 1. Process a Single Image
+Or build and run manually:
+
+```bash
+docker build -t dart-mlci .
+docker run -d -p 8000:8000 --name dart-api dart-mlci
+```
+
+Visit http://localhost:8000/docs for interactive Swagger UI documentation.
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Check service health and loaded resources |
+| `/available-chips` | GET | List loaded chip configurations |
+| `/chamber-types` | GET | List available chamber types |
+| `/process-image` | POST | Process a single image (JSON with base64) |
+| `/process-image-preview` | POST | Get HTML preview of processing result |
+| `/calibrate` | POST | Calibrate microscope map from images |
+| `/docs` | GET | Interactive Swagger API documentation |
+
+---
+
+## Python Client Examples
+
+### Setup
+
+```bash
+pip install requests
+```
+
+### Health Check
+
+```python
+import requests
+
+response = requests.get("http://localhost:8000/health")
+health = response.json()
+print(f"Status: {health['status']}")
+print(f"Model loaded: {health['model_loaded']}")
+print(f"Device: {health['device']}")
+```
+
+### Image Loading
+
+The API accepts raw image bytes encoded as base64. The server handles
+normalization internally (quantile-based for uint16 TIFFs, same as
+`dart_mlci.io.load_image()`). Simply read the file bytes and encode:
+
+```python
+import base64
+
+def load_image_b64(path):
+    """Load an image file as a base64 string for the API."""
+    with open(path, "rb") as f:
+        return base64.b64encode(f.read()).decode("utf-8")
+```
+
+> **Note:** If you have `dart_mlci` installed locally and want to inspect or
+> preprocess images before sending, use `dart_mlci.io.load_image()` which
+> returns a normalized HxWx3 uint8 array.
+
+### Process a Single Image
 
 ```python
 import base64
 import requests
 from pathlib import Path
 
-# Load and encode image
+# Load and encode image (raw file bytes — server normalizes automatically)
 image_path = Path("my_image.tif")
-with open(image_path, "rb") as f:
-    image_b64 = base64.b64encode(f.read()).decode("utf-8")
+image_b64 = load_image_b64(image_path)
 
 # Send request
 response = requests.post(
@@ -37,7 +119,7 @@ response = requests.post(
 result = response.json()
 if result["success"]:
     print(f"Chamber type: {result['chamber_type']}")
-    print(f"Rotation angle: {result['rotation_angle']:.2f}°")
+    print(f"Rotation angle: {result['rotation_angle']:.2f}")
 
     # Save outputs
     with open("cropped.png", "wb") as f:
@@ -48,18 +130,12 @@ else:
     print(f"Error: {result['error_message']}")
 ```
 
-### 2. Calibrate from Images
+### Calibrate from Images
 
 ```python
-import base64
 import requests
-from pathlib import Path
 
-def load_image_b64(path):
-    with open(path, "rb") as f:
-        return base64.b64encode(f.read()).decode("utf-8")
-
-# Prepare calibration request
+# Prepare calibration request (using load_image_b64 from above)
 request_data = {
     "chip_name": "SAK",
     "calibration_images": [
@@ -105,12 +181,11 @@ else:
     print(f"Error: {result['error_message']}")
 ```
 
-### 3. Get HTML Preview
+### Get HTML Preview
 
 ```python
 import base64
 import requests
-from pathlib import Path
 
 # Load image
 with open("my_image.tif", "rb") as f:
@@ -133,46 +208,7 @@ with open("preview.html", "w") as f:
 print("Open preview.html in your browser")
 ```
 
-## Helper Function
-
-```python
-def process_image_file(image_path: str, roi_id: str, api_url: str = "http://localhost:8000"):
-    """Process an image file and return results."""
-    import base64
-    import requests
-    from pathlib import Path
-
-    # Load and encode
-    with open(image_path, "rb") as f:
-        image_b64 = base64.b64encode(f.read()).decode("utf-8")
-
-    # Request
-    response = requests.post(
-        f"{api_url}/process-image",
-        json={"image": image_b64, "roi_id": roi_id}
-    )
-
-    return response.json()
-
-# Usage
-result = process_image_file("image.tif", "0050")
-if result["success"]:
-    print(f"Success! Angle: {result['rotation_angle']:.2f}°")
-```
-
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Check service health |
-| `/available-chips` | GET | List loaded chip configurations |
-| `/chamber-types` | GET | List available chamber types |
-| `/process-image` | POST | Process single image (JSON) |
-| `/process-image-preview` | POST | Get HTML preview (JSON) |
-| `/calibrate` | POST | Calibrate map (JSON) |
-| `/docs` | GET | Interactive API documentation |
-
-### Chip Selection
+### Chip Selection (Multi-Chip)
 
 When multiple chip configs are loaded (via `DART_CHIP_CONFIGS_DIR`), specify
 `chip_name` in your request:
@@ -195,18 +231,284 @@ chips = requests.get("http://localhost:8000/available-chips").json()
 print(chips)  # ["sak"]
 ```
 
-## Run Tests
+### Helper Function
 
-```bash
-# Run all tests
-conda run -n dmc-masking-claude pytest tests/test_api.py -v
+```python
+def process_image_file(image_path: str, roi_id: str, api_url: str = "http://localhost:8000"):
+    """Process an image file and return results."""
+    import base64
+    import requests
 
-# Run specific test
-conda run -n dmc-masking-claude pytest tests/test_api.py::TestProcessImageEndpoint -v
+    with open(image_path, "rb") as f:
+        image_b64 = base64.b64encode(f.read()).decode("utf-8")
 
-# Run with coverage
-conda run -n dmc-masking-claude pytest tests/test_api.py --cov=dart_mlci.api
+    response = requests.post(
+        f"{api_url}/process-image",
+        json={"image": image_b64, "roi_id": roi_id}
+    )
+    return response.json()
+
+# Usage
+result = process_image_file("image.tif", "0050")
+if result["success"]:
+    print(f"Success! Angle: {result['rotation_angle']:.2f}")
 ```
+
+---
+
+## Java Client Examples (Java 11+)
+
+These examples use `java.net.http.HttpClient` (built-in since Java 11) and
+`org.json` for JSON parsing. No framework dependencies required.
+
+> **Image loading:** Simply read the raw file bytes and Base64-encode them.
+> The server handles normalization (quantile-based for uint16 TIFFs).
+
+### Setup
+
+Add `org.json` to your project (Maven):
+
+```xml
+<dependency>
+    <groupId>org.json</groupId>
+    <artifactId>json</artifactId>
+    <version>20240303</version>
+</dependency>
+```
+
+Or Gradle:
+
+```groovy
+implementation 'org.json:json:20240303'
+```
+
+### Health Check
+
+```java
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import org.json.JSONObject;
+
+public class DartHealthCheck {
+    public static void main(String[] args) throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:8000/health"))
+                .GET()
+                .build();
+
+        HttpResponse<String> response = client.send(
+                request, HttpResponse.BodyHandlers.ofString());
+
+        JSONObject health = new JSONObject(response.body());
+        System.out.println("Status: " + health.getString("status"));
+        System.out.println("Model loaded: " + health.getBoolean("model_loaded"));
+        System.out.println("Device: " + health.getString("device"));
+    }
+}
+```
+
+### Process a Single Image
+
+```java
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Base64;
+import org.json.JSONObject;
+
+public class DartProcessImage {
+    public static void main(String[] args) throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+
+        // Load and encode image
+        byte[] imageBytes = Files.readAllBytes(Path.of("my_image.tif"));
+        String imageB64 = Base64.getEncoder().encodeToString(imageBytes);
+
+        // Build JSON request
+        JSONObject requestBody = new JSONObject();
+        requestBody.put("image", imageB64);
+        requestBody.put("roi_id", "0050");
+        requestBody.put("pixel_size", 0.065789);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:8000/process-image"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody.toString()))
+                .build();
+
+        HttpResponse<String> response = client.send(
+                request, HttpResponse.BodyHandlers.ofString());
+
+        JSONObject result = new JSONObject(response.body());
+
+        if (result.getBoolean("success")) {
+            System.out.println("Chamber type: " + result.getString("chamber_type"));
+            System.out.println("Rotation angle: " + result.getDouble("rotation_angle"));
+
+            // Save cropped image
+            byte[] croppedBytes = Base64.getDecoder().decode(
+                    result.getString("cropped_image"));
+            Files.write(Path.of("cropped.png"), croppedBytes);
+
+            // Save mask
+            byte[] maskBytes = Base64.getDecoder().decode(
+                    result.getString("mask"));
+            Files.write(Path.of("mask.png"), maskBytes);
+
+            System.out.println("Saved cropped.png and mask.png");
+        } else {
+            System.err.println("Error: " + result.getString("error_message"));
+        }
+    }
+}
+```
+
+### Calibrate from Images
+
+```java
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Base64;
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+public class DartCalibrate {
+    static String loadImageB64(String path) throws Exception {
+        byte[] bytes = Files.readAllBytes(Path.of(path));
+        return Base64.getEncoder().encodeToString(bytes);
+    }
+
+    public static void main(String[] args) throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+
+        // Build calibration images array
+        JSONArray calibrationImages = new JSONArray();
+
+        calibrationImages.put(new JSONObject()
+                .put("image", loadImageB64("cal_0000.tif"))
+                .put("roi_id", "0000")
+                .put("stage_position", new JSONObject()
+                        .put("x", 0.0).put("y", 0.0)));
+
+        calibrationImages.put(new JSONObject()
+                .put("image", loadImageB64("cal_7000.tif"))
+                .put("roi_id", "7000")
+                .put("stage_position", new JSONObject()
+                        .put("x", 461.25).put("y", 0.0)));
+
+        calibrationImages.put(new JSONObject()
+                .put("image", loadImageB64("cal_7315.tif"))
+                .put("roi_id", "7315")
+                .put("stage_position", new JSONObject()
+                        .put("x", 480.94).put("y", 20.69)));
+
+        // Build request body
+        JSONObject requestBody = new JSONObject();
+        requestBody.put("chip_name", "SAK");
+        requestBody.put("calibration_images", calibrationImages);
+        requestBody.put("pixel_size", 0.065789);
+        requestBody.put("blueprint_map_path", "artifacts/sak_blueprint_map.csv");
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create("http://localhost:8000/calibrate"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(requestBody.toString()))
+                .build();
+
+        HttpResponse<String> response = client.send(
+                request, HttpResponse.BodyHandlers.ofString());
+
+        JSONObject result = new JSONObject(response.body());
+
+        if (result.getBoolean("success")) {
+            // Save calibrated map
+            JSONArray calibratedMap = result.getJSONArray("calibrated_map");
+            Files.writeString(
+                    Path.of("calibrated_map.json"),
+                    calibratedMap.toString(2));
+
+            JSONObject stats = result.getJSONObject("statistics");
+            System.out.printf("Calibration complete:%n");
+            System.out.printf("  RMSE: %.4f%n", stats.getDouble("rmse"));
+            System.out.printf("  Max error: %.4f%n", stats.getDouble("max_error"));
+            System.out.printf("  Points: %d%n", stats.getInt("n_points"));
+        } else {
+            System.err.println("Error: " + result.getString("error_message"));
+        }
+    }
+}
+```
+
+### Helper Class
+
+```java
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Base64;
+import org.json.JSONObject;
+
+public class DartClient {
+    private final HttpClient client;
+    private final String baseUrl;
+
+    public DartClient(String baseUrl) {
+        this.client = HttpClient.newHttpClient();
+        this.baseUrl = baseUrl;
+    }
+
+    public DartClient() {
+        this("http://localhost:8000");
+    }
+
+    public JSONObject processImage(String imagePath, String roiId) throws Exception {
+        byte[] imageBytes = Files.readAllBytes(Path.of(imagePath));
+        String imageB64 = Base64.getEncoder().encodeToString(imageBytes);
+
+        JSONObject body = new JSONObject();
+        body.put("image", imageB64);
+        body.put("roi_id", roiId);
+
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/process-image"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body.toString()))
+                .build();
+
+        HttpResponse<String> response = client.send(
+                request, HttpResponse.BodyHandlers.ofString());
+
+        return new JSONObject(response.body());
+    }
+
+    // Usage
+    public static void main(String[] args) throws Exception {
+        DartClient dart = new DartClient();
+        JSONObject result = dart.processImage("image.tif", "0050");
+
+        if (result.getBoolean("success")) {
+            System.out.printf("Success! Angle: %.2f%n",
+                    result.getDouble("rotation_angle"));
+        }
+    }
+}
+```
+
+---
 
 ## Troubleshooting
 
@@ -230,8 +532,17 @@ image_b64 = "data:image/tiff;base64,iVBORw..."  # Works!
 image_b64 = "iVBORw..."  # Also works!
 ```
 
+### Docker Container Won't Start
+```bash
+# Check logs
+docker logs dart-api
+
+# Verify the image built correctly
+docker run --rm dart-mlci python -c "from dart_mlci.api.main import app; print('OK')"
+```
+
 ## More Information
 
+- **Interactive Docs**: http://localhost:8000/docs (Swagger UI, when server is running)
 - **Migration Guide**: `docs/API_BASE64_MIGRATION.md`
 - **Implementation Details**: `IMPLEMENTATION_SUMMARY.md`
-- **Interactive Docs**: http://localhost:8000/docs (when server is running)

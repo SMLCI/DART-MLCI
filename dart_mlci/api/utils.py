@@ -7,6 +7,8 @@ import numpy as np
 import tifffile
 from PIL import Image
 
+from dart_mlci.utils import normalize_image
+
 
 def base64_to_array(b64_string: str) -> np.ndarray:
     """
@@ -72,14 +74,17 @@ def base64_to_array(b64_string: str) -> np.ndarray:
     else:
         raise ValueError(f"Unsupported array shape: {arr.shape}")
 
-    # Ensure uint8 dtype
+    # Ensure uint8 dtype — use quantile-based normalization (same as load_image)
     if arr.dtype != np.uint8:
-        if arr.max() <= 1.0:
-            # Normalized float -> uint8
-            arr = (arr * 255).astype(np.uint8)
+        if arr.dtype == np.float32 or arr.dtype == np.float64:
+            if arr.max() <= 1.0:
+                # Normalized float -> uint8
+                arr = (arr * 255).astype(np.uint8)
+            else:
+                arr = normalize_image(arr)
         else:
-            # Clip to valid range
-            arr = np.clip(arr, 0, 255).astype(np.uint8)
+            # uint16, uint32, etc. — quantile normalization preserves contrast
+            arr = normalize_image(arr)
 
     # Final validation
     if arr.shape[2] != 3:

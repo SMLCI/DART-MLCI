@@ -106,6 +106,47 @@ class TestHealthEndpoint:
         assert data["status"] in ("healthy", "unhealthy")
 
 
+# === Available Chips Endpoint Tests ===
+
+
+class TestAvailableChipsEndpoint:
+    def test_available_chips_returns_list(self, client):
+        """Available chips endpoint should return a list of strings."""
+        response = client.get("/available-chips")
+        assert response.status_code == 200
+        data = response.json()
+        assert isinstance(data, list)
+        assert all(isinstance(name, str) for name in data)
+
+    @pytest.mark.skipif(
+        not (Path("artifacts/chips").exists()),
+        reason="Chips directory not found",
+    )
+    def test_available_chips_includes_sak(self, monkeypatch):
+        """Should include 'sak' when chip configs dir is configured."""
+        from dart_mlci.api.main import app
+        from dart_mlci.api.settings import get_settings
+
+        # Clear cached settings so env var takes effect
+        get_settings.cache_clear()
+        monkeypatch.setenv("DART_CHIP_CONFIGS_DIR", "artifacts/chips")
+        try:
+            with TestClient(app) as client:
+                response = client.get("/available-chips")
+                assert response.status_code == 200
+                data = response.json()
+                assert "sak" in data
+        finally:
+            get_settings.cache_clear()
+
+    def test_available_chips_sorted(self, client):
+        """Chip names should be returned in sorted order."""
+        response = client.get("/available-chips")
+        assert response.status_code == 200
+        data = response.json()
+        assert data == sorted(data)
+
+
 # === Chamber Types Endpoint Tests ===
 
 
@@ -243,6 +284,75 @@ class TestProcessImageEndpoint:
         data = response.json()
         assert "success" in data
         assert isinstance(data["success"], bool)
+
+
+# === Process Image Preview Endpoint Tests ===
+
+
+class TestProcessImagePreviewEndpoint:
+    def test_preview_missing_image_returns_422(self, client):
+        """Missing image field should return validation error."""
+        response = client.post("/process-image-preview", json={"roi_id": "0050"})
+        assert response.status_code == 422
+
+    def test_preview_missing_roi_returns_422(self, client, test_image_base64):
+        """Missing roi_id should return validation error."""
+        response = client.post("/process-image-preview", json={"image": test_image_base64})
+        assert response.status_code == 422
+
+    def test_preview_invalid_roi_returns_html_error(self, client, test_image_base64):
+        """Invalid ROI should return an HTML error page."""
+        response = client.post(
+            "/process-image-preview",
+            json={
+                "image": test_image_base64,
+                "roi_id": "invalid_roi",
+            },
+        )
+        # Preview returns HTML even on error (422 status with HTML body)
+        assert response.status_code in [200, 422]
+        assert "text/html" in response.headers.get("content-type", "")
+
+    @pytest.mark.skipif(
+        not (Path("artifacts/models/v26_detect_s_imgsz1280.pt").exists()),
+        reason="Model file not found",
+    )
+    def test_preview_returns_html_with_images(self, client, test_image_base64):
+        """Successful preview should return HTML with embedded base64 images."""
+        response = client.post(
+            "/process-image-preview",
+            json={
+                "image": test_image_base64,
+                "roi_id": "0000",
+                "pixel_size": 0.065789,
+            },
+        )
+
+        assert "text/html" in response.headers.get("content-type", "")
+        html = response.text
+        assert "<!DOCTYPE html>" in html
+
+        if response.status_code == 200:
+            # Success path: HTML with embedded images
+            assert "Cropped Image" in html
+            assert "Mask" in html
+            assert "data:image/png;base64," in html
+        else:
+            # Error path (e.g. marker detection failed): HTML error page
+            assert response.status_code == 422
+            assert "Error" in html
+
+    def test_preview_response_is_html(self, client, test_image_base64):
+        """Preview endpoint should always return HTML content type."""
+        response = client.post(
+            "/process-image-preview",
+            json={
+                "image": test_image_base64,
+                "roi_id": "0000",
+            },
+        )
+        # Even errors return HTML
+        assert "text/html" in response.headers.get("content-type", "")
 
 
 # === Calibrate Endpoint Tests ===

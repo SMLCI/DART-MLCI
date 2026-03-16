@@ -148,7 +148,6 @@ test_quick/
 .batch_result/
 token.env
 test_api_connection.py
-test_docker_api.sh
 upload.sh
 validation_config.json
 artifacts/images/sak/0000_base64.txt
