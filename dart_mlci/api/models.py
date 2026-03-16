@@ -28,10 +28,6 @@ class CalibrateConfig(BaseModel):
         description="List of calibration image metadata (order must match uploaded images)"
     )
     pixel_size: float = Field(default=0.065789, description="Pixel size in microns")
-    blueprint_map_path: str = Field(description="Path to the blueprint map CSV")
-    structure_library_path: str | None = Field(
-        default=None, description="Path to structure library JSON (uses default if not set)"
-    )
     model_path: str | None = Field(
         default=None, description="Path to YOLO model (uses default if not set)"
     )
@@ -182,15 +178,6 @@ class CalibrateRequest(BaseModel):
         min_length=3, description="List of calibration images (minimum 3 required)"
     )
     pixel_size: float = Field(default=0.065789, description="Pixel size in microns")
-    blueprint_map_path: str = Field(description="Path to the blueprint map CSV")
-    structure_library_path: str | None = Field(
-        default=None,
-        description="Path to structure library JSON (deprecated, use chip_config_path)",
-    )
-    chip_config_path: str | None = Field(
-        default=None,
-        description="Path to unified chip config JSON (preferred over structure_library_path and blueprint_map_path)",
-    )
     model_path: str | None = Field(
         default=None, description="Path to YOLO model (uses default if not set)"
     )

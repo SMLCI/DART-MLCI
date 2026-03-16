@@ -612,18 +612,29 @@ async def calibrate_map_endpoint(request: CalibrateRequest) -> CalibrateResponse
                     error_message=f"Failed to decode calibration image {i}: {e}",
                 )
 
-        # Build full config dict
+        # Resolve chip config path from registry
+        registry = getattr(app.state, "chip_registry", {})
+        chip_key = request.chip_name.lower()
+        if chip_key not in registry:
+            available = sorted(registry.keys())
+            return CalibrateResponse(
+                success=False,
+                error_message=f"Unknown chip '{request.chip_name}'. Available: {available}",
+            )
+        chip_lib = registry[chip_key]
+        if chip_lib.source_path is None:
+            return CalibrateResponse(
+                success=False,
+                error_message=f"Chip '{request.chip_name}' has no source path",
+            )
+
+        # Build full config dict — chip_config_path provides both
+        # the blueprint map and the structure library
         full_config = {
             "calibration_images": calibration_images,
             "pixel_size": request.pixel_size,
-            "blueprint_map_path": request.blueprint_map_path,
+            "chip_config_path": str(chip_lib.source_path),
         }
-
-        # Add optional fields
-        if request.structure_library_path:
-            full_config["structure_library_path"] = request.structure_library_path
-        else:
-            full_config["structure_library_path"] = settings.structure_library_path
 
         if request.model_path:
             full_config["model_path"] = request.model_path

@@ -160,6 +160,7 @@ class ChipStructureLibrary:
         """
         self.chip_config = chip_config
         self.pixel_size = pixel_size if pixel_size is not None else chip_config.pixel_size
+        self.source_path: Path | None = None
 
         # Build polygon library: convert GeoJSON to scaled RoIPolygon objects
         self.polygon_library: dict[str, RoIPolygon] = {}
@@ -201,7 +202,9 @@ class ChipStructureLibrary:
             ChipStructureLibrary instance
         """
         config = load_chip_config(path)
-        return cls(config, pixel_size=pixel_size)
+        instance = cls(config, pixel_size=pixel_size)
+        instance.source_path = Path(path)
+        return instance
 
     def __call__(self, roi_id: str) -> tuple[str, RoIPolygon, dict[str, np.ndarray]]:
         """Look up chamber structure for a given ROI ID.

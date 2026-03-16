@@ -90,6 +90,10 @@ def load_image_b64(path):
         return base64.b64encode(f.read()).decode("utf-8")
 ```
 
+> **16-bit images:** The API fully supports uint16 TIFFs (common in microscopy).
+> The server applies quantile-based normalization (1st–99th percentile) to
+> preserve contrast. Just send the raw file bytes — no client-side conversion needed.
+
 > **Note:** If you have `dart_mlci` installed locally and want to inspect or
 > preprocess images before sending, use `dart_mlci.io.load_image()` which
 > returns a normalized HxWx3 uint8 array.
@@ -155,8 +159,7 @@ request_data = {
             "stage_position": {"x": 480.94, "y": 20.69}
         }
     ],
-    "pixel_size": 0.065789,
-    "blueprint_map_path": "artifacts/sak_blueprint_map.csv"
+    "pixel_size": 0.065789
 }
 
 # Send request
@@ -281,6 +284,12 @@ Or Gradle:
 ```groovy
 implementation 'org.json:json:20240303'
 ```
+
+> **Large requests:** Microscopy images encoded as base64 can produce requests
+> of 50 MB+. The API server has no body size limit. However:
+> - If behind **nginx**, set `client_max_body_size 100m;` (default is 1 MB)
+> - In **Java**, increase the JVM heap if needed: `java -Xmx512m ...`
+>   (a single base64-encoded TIFF can be 50 MB+; calibration sends 3+ images)
 
 ### Health Check
 
@@ -418,7 +427,6 @@ public class DartCalibrate {
         requestBody.put("chip_name", "SAK");
         requestBody.put("calibration_images", calibrationImages);
         requestBody.put("pixel_size", 0.065789);
-        requestBody.put("blueprint_map_path", "artifacts/sak_blueprint_map.csv");
 
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("http://localhost:8000/calibrate"))
