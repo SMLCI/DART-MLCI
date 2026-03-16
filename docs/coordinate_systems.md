@@ -167,7 +167,7 @@ The full transform pipeline from blueprint to stage coordinates:
 
 ### Transform Classes
 
-The `dmc_masking.calibration` module provides these transform classes:
+The `dart_mlci.calibration` module provides these transform classes:
 
 1. **PixelToMicronTransform**: Scales pixel coordinates to microns
    ```python
@@ -211,12 +211,12 @@ BLUEPRINT (top-down)              MICROSCOPE VIEW (bottom-up)
 
 ## Configuration
 
-The coordinate system behavior can be configured via `DMCConfig`:
+The coordinate system behavior can be configured via `DARTConfig`:
 
 ```python
-from dmc_masking.config import DMCConfig, CoordinatesConfig, AxisDirection
+from dart_mlci.config import DARTConfig, CoordinatesConfig, AxisDirection
 
-config = DMCConfig()
+config = DARTConfig()
 # Default: blueprint Y is NEGATIVE (up), image Y is POSITIVE (down)
 print(config.coordinates.blueprint.y_direction)  # AxisDirection.NEGATIVE
 print(config.coordinates.image.y_direction)      # AxisDirection.POSITIVE
@@ -237,7 +237,7 @@ blueprint (Y-up) and image (Y-down) coordinates.
 
 ## Code References
 
-- `dmc_masking/calibration/coordinates.py` - Transform classes
-- `dmc_masking/calibration/core.py:compute_chamber_center()` - Y-inversion handling
-- `dmc_masking/mask.py:apply_mask()` - Y-inversion in polygon positioning
-- `dmc_masking/config.py` - Coordinate system configuration
+- `dart_mlci/calibration/coordinates.py` - Transform classes
+- `dart_mlci/calibration/core.py:compute_chamber_center()` - Y-inversion handling
+- `dart_mlci/mask.py:apply_mask()` - Y-inversion in polygon positioning
+- `dart_mlci/config.py` - Coordinate system configuration

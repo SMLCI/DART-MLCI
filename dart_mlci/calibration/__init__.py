@@ -29,7 +29,7 @@ The key coordinate handling:
 
 Example Usage
 -------------
->>> from dmc_masking.calibration import (
+>>> from dart_mlci.calibration import (
 ...     AffineTransform2D,
 ...     PixelToMicronTransform,
 ...     ImageToStageTransform,

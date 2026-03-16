@@ -7,9 +7,9 @@ TimelapseRegistration          — NCC-based registration (GPU-accelerated via k
 PhaseCorrelationRegistration   — FFT-based registration (OpenCV)
 """
 
-from dmc_masking.registration._base import BaseRegistration
-from dmc_masking.registration._ncc import TimelapseRegistration
-from dmc_masking.registration._phase_corr import PhaseCorrelationRegistration
+from dart_mlci.registration._base import BaseRegistration
+from dart_mlci.registration._ncc import TimelapseRegistration
+from dart_mlci.registration._phase_corr import PhaseCorrelationRegistration
 
 __all__ = [
     "BaseRegistration",

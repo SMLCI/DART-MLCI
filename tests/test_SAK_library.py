@@ -5,8 +5,8 @@ from pathlib import Path
 
 import numpy as np
 
-import dmc_masking
-from dmc_masking.mask import SAKRoIStructureLibrary
+import dart_mlci
+from dart_mlci.mask import SAKRoIStructureLibrary
 
 
 class TestMask(unittest.TestCase):
@@ -17,7 +17,7 @@ class TestMask(unittest.TestCase):
 
         # load the sak library
         sakl = SAKRoIStructureLibrary(
-            Path(dmc_masking.__file__).parent.parent / "artifacts/chamber_structure.json",
+            Path(dart_mlci.__file__).parent.parent / "artifacts/chamber_structure.json",
             1,
         )
 

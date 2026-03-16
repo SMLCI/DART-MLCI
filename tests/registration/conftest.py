@@ -45,7 +45,7 @@ def synthetic_image_pair_fixture():
 @pytest.fixture
 def registration_instance_fixture(marker_group_fixture):
     """Pre-initialized TimelapseRegistration instance."""
-    from dmc_masking.registration import TimelapseRegistration
+    from dart_mlci.registration import TimelapseRegistration
 
     return TimelapseRegistration(
         marker_group_pixel=marker_group_fixture,
@@ -58,7 +58,7 @@ def registration_instance_fixture(marker_group_fixture):
 @pytest.fixture
 def phase_registration_instance_fixture(marker_group_fixture):
     """Pre-initialized PhaseCorrelationRegistration instance."""
-    from dmc_masking.registration import PhaseCorrelationRegistration
+    from dart_mlci.registration import PhaseCorrelationRegistration
 
     return PhaseCorrelationRegistration(
         marker_group_pixel=marker_group_fixture,

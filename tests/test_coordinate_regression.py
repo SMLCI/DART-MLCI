@@ -14,7 +14,7 @@ class TestComputeChamberCenterRegression(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures matching real calibration data."""
-        from dmc_masking.mask import RoIPolygon
+        from dart_mlci.mask import RoIPolygon
 
         self.pixel_size = 0.065789
 
@@ -37,7 +37,7 @@ class TestComputeChamberCenterRegression(unittest.TestCase):
         """
         from shapely.geometry import box
 
-        from dmc_masking.mask import RoIPolygon
+        from dart_mlci.mask import RoIPolygon
         from scripts.calibrate_map import compute_chamber_center
 
         # Create simple test polygon (100x100 pixels)
@@ -91,7 +91,7 @@ class TestComputeChamberCenterRegression(unittest.TestCase):
         """
         from shapely.geometry import box
 
-        from dmc_masking.mask import RoIPolygon
+        from dart_mlci.mask import RoIPolygon
 
         # Create test polygon
         polygon = RoIPolygon(box(0, 0, 100, 100))
@@ -159,7 +159,7 @@ class TestRoIPolygonCoordinates(unittest.TestCase):
         """Verify polygon center is bounding box center."""
         from shapely.geometry import box
 
-        from dmc_masking.mask import RoIPolygon
+        from dart_mlci.mask import RoIPolygon
 
         polygon = RoIPolygon(box(10, 20, 110, 120))
         center = polygon.center
@@ -171,7 +171,7 @@ class TestRoIPolygonCoordinates(unittest.TestCase):
         """Verify translation works correctly."""
         from shapely.geometry import box
 
-        from dmc_masking.mask import RoIPolygon
+        from dart_mlci.mask import RoIPolygon
 
         polygon = RoIPolygon(box(0, 0, 100, 100))
         translated = polygon.translate(x=50, y=30)
@@ -186,7 +186,7 @@ class TestRoIPolygonCoordinates(unittest.TestCase):
         """Verify scaling works correctly."""
         from shapely.geometry import box
 
-        from dmc_masking.mask import RoIPolygon
+        from dart_mlci.mask import RoIPolygon
 
         polygon = RoIPolygon(box(0, 0, 100, 100))
         scaled = polygon.scale(2.0)
@@ -206,7 +206,7 @@ class TestFilterMatchedPairsByBounds(unittest.TestCase):
         """Pairs that would place RoI outside image should be filtered."""
         from shapely.geometry import box
 
-        from dmc_masking.mask import RoIPolygon
+        from dart_mlci.mask import RoIPolygon
         from scripts.calibrate_map import filter_matched_pairs_by_bounds
 
         # Create a 100x100 polygon

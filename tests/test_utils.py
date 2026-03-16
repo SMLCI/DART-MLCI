@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from dmc_masking.utils import homogenize_image_size
+from dart_mlci.utils import homogenize_image_size
 
 
 class TestUtils(unittest.TestCase):

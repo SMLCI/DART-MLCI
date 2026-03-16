@@ -7,7 +7,7 @@ with real images from the artifacts and test fixtures folders.
 
 Usage:
     # Start the container first
-    docker run -d -p 8000:8000 --name dmc-masking-api jugit-registry.fz-juelich.de/emsig/dmc-masking:latest
+    docker run -d -p 8000:8000 --name dart-mlci-api jugit-registry.fz-juelich.de/emsig/dart-mlci:latest
 
     # Run tests
     python test_docker_integration.py
@@ -26,9 +26,9 @@ from pathlib import Path
 import requests
 from PIL import Image
 
-# Import dmc_masking for proper TIFF loading
+# Import dart_mlci for proper TIFF loading
 sys.path.insert(0, str(Path(__file__).parent))
-from dmc_masking.io import load_image
+from dart_mlci.io import load_image
 
 # Configuration
 API_URL = os.environ.get("TEST_API_URL", "http://localhost:8000")
@@ -81,14 +81,14 @@ def print_info(text):
 def encode_image_to_base64(image_path):
     """Encode an image file to base64 string.
 
-    For TIFF files, uses dmc_masking.io.load_image for proper handling,
+    For TIFF files, uses dart_mlci.io.load_image for proper handling,
     then converts to PNG before encoding.
     """
     image_path = Path(image_path)
 
     # Check if it's a TIFF file
     if image_path.suffix.lower() in [".tif", ".tiff"]:
-        # Load TIFF using dmc_masking's load_image function
+        # Load TIFF using dart_mlci's load_image function
         # This properly handles multi-dimensional TIFFs and normalization
         img_array = load_image(image_path)  # Returns HxWx3 uint8 array
 
@@ -163,7 +163,7 @@ def test_process_image_endpoint():
 
     # Use SAK artifact image which should have detectable markers
     test_image_path = Path(
-        "/home/seiffarth_l/projects/DMC_new/dmc-masking/artifacts/images/sak/0000.png"
+        "/home/seiffarth_l/projects/DART_new/dart-mlci/artifacts/images/sak/0000.png"
     )
 
     if not test_image_path.exists():

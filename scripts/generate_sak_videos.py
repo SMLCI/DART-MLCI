@@ -22,14 +22,14 @@ try:
 except ImportError:
     ACIA_AVAILABLE = False
 
-import dmc_masking
-from dmc_masking import DEFAULT_MODEL_PATH, MarkerDetectionModel
-from dmc_masking.chip import ChipStructureLibrary
-from dmc_masking.mask import apply_mask, filter_segmentation_by_mask
-from dmc_masking.match import match_markers
-from dmc_masking.rotation import compute_marker_group_angles, rotate_image_and_markers
-from dmc_masking.utils import normalize_image
-from dmc_masking.visualization import (
+import dart_mlci
+from dart_mlci import DEFAULT_MODEL_PATH, MarkerDetectionModel
+from dart_mlci.chip import ChipStructureLibrary
+from dart_mlci.mask import apply_mask, filter_segmentation_by_mask
+from dart_mlci.match import match_markers
+from dart_mlci.rotation import compute_marker_group_angles, rotate_image_and_markers
+from dart_mlci.utils import normalize_image
+from dart_mlci.visualization import (
     FPS,
     FRAME_HEIGHT,
     FRAME_WIDTH,
@@ -42,7 +42,7 @@ from dmc_masking.visualization import (
     write_frames,
 )
 
-ARTIFACTS_DIR = Path(dmc_masking.__file__).parent.parent / "artifacts"
+ARTIFACTS_DIR = Path(dart_mlci.__file__).parent.parent / "artifacts"
 
 # Image-to-chamber-type mapping (from tests/test_full.py)
 CONFIGS = [

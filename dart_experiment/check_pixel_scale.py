@@ -5,9 +5,9 @@ from pathlib import Path
 import numpy as np
 import tifffile
 
-from dmc_masking.chip import ChipStructureLibrary
-from dmc_masking.detection import MarkerDetectionModel
-from dmc_masking.utils import normalize_image
+from dart_mlci.chip import ChipStructureLibrary
+from dart_mlci.detection import MarkerDetectionModel
+from dart_mlci.utils import normalize_image
 
 chip_lib = ChipStructureLibrary.from_file("artifacts/chips/sak.json", pixel_size=1.0)
 mdm = MarkerDetectionModel("artifacts/models/v26_detect_s_imgsz1280.pt", verbose=False)

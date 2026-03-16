@@ -1,4 +1,4 @@
-"""Environment configuration for the DMC Masking API."""
+"""Environment configuration for the DART API."""
 
 import os
 from dataclasses import dataclass, field
@@ -12,29 +12,29 @@ class Settings:
 
     model_path: str = field(
         default_factory=lambda: os.environ.get(
-            "DMC_MODEL_PATH", "/app/artifacts/models/v26_detect_s_imgsz1280.pt"
+            "DART_MODEL_PATH", "/app/artifacts/models/v26_detect_s_imgsz1280.pt"
         )
     )
     structure_library_path: str = field(
         default_factory=lambda: os.environ.get(
-            "DMC_STRUCTURE_LIBRARY_PATH", "/app/artifacts/chamber_structure.json"
+            "DART_STRUCTURE_LIBRARY_PATH", "/app/artifacts/chamber_structure.json"
         )
     )
     blueprint_map_path: str = field(
         default_factory=lambda: os.environ.get(
-            "DMC_BLUEPRINT_MAP_PATH", "/app/artifacts/sak_blueprint_map.csv"
+            "DART_BLUEPRINT_MAP_PATH", "/app/artifacts/sak_blueprint_map.csv"
         )
     )
     default_pixel_size: float = field(
-        default_factory=lambda: float(os.environ.get("DMC_PIXEL_SIZE", "0.065789"))
+        default_factory=lambda: float(os.environ.get("DART_PIXEL_SIZE", "0.065789"))
     )
     chip_config_path: str | None = field(
-        default_factory=lambda: os.environ.get("DMC_CHIP_CONFIG_PATH", None)
+        default_factory=lambda: os.environ.get("DART_CHIP_CONFIG_PATH", None)
     )
     chip_configs_dir: str | None = field(
-        default_factory=lambda: os.environ.get("DMC_CHIP_CONFIGS_DIR", None)
+        default_factory=lambda: os.environ.get("DART_CHIP_CONFIGS_DIR", None)
     )
-    device: str | None = field(default_factory=lambda: os.environ.get("DMC_DEVICE", None))
+    device: str | None = field(default_factory=lambda: os.environ.get("DART_DEVICE", None))
 
     def __post_init__(self):
         """Validate paths exist where required."""

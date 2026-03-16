@@ -32,8 +32,8 @@ try:
 except ImportError:
     ACIA_AVAILABLE = False
 
-import dmc_masking
-from dmc_masking import (
+import dart_mlci
+from dart_mlci import (
     DEFAULT_MODEL_PATH,
     ImageRotationStep,
     MarkerDetectionStep,
@@ -42,9 +42,9 @@ from dmc_masking import (
 )
 
 # Import load_image from shared module
-from dmc_masking.io import load_image
-from dmc_masking.mask import SAKRoIStructureLibrary
-from dmc_masking.visualization import plot_markers_on_image
+from dart_mlci.io import load_image
+from dart_mlci.mask import SAKRoIStructureLibrary
+from dart_mlci.visualization import plot_markers_on_image
 
 # Pipeline step names for tracking
 STEP_LOADING = "Loading"
@@ -110,7 +110,7 @@ class BatchMaskingRunner:
         # Default structure library path
         if structure_library_path is None:
             structure_library_path = (
-                Path(dmc_masking.__file__).parent.parent / "artifacts/chamber_structure.json"
+                Path(dart_mlci.__file__).parent.parent / "artifacts/chamber_structure.json"
             )
 
         # Initialize SAK structure library (provides polygon and marker configs)

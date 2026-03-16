@@ -10,13 +10,13 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DMC_MODEL_PATH=/app/artifacts/models/v26_detect_s_imgsz1280.pt
-      - DMC_STRUCTURE_LIBRARY_PATH=/app/artifacts/chamber_structure.json
-      - DMC_BLUEPRINT_MAP_PATH=/app/artifacts/sak_blueprint_map.csv
-      - DMC_CHIP_CONFIGS_DIR=/app/artifacts/chips/
-      - DMC_PIXEL_SIZE=0.065789
+      - DART_MODEL_PATH=/app/artifacts/models/v26_detect_s_imgsz1280.pt
+      - DART_STRUCTURE_LIBRARY_PATH=/app/artifacts/chamber_structure.json
+      - DART_BLUEPRINT_MAP_PATH=/app/artifacts/sak_blueprint_map.csv
+      - DART_CHIP_CONFIGS_DIR=/app/artifacts/chips/
+      - DART_PIXEL_SIZE=0.065789
       # Optional: specify device (cuda:0 or cpu)
-      # - DMC_DEVICE=cpu
+      # - DART_DEVICE=cpu
     # Uncomment for GPU support (requires nvidia-docker)
     # deploy:
     #   resources:

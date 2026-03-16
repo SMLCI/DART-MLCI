@@ -38,16 +38,16 @@ try:
 except ImportError:
     ACIA_AVAILABLE = False
 
-import dmc_masking
-from dmc_masking import (
+import dart_mlci
+from dart_mlci import (
     DEFAULT_MODEL_PATH,
     ImageRotationStep,
     MarkerDetectionStep,
     MarkerMatchingStep,
     RoIMaskingStep,
 )
-from dmc_masking.io import load_image
-from dmc_masking.mask import SAKRoIStructureLibrary
+from dart_mlci.io import load_image
+from dart_mlci.mask import SAKRoIStructureLibrary
 
 # Available chamber types
 CHAMBER_TYPES = [
@@ -131,7 +131,7 @@ class PipelineBenchmark:
         # Default structure library path
         if structure_library_path is None:
             structure_library_path = (
-                Path(dmc_masking.__file__).parent.parent / "artifacts/chamber_structure.json"
+                Path(dart_mlci.__file__).parent.parent / "artifacts/chamber_structure.json"
             )
 
         # Initialize SAK structure library (provides polygon and marker configs)

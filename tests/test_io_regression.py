@@ -95,7 +95,7 @@ class TestNormalizeImage(unittest.TestCase):
 
     def test_normalize_uint16_to_uint8(self):
         """16-bit images should be normalized to 8-bit."""
-        from dmc_masking.utils import normalize_image
+        from dart_mlci.utils import normalize_image
 
         # Create a 16-bit test image
         arr_16bit = np.array([[0, 32768, 65535]], dtype=np.uint16)
@@ -108,7 +108,7 @@ class TestNormalizeImage(unittest.TestCase):
 
     def test_normalize_preserves_relative_values(self):
         """Normalization should preserve relative value ordering."""
-        from dmc_masking.utils import normalize_image
+        from dart_mlci.utils import normalize_image
 
         # Create gradient
         arr = np.arange(0, 65536, 256, dtype=np.uint16).reshape(16, 16)

@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 import torch
 
-from dmc_masking.registration import (
+from dart_mlci.registration import (
     BaseRegistration,
     PhaseCorrelationRegistration,
     TimelapseRegistration,

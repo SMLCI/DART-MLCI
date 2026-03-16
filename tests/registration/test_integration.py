@@ -11,7 +11,7 @@ import time
 import numpy as np
 import pytest
 
-from dmc_masking.registration import PhaseCorrelationRegistration, TimelapseRegistration
+from dart_mlci.registration import PhaseCorrelationRegistration, TimelapseRegistration
 from tests.fixtures.synthetic_markers import (
     apply_known_translation,
     create_marker_group_pixel,

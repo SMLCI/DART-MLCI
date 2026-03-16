@@ -18,7 +18,7 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 @pytest.fixture
 def client():
     """Create a test client for the FastAPI app with lifespan context."""
-    from dmc_masking.api.main import app
+    from dart_mlci.api.main import app
 
     # Use context manager to trigger lifespan events
     with TestClient(app) as client:
@@ -442,7 +442,7 @@ class TestIntegration:
 class TestBase64Utilities:
     def test_base64_to_array_roundtrip(self):
         """Test encoding/decoding roundtrip."""
-        from dmc_masking.api.utils import array_to_base64_png, base64_to_array
+        from dart_mlci.api.utils import array_to_base64_png, base64_to_array
 
         # Create test array
         test_arr = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
@@ -460,7 +460,7 @@ class TestBase64Utilities:
 
     def test_base64_to_array_strips_data_uri(self):
         """Test that data URI prefix is stripped."""
-        from dmc_masking.api.utils import array_to_base64_png, base64_to_array
+        from dart_mlci.api.utils import array_to_base64_png, base64_to_array
 
         test_arr = np.random.randint(0, 255, (50, 50, 3), dtype=np.uint8)
         b64_str = array_to_base64_png(test_arr)
@@ -474,14 +474,14 @@ class TestBase64Utilities:
 
     def test_base64_to_array_invalid_base64(self):
         """Test error handling for invalid base64."""
-        from dmc_masking.api.utils import base64_to_array
+        from dart_mlci.api.utils import base64_to_array
 
         with pytest.raises(ValueError, match="Invalid base64"):
             base64_to_array("not-valid-base64!!!")
 
     def test_array_to_base64_mask(self):
         """Test mask encoding (binary thresholding)."""
-        from dmc_masking.api.utils import array_to_base64_png
+        from dart_mlci.api.utils import array_to_base64_png
 
         # Create binary mask (use float to trigger mask conversion)
         mask = np.array([[0.0, 1.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 0.0]])

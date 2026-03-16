@@ -6,7 +6,7 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 
-from dmc_masking.visualization.video import FRAME_HEIGHT, FRAME_WIDTH
+from dart_mlci.visualization.video import FRAME_HEIGHT, FRAME_WIDTH
 
 
 def plot_markers_on_image(

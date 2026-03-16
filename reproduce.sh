@@ -95,10 +95,10 @@ else
     echo "  Unzipping..."
     unzip -q "$ZIP_FILE" -d dart_experiment/
     rm -f "$ZIP_FILE"
-    # The zip contains DMC_Experiment/ — rename to match config's input_dir
-    if [ -d "dart_experiment/DMC_Experiment" ] && [ ! -d "$DATA_DIR" ]; then
-        mv "dart_experiment/DMC_Experiment" "$DATA_DIR"
-        echo "  Renamed DMC_Experiment -> DART_Experiment"
+    # The zip contains DART_Experiment/ — rename to match config's input_dir
+    if [ -d "dart_experiment/DART_Experiment" ] && [ ! -d "$DATA_DIR" ]; then
+        mv "dart_experiment/DART_Experiment" "$DATA_DIR"
+        echo "  Renamed DART_Experiment -> DART_Experiment"
     fi
     echo "  -> done"
 fi

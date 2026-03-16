@@ -5,7 +5,7 @@ The chip configuration system provides a single JSON file per chip design that s
 ## Quick Start
 
 ```python
-from dmc_masking.chip import ChipStructureLibrary
+from dart_mlci.chip import ChipStructureLibrary
 
 # Load from chip config file
 lib = ChipStructureLibrary.from_file("artifacts/chips/sak.json")
@@ -122,7 +122,7 @@ Add all ROI positions from your chip's blueprint, with each entry specifying its
 Load and validate your config:
 
 ```python
-from dmc_masking.chip import load_chip_config
+from dart_mlci.chip import load_chip_config
 
 config = load_chip_config("my_chip.json")
 print(f"Loaded {config.chip_name} with {len(config.chamber_types)} chamber types")
@@ -172,7 +172,7 @@ A toy 2-chamber chip config:
 ### Python API
 
 ```python
-from dmc_masking.chip import ChipStructureLibrary
+from dart_mlci.chip import ChipStructureLibrary
 
 lib = ChipStructureLibrary.from_file("artifacts/chips/sak.json")
 
@@ -205,7 +205,7 @@ python scripts/calibrate_map.py \
 
 Set the environment variable:
 ```bash
-export DMC_CHIP_CONFIG_PATH=artifacts/chips/sak.json
+export DART_CHIP_CONFIG_PATH=artifacts/chips/sak.json
 ```
 
 Or pass in the request body:

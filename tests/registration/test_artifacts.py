@@ -20,7 +20,7 @@ import time
 import numpy as np
 import pytest
 
-from dmc_masking.registration import PhaseCorrelationRegistration, TimelapseRegistration
+from dart_mlci.registration import PhaseCorrelationRegistration, TimelapseRegistration
 from tests.fixtures.artifact_helpers import (
     create_marker_group_from_detection,
     detect_markers_in_image,

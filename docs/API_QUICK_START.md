@@ -4,7 +4,7 @@
 
 ```bash
 conda activate dmc-masking-claude
-uvicorn dmc_masking.api.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn dart_mlci.api.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Visit http://localhost:8000/docs for interactive API documentation.
@@ -174,7 +174,7 @@ if result["success"]:
 
 ### Chip Selection
 
-When multiple chip configs are loaded (via `DMC_CHIP_CONFIGS_DIR`), specify
+When multiple chip configs are loaded (via `DART_CHIP_CONFIGS_DIR`), specify
 `chip_name` in your request:
 
 ```python
@@ -205,7 +205,7 @@ conda run -n dmc-masking-claude pytest tests/test_api.py -v
 conda run -n dmc-masking-claude pytest tests/test_api.py::TestProcessImageEndpoint -v
 
 # Run with coverage
-conda run -n dmc-masking-claude pytest tests/test_api.py --cov=dmc_masking.api
+conda run -n dmc-masking-claude pytest tests/test_api.py --cov=dart_mlci.api
 ```
 
 ## Troubleshooting
@@ -214,13 +214,13 @@ conda run -n dmc-masking-claude pytest tests/test_api.py --cov=dmc_masking.api
 ```bash
 # Verify environment
 conda activate dmc-masking-claude
-python -c "from dmc_masking.api.main import app; print('OK')"
+python -c "from dart_mlci.api.main import app; print('OK')"
 ```
 
 ### Port Already in Use
 ```bash
 # Use different port
-uvicorn dmc_masking.api.main:app --port 8888
+uvicorn dart_mlci.api.main:app --port 8888
 ```
 
 ### Invalid Base64

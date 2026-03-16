@@ -4,8 +4,8 @@ import unittest
 
 import numpy as np
 
-from dmc_masking import DEFAULT_MODEL_PATH, MarkerDetectionModel
-from dmc_masking.io import load_image
+from dart_mlci import DEFAULT_MODEL_PATH, MarkerDetectionModel
+from dart_mlci.io import load_image
 
 
 def _sort_markers(markers):

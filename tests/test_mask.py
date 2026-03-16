@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 from shapely.geometry import Point, Polygon
 
-from dmc_masking.mask import RoIPolygon, apply_mask_rotation_free
+from dart_mlci.mask import RoIPolygon, apply_mask_rotation_free
 
 
 def build_polygon():

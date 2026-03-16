@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 import torch
 
-from dmc_masking.rotation import (
+from dart_mlci.rotation import (
     angle_between,
     rotate_image_and_markers,
     rotate_image_kornia,

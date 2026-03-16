@@ -20,8 +20,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-import dmc_masking
-from dmc_masking import (
+import dart_mlci
+from dart_mlci import (
     DEFAULT_MODEL_PATH,
     ChipStructureLibrary,
     ImageRotationStep,
@@ -29,8 +29,8 @@ from dmc_masking import (
     MarkerMatchingStep,
     RoIMaskingStep,
 )
-from dmc_masking.io import load_image
-from dmc_masking.mask import SAKRoIStructureLibrary
+from dart_mlci.io import load_image
+from dart_mlci.mask import SAKRoIStructureLibrary
 
 # Pipeline step names for error reporting
 STEP_VALIDATION = "VALIDATION"
@@ -370,7 +370,7 @@ Chamber ID patterns:
                 )
             else:
                 args.structure_library = (
-                    Path(dmc_masking.__file__).parent.parent / "artifacts/chamber_structure.json"
+                    Path(dart_mlci.__file__).parent.parent / "artifacts/chamber_structure.json"
                 )
 
             import warnings

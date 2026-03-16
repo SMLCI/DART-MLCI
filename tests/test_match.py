@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from dmc_masking.match import marker_group_to_pixel_coordinates, match_markers
+from dart_mlci.match import marker_group_to_pixel_coordinates, match_markers
 
 
 class TestMatch(unittest.TestCase):

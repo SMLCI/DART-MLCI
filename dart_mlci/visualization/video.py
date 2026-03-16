@@ -130,7 +130,7 @@ def animate_zoom_to_roi(
     frame_size: tuple = (FRAME_WIDTH, FRAME_HEIGHT),
 ) -> list:
     """Generate frames that smoothly zoom from full image view to ROI crop."""
-    from dmc_masking.visualization.drawing import prepare_frame
+    from dart_mlci.visualization.drawing import prepare_frame
 
     h, w = full_image.shape[:2]
     minx, miny, maxx, maxy = roi_bounds

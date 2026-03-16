@@ -4,7 +4,7 @@ import cv2
 import numpy as np
 import pytest
 
-from dmc_masking.registration.preprocessing import (
+from dart_mlci.registration.preprocessing import (
     apply_bilateral_filter,
     compute_image_gradient_magnitude,
     create_hanning_window,

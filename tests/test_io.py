@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from dmc_masking.io import load_image, load_roi_structures
+from dart_mlci.io import load_image, load_roi_structures
 
 
 class TestLoadImage(unittest.TestCase):

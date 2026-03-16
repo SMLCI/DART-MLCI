@@ -53,7 +53,7 @@ The `ChipStructureLibrary` class (`chip.py`) loads these configs and provides lo
 | `mask.py` | `RoIPolygon`, `apply_mask` |
 | `map.py` | `Map` class, affine transform calibration |
 | `chip.py` | `ChipStructureLibrary`, chip config loading |
-| `config.py` | `DMCConfig` dataclass system |
+| `config.py` | `DARTConfig` dataclass system |
 | `io.py` | Image / structure file I/O |
 | `rotation.py` | GPU-accelerated image rotation |
 | `match.py` | Marker pair matching algorithms |

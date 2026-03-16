@@ -37,12 +37,12 @@ from matplotlib.patches import Polygon as MplPolygon
 from shapely import affinity
 from tqdm import tqdm
 
-import dmc_masking
-from dmc_masking import MarkerDetectionStep, MarkerMatchingStep
-from dmc_masking.io import load_image
-from dmc_masking.map import Map
-from dmc_masking.mask import RoIPolygon, SAKRoIStructureLibrary
-from dmc_masking.rotation import compute_marker_group_angles
+import dart_mlci
+from dart_mlci import MarkerDetectionStep, MarkerMatchingStep
+from dart_mlci.io import load_image
+from dart_mlci.map import Map
+from dart_mlci.mask import RoIPolygon, SAKRoIStructureLibrary
+from dart_mlci.rotation import compute_marker_group_angles
 
 
 @dataclass
@@ -383,7 +383,7 @@ def run_validation(
     # Set default model path if not specified
     if model_path is None:
         model_path = (
-            Path(dmc_masking.__file__).parent.parent / "artifacts/models/v26_detect_s_imgsz1280.pt"
+            Path(dart_mlci.__file__).parent.parent / "artifacts/models/v26_detect_s_imgsz1280.pt"
         )
     else:
         model_path = Path(model_path)
@@ -392,7 +392,7 @@ def run_validation(
     structure_library_path = config.get("structure_library_path")
     if structure_library_path is None:
         structure_library_path = (
-            Path(dmc_masking.__file__).parent.parent / "artifacts/chamber_structure.json"
+            Path(dart_mlci.__file__).parent.parent / "artifacts/chamber_structure.json"
         )
     else:
         structure_library_path = Path(structure_library_path)

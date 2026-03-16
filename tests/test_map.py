@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from dmc_masking.map import AffineTransformResult, Map, RoIPosition
+from dart_mlci.map import AffineTransformResult, Map, RoIPosition
 
 
 class TestComputeAffineTransform(unittest.TestCase):

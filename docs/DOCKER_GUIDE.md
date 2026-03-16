@@ -39,8 +39,8 @@ docker build -t dart:v1.0 .
 docker run -d \
   --name dart-api \
   -p 8000:8000 \
-  -e DMC_MODEL_PATH=/app/artifacts/models/v26_detect_s_imgsz1280.pt \
-  -e DMC_STRUCTURE_LIBRARY_PATH=/app/artifacts/chamber_structure.json \
+  -e DART_MODEL_PATH=/app/artifacts/models/v26_detect_s_imgsz1280.pt \
+  -e DART_STRUCTURE_LIBRARY_PATH=/app/artifacts/chamber_structure.json \
   dart:latest
 ```
 
@@ -50,7 +50,7 @@ docker run -d \
   --name dart-api \
   --gpus all \
   -p 8000:8000 \
-  -e DMC_DEVICE=cuda:0 \
+  -e DART_DEVICE=cuda:0 \
   dart:latest
 ```
 
@@ -93,17 +93,17 @@ The following environment variables can be configured:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DMC_MODEL_PATH` | `/app/artifacts/models/v26_detect_s_imgsz1280.pt` | Path to YOLO model |
-| `DMC_STRUCTURE_LIBRARY_PATH` | `/app/artifacts/chamber_structure.json` | Path to structure library |
-| `DMC_BLUEPRINT_MAP_PATH` | `/app/artifacts/sak_blueprint_map.csv` | Path to blueprint map |
-| `DMC_CHIP_CONFIGS_DIR` | `/app/artifacts/chips/` | Directory of chip config JSONs (multi-chip support) |
-| `DMC_CHIP_CONFIG_PATH` | Not set | Single chip config path (overrides directory scan) |
-| `DMC_PIXEL_SIZE` | `0.065789` | Default pixel size in microns |
-| `DMC_DEVICE` | Auto-detected | Device to use (`cpu` or `cuda:0`) |
+| `DART_MODEL_PATH` | `/app/artifacts/models/v26_detect_s_imgsz1280.pt` | Path to YOLO model |
+| `DART_STRUCTURE_LIBRARY_PATH` | `/app/artifacts/chamber_structure.json` | Path to structure library |
+| `DART_BLUEPRINT_MAP_PATH` | `/app/artifacts/sak_blueprint_map.csv` | Path to blueprint map |
+| `DART_CHIP_CONFIGS_DIR` | `/app/artifacts/chips/` | Directory of chip config JSONs (multi-chip support) |
+| `DART_CHIP_CONFIG_PATH` | Not set | Single chip config path (overrides directory scan) |
+| `DART_PIXEL_SIZE` | `0.065789` | Default pixel size in microns |
+| `DART_DEVICE` | Auto-detected | Device to use (`cpu` or `cuda:0`) |
 
 ### Multi-Chip Support
 
-Place chip config JSON files in the `DMC_CHIP_CONFIGS_DIR` directory. Each file's
+Place chip config JSON files in the `DART_CHIP_CONFIGS_DIR` directory. Each file's
 stem becomes the chip name (e.g., `sak.json` → chip name `sak`). Clients select
 a chip via the `chip_name` field in API requests. List loaded chips at
 `GET /available-chips`.
@@ -114,8 +114,8 @@ Example with custom environment variables:
 docker run -d \
   --name dart-api \
   -p 8000:8000 \
-  -e DMC_PIXEL_SIZE=0.05 \
-  -e DMC_DEVICE=cpu \
+  -e DART_PIXEL_SIZE=0.05 \
+  -e DART_DEVICE=cpu \
   dart:latest
 ```
 
@@ -128,7 +128,7 @@ docker run -d \
   --name dart-api \
   -p 8000:8000 \
   -v /path/to/custom/model.pt:/app/custom_model.pt \
-  -e DMC_MODEL_PATH=/app/custom_model.pt \
+  -e DART_MODEL_PATH=/app/custom_model.pt \
   dart:latest
 ```
 
@@ -225,7 +225,7 @@ docker run -d \
   --name dart-api \
   --gpus all \
   -p 8000:8000 \
-  -e DMC_DEVICE=cuda:0 \
+  -e DART_DEVICE=cuda:0 \
   dart:latest
 ```
 
@@ -276,7 +276,7 @@ docker run -d -p 8888:8000 dart:latest
 docker logs dart-api
 
 # Common issues:
-# - Model file not found: Check DMC_MODEL_PATH
+# - Model file not found: Check DART_MODEL_PATH
 # - Permission issues: Check file permissions in artifacts/
 # - Port conflict: Use different port with -p flag
 ```
@@ -288,7 +288,7 @@ docker logs dart-api
 docker exec dart-api ls -lh /app/artifacts/models/
 
 # Check environment variables
-docker exec dart-api env | grep DMC_
+docker exec dart-api env | grep DART_
 
 # Test health endpoint
 curl http://localhost:8000/health
@@ -332,8 +332,8 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DMC_MODEL_PATH=/app/artifacts/models/v26_detect_s_imgsz1280.pt
-      - DMC_STRUCTURE_LIBRARY_PATH=/app/artifacts/chamber_structure.json
+      - DART_MODEL_PATH=/app/artifacts/models/v26_detect_s_imgsz1280.pt
+      - DART_STRUCTURE_LIBRARY_PATH=/app/artifacts/chamber_structure.json
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s

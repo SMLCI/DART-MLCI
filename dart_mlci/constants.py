@@ -1,4 +1,4 @@
-"""Centralized constants for the dmc-masking package."""
+"""Centralized constants for the dart-mlci package."""
 
 from pathlib import Path
 

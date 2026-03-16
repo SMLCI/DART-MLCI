@@ -6,11 +6,11 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-import dmc_masking
-from dmc_masking import DEFAULT_MODEL_PATH, MarkerDetectionModel
-from dmc_masking.match import marker_group_to_pixel_coordinates, match_markers
-from dmc_masking.rotation import compute_marker_group_angles
-from dmc_masking.visualization import plot_markers_on_image, rotate_image_no_crop
+import dart_mlci
+from dart_mlci import DEFAULT_MODEL_PATH, MarkerDetectionModel
+from dart_mlci.match import marker_group_to_pixel_coordinates, match_markers
+from dart_mlci.rotation import compute_marker_group_angles
+from dart_mlci.visualization import plot_markers_on_image, rotate_image_no_crop
 
 # Dedicated folder for test results
 TEST_RESULTS_DIR = Path(__file__).parent / "test_results"
@@ -58,7 +58,7 @@ class TestRotationAngleConsistency(unittest.TestCase):
         import cv2
 
         original_image = cv2.imread(
-            str(Path(dmc_masking.__file__).parent.parent / "artifacts/images/sak/0000.png")
+            str(Path(dart_mlci.__file__).parent.parent / "artifacts/images/sak/0000.png")
         )
 
         # Measure initial angle

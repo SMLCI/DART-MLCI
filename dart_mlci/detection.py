@@ -5,8 +5,8 @@ from pathlib import Path
 import numpy as np
 from ultralytics import YOLO
 
-from dmc_masking.constants import DEFAULT_MODEL_PATH
-from dmc_masking.utils import center_of_mask_mass
+from dart_mlci.constants import DEFAULT_MODEL_PATH
+from dart_mlci.utils import center_of_mask_mass
 
 
 def extract_data(result, image: np.ndarray, label_mapping: dict[str, str] | None = None):

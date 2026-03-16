@@ -11,7 +11,7 @@ WORKDIR /app
 # Copy package files
 COPY pyproject.toml .
 COPY README.md .
-COPY dmc_masking/ dmc_masking/
+COPY dart_mlci/ dart_mlci/
 COPY scripts/ scripts/
 
 # Install the package with API dependencies
@@ -21,15 +21,15 @@ RUN pip install --no-cache-dir -e ".[api]"
 COPY artifacts/ /app/artifacts/
 
 # Set environment variables for default paths
-ENV DMC_MODEL_PATH=/app/artifacts/models/v26_detect_s_imgsz1280.pt
-ENV DMC_STRUCTURE_LIBRARY_PATH=/app/artifacts/chamber_structure.json
-ENV DMC_BLUEPRINT_MAP_PATH=/app/artifacts/sak_blueprint_map.csv
-ENV DMC_CHIP_CONFIGS_DIR=/app/artifacts/chips/
-ENV DMC_PIXEL_SIZE=0.065789
+ENV DART_MODEL_PATH=/app/artifacts/models/v26_detect_s_imgsz1280.pt
+ENV DART_STRUCTURE_LIBRARY_PATH=/app/artifacts/chamber_structure.json
+ENV DART_BLUEPRINT_MAP_PATH=/app/artifacts/sak_blueprint_map.csv
+ENV DART_CHIP_CONFIGS_DIR=/app/artifacts/chips/
+ENV DART_PIXEL_SIZE=0.065789
 
 # Expose port
 EXPOSE 8000
 
 # Run FastAPI server
 # GPU is auto-detected - works with or without CUDA
-CMD ["uvicorn", "dmc_masking.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "dart_mlci.api.main:app", "--host", "0.0.0.0", "--port", "8000"]

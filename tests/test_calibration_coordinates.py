@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from dmc_masking.calibration import (
+from dart_mlci.calibration import (
     AffineTransform2D,
     ImageToStageTransform,
     PixelToMicronTransform,

@@ -136,7 +136,7 @@ class TestCalibrationRoundTrip(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Set up test data."""
-        from dmc_masking.map import Map, RoIPosition
+        from dart_mlci.map import Map, RoIPosition
 
         # Create a simple test map with known positions
         positions = [

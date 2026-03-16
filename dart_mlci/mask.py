@@ -347,7 +347,7 @@ class SAKRoIStructureLibrary:
     """Library for SAK roi structures.
 
     .. deprecated::
-        Use :class:`dmc_masking.chip.ChipStructureLibrary` instead.
+        Use :class:`dart_mlci.chip.ChipStructureLibrary` instead.
         This class is maintained for backward compatibility and will be
         removed in a future release.
     """
@@ -355,7 +355,7 @@ class SAKRoIStructureLibrary:
     def __init__(self, lookup_path, pixel_size):
         warnings.warn(
             "SAKRoIStructureLibrary is deprecated. "
-            "Use dmc_masking.chip.ChipStructureLibrary instead.",
+            "Use dart_mlci.chip.ChipStructureLibrary instead.",
             DeprecationWarning,
             stacklevel=2,
         )
@@ -412,7 +412,7 @@ class SingleRoIStructureLibrary(SAKRoIStructureLibrary):
     """Library for a single type of roi structure.
 
     .. deprecated::
-        Use :class:`dmc_masking.chip.ChipStructureLibrary` instead.
+        Use :class:`dart_mlci.chip.ChipStructureLibrary` instead.
         This class is maintained for backward compatibility and will be
         removed in a future release.
     """

@@ -6,21 +6,21 @@ Submodules:
   - video: Video generation utilities
 """
 
-from dmc_masking.visualization.drawing import (
+from dart_mlci.visualization.drawing import (
     add_step_title,
     draw_markers_cv,
     draw_matched_pairs_cv,
     draw_roi_polygon,
     prepare_frame,
 )
-from dmc_masking.visualization.plotting import (
+from dart_mlci.visualization.plotting import (
     plot_marker_pairs,
     plot_marker_paris,
     plot_markers,
     plot_markers_on_image,
     render_markers_to_frame,
 )
-from dmc_masking.visualization.video import (
+from dart_mlci.visualization.video import (
     COLOR_CIRCLE,
     COLOR_CROSS,
     COLOR_MATCHED_LINE,

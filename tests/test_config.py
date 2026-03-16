@@ -6,13 +6,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from dmc_masking.config import (
+from dart_mlci.config import (
     AxisDirection,
     CalibrationConfig,
     CoordinatesConfig,
     CoordinateSystemConfig,
+    DARTConfig,
     DetectionConfig,
-    DMCConfig,
     PathConfig,
     get_default_config,
     set_default_config,
@@ -103,12 +103,12 @@ class TestCoordinatesConfig(unittest.TestCase):
         self.assertTrue(config.blueprint_to_image_invert_y)
 
 
-class TestDMCConfig(unittest.TestCase):
-    """Tests for DMCConfig."""
+class TestDARTConfig(unittest.TestCase):
+    """Tests for DARTConfig."""
 
     def test_default_values(self):
-        """Test that DMCConfig has sensible defaults."""
-        config = DMCConfig()
+        """Test that DARTConfig has sensible defaults."""
+        config = DARTConfig()
 
         # Detection defaults
         self.assertEqual(config.detection.tolerance, 60)
@@ -138,7 +138,7 @@ class TestDMCConfig(unittest.TestCase):
             temp_path = f.name
 
         try:
-            config = DMCConfig.from_json(temp_path)
+            config = DARTConfig.from_json(temp_path)
 
             self.assertEqual(config.detection.tolerance, 80)
             self.assertEqual(config.detection.confidence, 0.75)
@@ -152,30 +152,30 @@ class TestDMCConfig(unittest.TestCase):
     def test_from_json_file_not_found(self):
         """Test that FileNotFoundError is raised for missing files."""
         with self.assertRaises(FileNotFoundError):
-            DMCConfig.from_json("nonexistent_config.json")
+            DARTConfig.from_json("nonexistent_config.json")
 
     def test_from_env(self):
         """Test loading configuration from environment variables."""
         # Set environment variables
-        os.environ["DMC_TOLERANCE"] = "100"
-        os.environ["DMC_CONFIDENCE"] = "0.8"
-        os.environ["DMC_PIXEL_SIZE"] = "0.05"
+        os.environ["DART_TOLERANCE"] = "100"
+        os.environ["DART_CONFIDENCE"] = "0.8"
+        os.environ["DART_PIXEL_SIZE"] = "0.05"
 
         try:
-            config = DMCConfig.from_env()
+            config = DARTConfig.from_env()
 
             self.assertEqual(config.detection.tolerance, 100)
             self.assertEqual(config.detection.confidence, 0.8)
             self.assertEqual(config.calibration.pixel_size, 0.05)
         finally:
             # Clean up
-            del os.environ["DMC_TOLERANCE"]
-            del os.environ["DMC_CONFIDENCE"]
-            del os.environ["DMC_PIXEL_SIZE"]
+            del os.environ["DART_TOLERANCE"]
+            del os.environ["DART_CONFIDENCE"]
+            del os.environ["DART_PIXEL_SIZE"]
 
     def test_to_dict(self):
         """Test converting configuration to dictionary."""
-        config = DMCConfig()
+        config = DARTConfig()
         data = config.to_dict()
 
         self.assertIn("detection", data)
@@ -188,7 +188,7 @@ class TestDMCConfig(unittest.TestCase):
 
     def test_to_json(self):
         """Test saving configuration to JSON file."""
-        config = DMCConfig()
+        config = DARTConfig()
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             temp_path = f.name
@@ -207,7 +207,7 @@ class TestDMCConfig(unittest.TestCase):
 
     def test_roundtrip_json(self):
         """Test that save/load roundtrip preserves values."""
-        original = DMCConfig()
+        original = DARTConfig()
         original.detection.tolerance = 75
         original.calibration.pixel_size = 0.08
 
@@ -216,7 +216,7 @@ class TestDMCConfig(unittest.TestCase):
 
         try:
             original.to_json(temp_path)
-            loaded = DMCConfig.from_json(temp_path)
+            loaded = DARTConfig.from_json(temp_path)
 
             self.assertEqual(loaded.detection.tolerance, original.detection.tolerance)
             self.assertEqual(loaded.calibration.pixel_size, original.calibration.pixel_size)
@@ -230,11 +230,11 @@ class TestGlobalConfig(unittest.TestCase):
     def test_get_default_config(self):
         """Test getting default configuration."""
         config = get_default_config()
-        self.assertIsInstance(config, DMCConfig)
+        self.assertIsInstance(config, DARTConfig)
 
     def test_set_default_config(self):
         """Test setting default configuration."""
-        custom = DMCConfig()
+        custom = DARTConfig()
         custom.detection.tolerance = 999
 
         set_default_config(custom)
@@ -243,7 +243,7 @@ class TestGlobalConfig(unittest.TestCase):
         self.assertEqual(retrieved.detection.tolerance, 999)
 
         # Reset to default for other tests
-        set_default_config(DMCConfig())
+        set_default_config(DARTConfig())
 
 
 class TestCoordinatesConfigParsing(unittest.TestCase):
@@ -273,7 +273,7 @@ class TestCoordinatesConfigParsing(unittest.TestCase):
             temp_path = f.name
 
         try:
-            config = DMCConfig.from_json(temp_path)
+            config = DARTConfig.from_json(temp_path)
 
             self.assertEqual(config.coordinates.blueprint.x_direction, AxisDirection.POSITIVE)
             self.assertEqual(config.coordinates.blueprint.y_direction, AxisDirection.NEGATIVE)

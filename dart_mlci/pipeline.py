@@ -3,11 +3,11 @@
 import numpy as np
 import torch
 
-from dmc_masking.constants import DEFAULT_MODEL_PATH
-from dmc_masking.detection import MarkerDetectionModel
-from dmc_masking.mask import apply_mask
-from dmc_masking.match import match_markers
-from dmc_masking.rotation import compute_marker_group_angles, rotate_image_and_markers
+from dart_mlci.constants import DEFAULT_MODEL_PATH
+from dart_mlci.detection import MarkerDetectionModel
+from dart_mlci.mask import apply_mask
+from dart_mlci.match import match_markers
+from dart_mlci.rotation import compute_marker_group_angles, rotate_image_and_markers
 
 
 class MarkerDetectionStep:

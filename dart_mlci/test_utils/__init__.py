@@ -3,7 +3,7 @@
 import warnings
 
 warnings.warn(
-    "dmc_masking.test_utils is deprecated. Use tests.utils instead.",
+    "dart_mlci.test_utils is deprecated. Use tests.utils instead.",
     DeprecationWarning,
     stacklevel=2,
 )

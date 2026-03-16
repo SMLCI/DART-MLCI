@@ -7,8 +7,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tifffile
 
-import dmc_masking
-from dmc_masking import SingleStructureRoIMasker
+import dart_mlci
+from dart_mlci import SingleStructureRoIMasker
 
 # Dedicated folder for test results
 TEST_RESULTS_DIR = Path(__file__).parent / "test_results"
@@ -26,7 +26,7 @@ class TestFullPipeline(unittest.TestCase):
 
         ssrm = SingleStructureRoIMasker()
 
-        image_path = Path(dmc_masking.__file__).parent.parent / "artifacts/images/image_stack.tif"
+        image_path = Path(dart_mlci.__file__).parent.parent / "artifacts/images/image_stack.tif"
 
         image = tifffile.imread(image_path)
 

@@ -1,12 +1,12 @@
-"""Configuration system for DMC masking.
+"""Configuration system for DART.
 
 This module provides a unified configuration system for all hard-coded parameters
-in the dmc-masking codebase. Configuration can be loaded from JSON files,
+in the dart-mlci codebase. Configuration can be loaded from JSON files,
 environment variables, or programmatically.
 
 Example usage:
-    >>> config = DMCConfig()  # Use defaults
-    >>> config = DMCConfig.from_json("config.json")
+    >>> config = DARTConfig()  # Use defaults
+    >>> config = DARTConfig.from_json("config.json")
     >>> print(config.detection.tolerance)
     60
     >>> print(config.calibration.pixel_size)
@@ -149,11 +149,11 @@ class CalibrationConfig:
 
 
 @dataclass
-class DMCConfig:
+class DARTConfig:
     """Main configuration class for DMC masking.
 
     This class consolidates all configuration parameters used throughout
-    the dmc-masking codebase. It can be instantiated with defaults,
+    the dart-mlci codebase. It can be instantiated with defaults,
     loaded from JSON, or configured via environment variables.
 
     Attributes:
@@ -163,9 +163,9 @@ class DMCConfig:
         coordinates: Coordinate system conventions
 
     Example:
-        >>> config = DMCConfig()
-        >>> config = DMCConfig.from_json("my_config.json")
-        >>> config = DMCConfig.from_env()
+        >>> config = DARTConfig()
+        >>> config = DARTConfig.from_json("my_config.json")
+        >>> config = DARTConfig.from_env()
     """
 
     detection: DetectionConfig = field(default_factory=DetectionConfig)
@@ -174,14 +174,14 @@ class DMCConfig:
     coordinates: CoordinatesConfig = field(default_factory=CoordinatesConfig)
 
     @classmethod
-    def from_json(cls, path: Path | str) -> "DMCConfig":
+    def from_json(cls, path: Path | str) -> "DARTConfig":
         """Load configuration from a JSON file.
 
         Args:
             path: Path to the JSON configuration file
 
         Returns:
-            DMCConfig instance with values from the file
+            DARTConfig instance with values from the file
 
         Raises:
             FileNotFoundError: If the configuration file doesn't exist
@@ -197,53 +197,53 @@ class DMCConfig:
         return cls._from_dict(data)
 
     @classmethod
-    def from_env(cls) -> "DMCConfig":
+    def from_env(cls) -> "DARTConfig":
         """Load configuration from environment variables.
 
         Environment variable mapping:
-            DMC_TOLERANCE -> detection.tolerance
-            DMC_CONFIDENCE -> detection.confidence
-            DMC_PIXEL_SIZE -> calibration.pixel_size
-            DMC_MODEL_PATH -> paths.model_path
-            DMC_STRUCTURE_LIBRARY_PATH -> paths.structure_library_path
-            DMC_BLUEPRINT_MAP_PATH -> paths.blueprint_map_path
+            DART_TOLERANCE -> detection.tolerance
+            DART_CONFIDENCE -> detection.confidence
+            DART_PIXEL_SIZE -> calibration.pixel_size
+            DART_MODEL_PATH -> paths.model_path
+            DART_STRUCTURE_LIBRARY_PATH -> paths.structure_library_path
+            DART_BLUEPRINT_MAP_PATH -> paths.blueprint_map_path
 
         Returns:
-            DMCConfig instance with values from environment variables
+            DARTConfig instance with values from environment variables
         """
         config = cls()
 
         # Detection config
-        if "DMC_TOLERANCE" in os.environ:
-            config.detection.tolerance = int(os.environ["DMC_TOLERANCE"])
-        if "DMC_CONFIDENCE" in os.environ:
-            config.detection.confidence = float(os.environ["DMC_CONFIDENCE"])
+        if "DART_TOLERANCE" in os.environ:
+            config.detection.tolerance = int(os.environ["DART_TOLERANCE"])
+        if "DART_CONFIDENCE" in os.environ:
+            config.detection.confidence = float(os.environ["DART_CONFIDENCE"])
 
         # Calibration config
-        if "DMC_PIXEL_SIZE" in os.environ:
-            config.calibration.pixel_size = float(os.environ["DMC_PIXEL_SIZE"])
+        if "DART_PIXEL_SIZE" in os.environ:
+            config.calibration.pixel_size = float(os.environ["DART_PIXEL_SIZE"])
 
         # Path config
-        if "DMC_MODEL_PATH" in os.environ:
-            config.paths.model_path = Path(os.environ["DMC_MODEL_PATH"])
-        if "DMC_STRUCTURE_LIBRARY_PATH" in os.environ:
-            config.paths.structure_library_path = Path(os.environ["DMC_STRUCTURE_LIBRARY_PATH"])
-        if "DMC_BLUEPRINT_MAP_PATH" in os.environ:
-            config.paths.blueprint_map_path = Path(os.environ["DMC_BLUEPRINT_MAP_PATH"])
-        if "DMC_CHIP_CONFIG_PATH" in os.environ:
-            config.paths.chip_config_path = Path(os.environ["DMC_CHIP_CONFIG_PATH"])
+        if "DART_MODEL_PATH" in os.environ:
+            config.paths.model_path = Path(os.environ["DART_MODEL_PATH"])
+        if "DART_STRUCTURE_LIBRARY_PATH" in os.environ:
+            config.paths.structure_library_path = Path(os.environ["DART_STRUCTURE_LIBRARY_PATH"])
+        if "DART_BLUEPRINT_MAP_PATH" in os.environ:
+            config.paths.blueprint_map_path = Path(os.environ["DART_BLUEPRINT_MAP_PATH"])
+        if "DART_CHIP_CONFIG_PATH" in os.environ:
+            config.paths.chip_config_path = Path(os.environ["DART_CHIP_CONFIG_PATH"])
 
         return config
 
     @classmethod
-    def _from_dict(cls, data: dict) -> "DMCConfig":
+    def _from_dict(cls, data: dict) -> "DARTConfig":
         """Create config from dictionary.
 
         Args:
             data: Configuration dictionary
 
         Returns:
-            DMCConfig instance
+            DARTConfig instance
         """
         config = cls()
 
@@ -392,22 +392,22 @@ class DMCConfig:
 
 
 # Global default configuration instance
-_default_config: DMCConfig | None = None
+_default_config: DARTConfig | None = None
 
 
-def get_default_config() -> DMCConfig:
+def get_default_config() -> DARTConfig:
     """Get the global default configuration.
 
     Returns:
-        The default DMCConfig instance (created on first call)
+        The default DARTConfig instance (created on first call)
     """
     global _default_config
     if _default_config is None:
-        _default_config = DMCConfig()
+        _default_config = DARTConfig()
     return _default_config
 
 
-def set_default_config(config: DMCConfig) -> None:
+def set_default_config(config: DARTConfig) -> None:
     """Set the global default configuration.
 
     Args:

@@ -5,7 +5,7 @@ designs, replacing the scattered configuration across chamber_structure.json,
 blueprint_map.csv, and hardcoded values in mask.py.
 
 Example usage:
-    >>> from dmc_masking.chip import ChipStructureLibrary
+    >>> from dart_mlci.chip import ChipStructureLibrary
     >>> lib = ChipStructureLibrary.from_file("artifacts/chips/sak.json")
     >>> structure_name, polygon, markers = lib("0050")
 """

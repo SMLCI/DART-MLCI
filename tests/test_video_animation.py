@@ -20,12 +20,12 @@ try:
 except ImportError:
     ACIA_AVAILABLE = False
 
-import dmc_masking
-from dmc_masking import DEFAULT_MODEL_PATH, MarkerDetectionModel
-from dmc_masking.mask import SingleRoIStructureLibrary, apply_mask
-from dmc_masking.match import marker_group_to_pixel_coordinates, match_markers
-from dmc_masking.rotation import compute_marker_group_angles, rotate_image_and_markers
-from dmc_masking.visualization import (
+import dart_mlci
+from dart_mlci import DEFAULT_MODEL_PATH, MarkerDetectionModel
+from dart_mlci.mask import SingleRoIStructureLibrary, apply_mask
+from dart_mlci.match import marker_group_to_pixel_coordinates, match_markers
+from dart_mlci.rotation import compute_marker_group_angles, rotate_image_and_markers
+from dart_mlci.visualization import (
     FPS,
     FRAME_HEIGHT,
     FRAME_WIDTH,
@@ -65,15 +65,14 @@ class TestVideoAnimation(unittest.TestCase):
 
         # Load ROI structure
         srsl = SingleRoIStructureLibrary(
-            lookup_path=Path(dmc_masking.__file__).parent.parent
-            / "artifacts/chamber_structure.json",
+            lookup_path=Path(dart_mlci.__file__).parent.parent / "artifacts/chamber_structure.json",
             structure_name="NormaleBox-pillar-inner",
             pixel_size=pixel_size,
         )
         _, roi_polygon, _ = srsl("0000")
 
         # Load image
-        image_path = Path(dmc_masking.__file__).parent.parent / "artifacts/images/sak/0000.png"
+        image_path = Path(dart_mlci.__file__).parent.parent / "artifacts/images/sak/0000.png"
         original_image = cv2.imread(str(image_path))
 
         # Run pipeline to get intermediate states

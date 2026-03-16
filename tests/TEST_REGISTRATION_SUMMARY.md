@@ -2,7 +2,7 @@
 
 ## Overview
 
-Comprehensive test suite for the `TimelapseRegistration` class in `dmc_masking/registration.py`, which provides translation-based image registration using normalized cross-correlation on marker regions for time-lapse microscopy images.
+Comprehensive test suite for the `TimelapseRegistration` class in `dart_mlci/registration.py`, which provides translation-based image registration using normalized cross-correlation on marker regions for time-lapse microscopy images.
 
 ## Test Coverage
 
@@ -162,7 +162,7 @@ pytest tests/test_registration.py tests/test_registration_integration.py -v
 
 # Run with coverage report
 coverage run -m pytest tests/test_registration.py tests/test_registration_integration.py
-coverage report --include="dmc_masking/registration.py"
+coverage report --include="dart_mlci/registration.py"
 ```
 
 ### Specific Test Categories

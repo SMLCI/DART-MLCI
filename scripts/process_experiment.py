@@ -35,16 +35,16 @@ try:
 except ImportError:
     ACIA_AVAILABLE = False
 
-import dmc_masking
-from dmc_masking import (
+import dart_mlci
+from dart_mlci import (
     ImageRotationStep,
     MarkerDetectionStep,
     MarkerMatchingStep,
     RoIMaskingStep,
 )
-from dmc_masking.io import load_image
-from dmc_masking.mask import SAKRoIStructureLibrary
-from dmc_masking.visualization import plot_markers_on_image
+from dart_mlci.io import load_image
+from dart_mlci.mask import SAKRoIStructureLibrary
+from dart_mlci.visualization import plot_markers_on_image
 
 # Unit registry for scalebar (only if pint is available)
 if ACIA_AVAILABLE:
@@ -343,7 +343,7 @@ class ExperimentProcessor:
 
             # Add registration if enabled
             if self.enable_registration:
-                from dmc_masking import PhaseCorrelationRegistration, TimelapseRegistration
+                from dart_mlci import PhaseCorrelationRegistration, TimelapseRegistration
 
                 if self.registration_method == "phase":
                     components["registration"] = PhaseCorrelationRegistration(
@@ -1528,12 +1528,12 @@ Output structure:
     # Set default paths
     if args.model_path is None:
         args.model_path = (
-            Path(dmc_masking.__file__).parent.parent / "artifacts/models/v26_detect_s_imgsz1280.pt"
+            Path(dart_mlci.__file__).parent.parent / "artifacts/models/v26_detect_s_imgsz1280.pt"
         )
 
     if args.structure_library is None:
         args.structure_library = (
-            Path(dmc_masking.__file__).parent.parent / "artifacts/chamber_structure.json"
+            Path(dart_mlci.__file__).parent.parent / "artifacts/chamber_structure.json"
         )
 
     # Validate paths

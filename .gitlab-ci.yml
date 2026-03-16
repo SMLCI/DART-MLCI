@@ -15,8 +15,8 @@ lint:
   stage: lint
   script:
     - pip install ruff
-    - ruff check dmc_masking/ tests/
-    - ruff format --check dmc_masking/ tests/
+    - ruff check dart_mlci/ tests/
+    - ruff format --check dart_mlci/ tests/
 
 test:
   stage: test
@@ -28,7 +28,7 @@ test:
     - git lfs pull
   script:
     - pip install ".[dev]"
-    - pytest -v --cov=dmc_masking --cov-report=xml --junitxml=test_report.xml tests/
+    - pytest -v --cov=dart_mlci --cov-report=xml --junitxml=test_report.xml tests/
   coverage: '/(?i)total.*? (100(?:\.0+)?\%|[1-9]?\d(?:\.\d+)?\%)$/'
   artifacts:
     paths:

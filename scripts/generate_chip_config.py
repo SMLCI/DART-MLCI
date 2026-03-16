@@ -135,7 +135,7 @@ def main():
 
     # 8. Validate by loading it back
     print("Validating by loading config back...")
-    from dmc_masking.chip import load_chip_config
+    from dart_mlci.chip import load_chip_config
 
     chip_config = load_chip_config(args.output)
     print(f"  Chip name: {chip_config.chip_name}")

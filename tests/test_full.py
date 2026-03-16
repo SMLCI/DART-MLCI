@@ -10,22 +10,22 @@ import tifffile
 from shapely.geometry import Point, Polygon, shape
 from tqdm.auto import tqdm
 
-import dmc_masking
-from dmc_masking import (
+import dart_mlci
+from dart_mlci import (
     DEFAULT_MODEL_PATH,
     MarkerDetectionModel,
     RoIMasker,
     SingleStructureRoIMasker,
 )
-from dmc_masking.io import load_roi_structures
-from dmc_masking.mask import RoIPolygon, SAKRoIStructureLibrary
-from dmc_masking.match import marker_group_to_pixel_coordinates, match_markers
-from dmc_masking.rotation import (
+from dart_mlci.io import load_roi_structures
+from dart_mlci.mask import RoIPolygon, SAKRoIStructureLibrary
+from dart_mlci.match import marker_group_to_pixel_coordinates, match_markers
+from dart_mlci.rotation import (
     compute_marker_group_angles,
     rotate_image_and_markers,
 )
-from dmc_masking.utils import normalize_image
-from dmc_masking.visualization import plot_marker_paris, plot_markers
+from dart_mlci.utils import normalize_image
+from dart_mlci.visualization import plot_marker_paris, plot_markers
 
 # Dedicated folder for test results
 TEST_RESULTS_DIR = Path(__file__).parent / "test_results"
@@ -84,9 +84,7 @@ class TestFullPipeline(unittest.TestCase):
         model = MarkerDetectionModel(DEFAULT_MODEL_PATH)
 
         # 2. Load image
-        image = cv2.imread(
-            Path(dmc_masking.__file__).parent.parent / "artifacts/images/sak/0000.png"
-        )
+        image = cv2.imread(Path(dart_mlci.__file__).parent.parent / "artifacts/images/sak/0000.png")
 
         plt.imshow(image, cmap="gray")
         plt.tight_layout()
@@ -243,9 +241,7 @@ class TestFullPipeline(unittest.TestCase):
             marker_group_pixel=marker_group_pixel,
         )
 
-        image = cv2.imread(
-            Path(dmc_masking.__file__).parent.parent / "artifacts/images/sak/0007.png"
-        )
+        image = cv2.imread(Path(dart_mlci.__file__).parent.parent / "artifacts/images/sak/0007.png")
 
         # apply the masker
         cropped_image, cropped_mask = rm(np.moveaxis(image[None], [1, 2, 3], [2, 3, 1]))
@@ -270,7 +266,7 @@ class TestFullPipeline(unittest.TestCase):
 
         # pylint: disable=too-many-function-args
         sakl = SAKRoIStructureLibrary(
-            Path(dmc_masking.__file__).parent.parent / "artifacts/chamber_structure.json",
+            Path(dart_mlci.__file__).parent.parent / "artifacts/chamber_structure.json",
             pixel_size,
         )
 
@@ -281,9 +277,7 @@ class TestFullPipeline(unittest.TestCase):
             marker_group_pixel=None,
         )
 
-        image = cv2.imread(
-            Path(dmc_masking.__file__).parent.parent / "artifacts/images/sak/0007.png"
-        )
+        image = cv2.imread(Path(dart_mlci.__file__).parent.parent / "artifacts/images/sak/0007.png")
 
         print(image.shape)
 
@@ -387,7 +381,7 @@ class TestFullPipeline(unittest.TestCase):
 
         # load structures
         roi_structures = load_roi_structures(
-            Path(dmc_masking.__file__).parent.parent / "artifacts/chamber_structure.json"
+            Path(dart_mlci.__file__).parent.parent / "artifacts/chamber_structure.json"
         )
 
         # general information
@@ -402,9 +396,7 @@ class TestFullPipeline(unittest.TestCase):
 
         for i, conf in enumerate(tqdm(configs)):
             image_file = (
-                Path(dmc_masking.__file__).parent.parent
-                / "artifacts/images/sak"
-                / conf["file_name"]
+                Path(dart_mlci.__file__).parent.parent / "artifacts/images/sak" / conf["file_name"]
             )
             chamber_type = conf["chamber_type"]
 
@@ -490,7 +482,7 @@ class TestFullPipeline(unittest.TestCase):
 
         ssrm = SingleStructureRoIMasker()
 
-        image_path = Path(dmc_masking.__file__).parent.parent / "artifacts/images/sak" / "0003.png"
+        image_path = Path(dart_mlci.__file__).parent.parent / "artifacts/images/sak" / "0003.png"
 
         image = cv2.imread(image_path)
 

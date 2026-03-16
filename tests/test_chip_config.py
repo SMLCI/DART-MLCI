@@ -9,13 +9,13 @@ from typing import ClassVar
 
 import numpy as np
 
-import dmc_masking
-from dmc_masking.chip import ChipConfig, ChipStructureLibrary, load_chip_config
-from dmc_masking.map import Map
-from dmc_masking.mask import SAKRoIStructureLibrary
+import dart_mlci
+from dart_mlci.chip import ChipConfig, ChipStructureLibrary, load_chip_config
+from dart_mlci.map import Map
+from dart_mlci.mask import SAKRoIStructureLibrary
 
 # Paths to artifacts
-ARTIFACTS_DIR = Path(dmc_masking.__file__).parent.parent / "artifacts"
+ARTIFACTS_DIR = Path(dart_mlci.__file__).parent.parent / "artifacts"
 SAK_CONFIG_PATH = ARTIFACTS_DIR / "chips" / "sak.json"
 CHAMBER_STRUCTURE_PATH = ARTIFACTS_DIR / "chamber_structure.json"
 BLUEPRINT_MAP_PATH = ARTIFACTS_DIR / "sak_blueprint_map.csv"
@@ -160,7 +160,7 @@ class TestChipStructureLibrary(unittest.TestCase):
 
     def test_call_returns_correct_types(self):
         """Test __call__ returns (str, RoIPolygon, dict)."""
-        from dmc_masking.mask import RoIPolygon
+        from dart_mlci.mask import RoIPolygon
 
         name, polygon, markers = self.new_lib("0000")
         self.assertIsInstance(name, str)

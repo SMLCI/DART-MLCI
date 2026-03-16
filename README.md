@@ -22,7 +22,7 @@ pip install ".[dev]"
 ### Python API
 
 ```python
-from dmc_masking import MarkerDetectionModel, ChipStructureLibrary
+from dart_mlci import MarkerDetectionModel, ChipStructureLibrary
 
 # Load chip config and detection model
 lib = ChipStructureLibrary.from_file("artifacts/chips/sak.json")
@@ -35,7 +35,7 @@ markers = model.predict_markers(image)
 ### Pipeline Steps
 
 ```python
-from dmc_masking import (
+from dart_mlci import (
     MarkerDetectionStep,
     MarkerMatchingStep,
     ImageRotationStep,
@@ -73,7 +73,7 @@ python scripts/process_image.py --image image.tif --roi-id 0050
 ### REST API
 
 ```bash
-uvicorn dmc_masking.api.main:app --host 0.0.0.0 --port 8000
+uvicorn dart_mlci.api.main:app --host 0.0.0.0 --port 8000
 # Interactive docs at http://localhost:8000/docs
 ```
 
@@ -284,6 +284,6 @@ If you use DART in your research, please cite:
   author  = {Seiffarth, Johannes},
   title   = {DART: Real-time microfluidic chamber image processing},
   year    = {2025},
-  url     = {https://github.com/JojoDevel/dmc-masking}
+  url     = {https://github.com/JojoDevel/dart-mlci}
 }
 ```

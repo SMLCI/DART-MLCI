@@ -59,16 +59,16 @@ api = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/JojoDevel/dmc-masking"
-Repository = "https://github.com/JojoDevel/dmc-masking"
-Issues = "https://github.com/JojoDevel/dmc-masking/issues"
+Homepage = "https://github.com/JojoDevel/dart-mlci"
+Repository = "https://github.com/JojoDevel/dart-mlci"
+Issues = "https://github.com/JojoDevel/dart-mlci/issues"
 
 [tool.hatch.build.targets.wheel]
-packages = ["dmc_masking"]
+packages = ["dart_mlci"]
 
 [tool.hatch.build.targets.sdist]
 include = [
-    "dmc_masking/",
+    "dart_mlci/",
     "tests/",
     "artifacts/chamber_structure.json",
     "artifacts/chips/",
@@ -107,14 +107,14 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["dmc_masking"]
+known-first-party = ["dart_mlci"]
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 
 [tool.coverage.run]
-source = ["dmc_masking"]
+source = ["dart_mlci"]
 branch = true
 
 [tool.coverage.report]

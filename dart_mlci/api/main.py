@@ -10,13 +10,13 @@ import torch
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
 
-from dmc_masking import (
+from dart_mlci import (
     ImageRotationStep,
     MarkerDetectionStep,
     MarkerMatchingStep,
     RoIMaskingStep,
 )
-from dmc_masking.api.models import (
+from dart_mlci.api.models import (
     CalibratedROIPosition,
     CalibrateRequest,
     CalibrateResponse,
@@ -27,9 +27,9 @@ from dmc_masking.api.models import (
     ProcessImageRequest,
     ProcessImageResponse,
 )
-from dmc_masking.api.settings import get_settings, resolve_path
-from dmc_masking.chip import ChipStructureLibrary
-from dmc_masking.mask import SAKRoIStructureLibrary
+from dart_mlci.api.settings import get_settings, resolve_path
+from dart_mlci.chip import ChipStructureLibrary
+from dart_mlci.mask import SAKRoIStructureLibrary
 
 
 @asynccontextmanager
@@ -111,7 +111,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="DMC Masking API",
+    title="DART API",
     description="API for microfluidic chamber calibration and image processing",
     version="0.1.0",
     lifespan=lifespan,
@@ -184,7 +184,7 @@ async def _process_image_from_array(
     if detection_step is None:
         return {
             "success": False,
-            "error_message": "Model not loaded - check DMC_MODEL_PATH configuration",
+            "error_message": "Model not loaded - check DART_MODEL_PATH configuration",
         }
 
     # Load structure library: chip_name → chip_config_path → structure_library_path → default
@@ -321,7 +321,7 @@ async def process_image(request: ProcessImageRequest) -> ProcessImageResponse:
     Returns:
         Base64-encoded cropped image and mask with metadata
     """
-    from dmc_masking.api.utils import array_to_base64_png, base64_to_array
+    from dart_mlci.api.utils import array_to_base64_png, base64_to_array
 
     # Decode base64 to array
     try:
@@ -373,7 +373,7 @@ async def process_image_preview(request: ProcessImageRequest) -> HTMLResponse:
     Returns:
         HTML page with embedded base64 images
     """
-    from dmc_masking.api.utils import array_to_base64_png, base64_to_array
+    from dart_mlci.api.utils import array_to_base64_png, base64_to_array
 
     # Decode base64 to array
     try:
@@ -564,7 +564,7 @@ async def calibrate_map_endpoint(request: CalibrateRequest) -> CalibrateResponse
     # Import calibration script
     import sys
 
-    from dmc_masking.api.utils import base64_to_array
+    from dart_mlci.api.utils import base64_to_array
 
     scripts_path = Path(__file__).parent.parent.parent / "scripts"
     if str(scripts_path) not in sys.path:

@@ -5,7 +5,7 @@
 ```bash
 # Clone and install in development mode
 git clone <repo-url>
-cd dmc-masking
+cd dart-mlci
 pip install -e ".[dev]"
 ```
 
@@ -19,14 +19,14 @@ pytest tests/ -v
 pytest tests/test_chip.py -v
 
 # With coverage
-pytest tests/ --cov=dmc_masking --cov-report=html
+pytest tests/ --cov=dart_mlci --cov-report=html
 ```
 
 ## Linting
 
 ```bash
-ruff check dmc_masking/ tests/
-ruff format dmc_masking/ tests/
+ruff check dart_mlci/ tests/
+ruff format dart_mlci/ tests/
 ```
 
 ## Adding a Chip Design
@@ -46,7 +46,7 @@ pre-commit install
 ## Project Structure
 
 ```
-dmc_masking/
+dart_mlci/
   __init__.py          # Public API re-exports
   constants.py         # DEFAULT_MODEL_PATH, pixel sizes, tolerances
   detection.py         # MarkerDetectionModel, extract_data
@@ -55,7 +55,7 @@ dmc_masking/
   mask.py              # RoIPolygon, apply_mask
   map.py               # Map, calibration transforms
   chip.py              # ChipStructureLibrary (unified chip config)
-  config.py            # DMCConfig dataclasses
+  config.py            # DARTConfig dataclasses
   io.py                # Image / structure file loading
   rotation.py          # Image and marker rotation
   match.py             # Marker pair matching

@@ -10,7 +10,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from dmc_masking.test_utils.image_comparison import compare_images
+from dart_mlci.test_utils.image_comparison import compare_images
 
 # Default thresholds for visual regression testing
 DEFAULT_SSIM_THRESHOLD = 0.95  # 95% structural similarity

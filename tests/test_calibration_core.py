@@ -5,14 +5,14 @@ import unittest
 import numpy as np
 from shapely.geometry import box
 
-from dmc_masking.calibration import (
+from dart_mlci.calibration import (
     ImageCalibrationResult,
     ImageDebugData,
     compute_chamber_center,
     compute_microscope_position,
     filter_matched_pairs_by_bounds,
 )
-from dmc_masking.mask import RoIPolygon
+from dart_mlci.mask import RoIPolygon
 
 
 class TestImageDebugData(unittest.TestCase):

@@ -6,10 +6,10 @@ import cv2
 import numpy as np
 import tifffile
 
-import dmc_masking
+import dart_mlci
 
 # Artifact directory paths
-ARTIFACTS_DIR = Path(dmc_masking.__file__).parent.parent / "artifacts"
+ARTIFACTS_DIR = Path(dart_mlci.__file__).parent.parent / "artifacts"
 SAK_DIR = ARTIFACTS_DIR / "images" / "sak"
 IMAGE_STACK_PATH = ARTIFACTS_DIR / "images" / "image_stack.tif"
 
@@ -148,7 +148,7 @@ def detect_markers_in_image(
             - 'conf': confidence score
             - 'mask_center': np.ndarray([x, y]) (if available)
     """
-    from dmc_masking import MarkerDetectionModel
+    from dart_mlci import MarkerDetectionModel
 
     # Initialize detection model
     mdm = MarkerDetectionModel(model_path=model_path, verbose=False)

@@ -42,12 +42,12 @@ import pandas as pd
 from matplotlib.patches import Polygon as MplPolygon
 from shapely import affinity
 
-import dmc_masking
-from dmc_masking import ChipStructureLibrary, MarkerDetectionStep, MarkerMatchingStep
-from dmc_masking.io import load_image
-from dmc_masking.map import AffineTransformResult, Map, RoIPosition
-from dmc_masking.mask import RoIPolygon, SAKRoIStructureLibrary, apply_mask_rotation_free
-from dmc_masking.rotation import compute_marker_group_angles
+import dart_mlci
+from dart_mlci import ChipStructureLibrary, MarkerDetectionStep, MarkerMatchingStep
+from dart_mlci.io import load_image
+from dart_mlci.map import AffineTransformResult, Map, RoIPosition
+from dart_mlci.mask import RoIPolygon, SAKRoIStructureLibrary, apply_mask_rotation_free
+from dart_mlci.rotation import compute_marker_group_angles
 
 
 @dataclass
@@ -614,7 +614,7 @@ def run_calibration(
     # Set default model path if not specified
     if model_path is None:
         model_path = (
-            Path(dmc_masking.__file__).parent.parent / "artifacts/models/v26_detect_s_imgsz1280.pt"
+            Path(dart_mlci.__file__).parent.parent / "artifacts/models/v26_detect_s_imgsz1280.pt"
         )
     else:
         model_path = Path(model_path)
@@ -624,7 +624,7 @@ def run_calibration(
     structure_library_path = config.get("structure_library_path")
     if chip_config_path is None and structure_library_path is None:
         structure_library_path = (
-            Path(dmc_masking.__file__).parent.parent / "artifacts/chamber_structure.json"
+            Path(dart_mlci.__file__).parent.parent / "artifacts/chamber_structure.json"
         )
     elif structure_library_path is not None:
         structure_library_path = Path(structure_library_path)

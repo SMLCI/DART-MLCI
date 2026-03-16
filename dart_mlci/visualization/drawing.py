@@ -3,8 +3,8 @@
 import cv2
 import numpy as np
 
-from dmc_masking.mask import RoIPolygon
-from dmc_masking.visualization.video import (
+from dart_mlci.mask import RoIPolygon
+from dart_mlci.visualization.video import (
     COLOR_CIRCLE,
     COLOR_CROSS,
     COLOR_MATCHED_LINE,

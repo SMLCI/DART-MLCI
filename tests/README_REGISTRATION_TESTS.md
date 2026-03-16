@@ -28,7 +28,7 @@ pytest tests/test_registration.py::TestTranslationComputation::test_compute_tran
 ```bash
 # Generate coverage report
 coverage run -m pytest tests/test_registration.py tests/test_registration_integration.py
-coverage report --include="dmc_masking/registration.py"
+coverage report --include="dart_mlci/registration.py"
 
 # HTML coverage report
 coverage html
@@ -170,4 +170,4 @@ pytest tests/test_registration.py tests/test_registration_integration.py -v
 ## See Also
 
 - `TEST_REGISTRATION_SUMMARY.md` - Comprehensive test suite documentation
-- `dmc_masking/registration.py` - Implementation under test
+- `dart_mlci/registration.py` - Implementation under test

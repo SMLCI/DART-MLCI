@@ -1,6 +1,6 @@
 """IO functionality for DMC masking.
 
-This module provides file I/O utilities for the dmc-masking package,
+This module provides file I/O utilities for the dart-mlci package,
 including image loading from various formats and structure configuration loading.
 """
 

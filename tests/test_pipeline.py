@@ -7,8 +7,8 @@ import cv2
 import matplotlib.pyplot as plt
 from shapely.geometry import Point, Polygon
 
-import dmc_masking
-from dmc_masking import (
+import dart_mlci
+from dart_mlci import (
     DEFAULT_MODEL_PATH,
     ImageRotationStep,
     MarkerDetectionStep,
@@ -16,8 +16,8 @@ from dmc_masking import (
     RoIMaskingStep,
     SingleRoIStructureLibrary,
 )
-from dmc_masking.mask import RoIPolygon
-from dmc_masking.visualization import plot_marker_paris, plot_markers
+from dart_mlci.mask import RoIPolygon
+from dart_mlci.visualization import plot_marker_paris, plot_markers
 
 # Dedicated folder for test results
 TEST_RESULTS_DIR = Path(__file__).parent / "test_results"
@@ -65,8 +65,7 @@ class TestFullPipeline(unittest.TestCase):
 
         # get the RoI structure information
         srsl = SingleRoIStructureLibrary(
-            lookup_path=Path(dmc_masking.__file__).parent.parent
-            / "artifacts/chamber_structure.json",
+            lookup_path=Path(dart_mlci.__file__).parent.parent / "artifacts/chamber_structure.json",
             structure_name="NormaleBox-inner",
             pixel_size=pixel_size,
         )
@@ -79,9 +78,7 @@ class TestFullPipeline(unittest.TestCase):
         step3 = ImageRotationStep()
         step4 = RoIMaskingStep(marker_group_pixels, roi_polygon)
 
-        image = cv2.imread(
-            Path(dmc_masking.__file__).parent.parent / "artifacts/images/sak/0000.png"
-        )
+        image = cv2.imread(Path(dart_mlci.__file__).parent.parent / "artifacts/images/sak/0000.png")
 
         ### Go through the pipeline steps
 
@@ -132,8 +129,7 @@ class TestFullPipeline(unittest.TestCase):
 
         # get the RoI structure information
         srsl = SingleRoIStructureLibrary(
-            lookup_path=Path(dmc_masking.__file__).parent.parent
-            / "artifacts/chamber_structure.json",
+            lookup_path=Path(dart_mlci.__file__).parent.parent / "artifacts/chamber_structure.json",
             structure_name="OpenBox-inner",
             pixel_size=pixel_size,
         )
@@ -147,7 +143,7 @@ class TestFullPipeline(unittest.TestCase):
         step4 = RoIMaskingStep(marker_group_pixels, roi_polygon)
 
         image = cv2.imread(
-            Path(dmc_masking.__file__).parent.parent / "artifacts/images/bright/bright_chamber.png"
+            Path(dart_mlci.__file__).parent.parent / "artifacts/images/bright/bright_chamber.png"
         )
 
         ### Go through the pipeline steps

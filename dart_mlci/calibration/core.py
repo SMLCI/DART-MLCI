@@ -9,8 +9,8 @@ from dataclasses import dataclass, field
 import numpy as np
 import numpy.typing as npt
 
-from dmc_masking.map import AffineTransformResult, Map
-from dmc_masking.mask import RoIPolygon
+from dart_mlci.map import AffineTransformResult, Map
+from dart_mlci.mask import RoIPolygon
 
 
 @dataclass

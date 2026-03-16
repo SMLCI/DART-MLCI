@@ -18,10 +18,10 @@ from pathlib import Path
 import numpy as np
 import tifffile
 
-import dmc_masking
-from dmc_masking.chip import ChipStructureLibrary
-from dmc_masking.detection import MarkerDetectionModel
-from dmc_masking.utils import normalize_image
+import dart_mlci
+from dart_mlci.chip import ChipStructureLibrary
+from dart_mlci.detection import MarkerDetectionModel
+from dart_mlci.utils import normalize_image
 
 
 def load_config(config_path: str) -> dict:
@@ -54,7 +54,7 @@ def main():
 
     config = load_config(str(args.config))
 
-    base_dir = Path(dmc_masking.__file__).parent.parent
+    base_dir = Path(dart_mlci.__file__).parent.parent
     input_dir = base_dir / config["input_dir"]
     chip_config_path = base_dir / config.get("chip_config", "artifacts/chips/sak.json")
     model_path = base_dir / config.get("model_path", "artifacts/models/v26_detect_s_imgsz1280.pt")

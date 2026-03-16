@@ -53,8 +53,8 @@ try:
 except ImportError:
     OMNIPOSE_AVAILABLE = False
 
-import dmc_masking
-from dmc_masking import (
+import dart_mlci
+from dart_mlci import (
     ChipStructureLibrary,
     ImageRotationStep,
     MarkerDetectionStep,
@@ -63,8 +63,8 @@ from dmc_masking import (
     RoIMaskingStep,
     TimelapseRegistration,
 )
-from dmc_masking.mask import filter_segmentation_by_mask
-from dmc_masking.utils import normalize_image
+from dart_mlci.mask import filter_segmentation_by_mask
+from dart_mlci.utils import normalize_image
 
 # Preferred display order for chamber types in timing tables (numbers skip 4)
 _CHAMBER_ORDER = [
@@ -1317,7 +1317,7 @@ def main():
     config = load_config(str(args.config))
 
     # Resolve paths relative to project root (parent of scripts/)
-    base_dir = Path(dmc_masking.__file__).parent.parent
+    base_dir = Path(dart_mlci.__file__).parent.parent
     input_dir = base_dir / config["input_dir"]
     output_dir = base_dir / config["output_dir"]
     chip_config_path = base_dir / config.get("chip_config", "artifacts/chips/sak.json")
