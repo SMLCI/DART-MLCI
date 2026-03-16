@@ -5,7 +5,12 @@ import unittest
 import numpy as np
 from shapely.geometry import Point, Polygon
 
-from dart_mlci.mask import RoIPolygon, apply_mask_rotation_free
+from dart_mlci.mask import (
+    RoIPolygon,
+    apply_mask,
+    apply_mask_rotation_free,
+    filter_segmentation_by_mask,
+)
 
 
 def build_polygon():
@@ -259,6 +264,94 @@ class TestApplyMaskRotationFree(unittest.TestCase):
 
         # Should produce valid output (choosing the best one)
         self.assertGreater(cropped_image.size, 0)
+
+
+class TestFilterSegmentationByMask(unittest.TestCase):
+    """Test cases for filter_segmentation_by_mask."""
+
+    def test_empty_mask(self):
+        """All-zeros labeled mask should return unchanged."""
+        labeled = np.zeros((10, 10), dtype=np.uint16)
+        chamber = np.zeros((10, 10), dtype=bool)
+        result = filter_segmentation_by_mask(labeled, chamber)
+        np.testing.assert_array_equal(result, labeled)
+
+    def test_with_removal(self):
+        """Objects overlapping masked region should be removed."""
+        labeled = np.zeros((10, 10), dtype=np.uint16)
+        labeled[0:5, 0:5] = 1  # Object 1: 25 pixels
+        labeled[5:10, 5:10] = 2  # Object 2: 25 pixels
+
+        # Mask covers object 1 entirely
+        chamber = np.zeros((10, 10), dtype=bool)
+        chamber[0:5, 0:5] = True
+
+        result = filter_segmentation_by_mask(labeled, chamber, threshold=0.5)
+        # Object 1 should be removed, object 2 relabeled to 1
+        self.assertEqual(result.max(), 1)
+        self.assertTrue(np.all(result[0:5, 0:5] == 0))
+
+    def test_no_relabel(self):
+        """With relabel=False, original IDs should be preserved."""
+        labeled = np.zeros((10, 10), dtype=np.uint16)
+        labeled[0:5, 0:5] = 1
+        labeled[5:10, 5:10] = 2
+
+        chamber = np.zeros((10, 10), dtype=bool)
+        chamber[0:5, 0:5] = True
+
+        result = filter_segmentation_by_mask(labeled, chamber, threshold=0.5, relabel=False)
+        # Object 1 removed but object 2 keeps its label ID
+        self.assertEqual(result.max(), 2)
+        self.assertTrue(np.all(result[0:5, 0:5] == 0))
+
+
+class TestApplyMaskEdgeCases(unittest.TestCase):
+    """Test edge cases of apply_mask."""
+
+    def setUp(self):
+        self.polygon = RoIPolygon(Polygon([(0, 0), (50, 0), (50, 50), (0, 50)]))
+        self.marker_group_pixels = {
+            "cross": np.array([5.0, -5.0]),
+            "circle": np.array([45.0, -5.0]),
+        }
+        self.image = np.zeros((200, 200), dtype=np.uint8)
+
+    def test_return_bbox(self):
+        """return_bbox=True should return a 3-tuple with bounding box."""
+        markers = [
+            {"bbox_center": np.array([60.0, 60.0])},
+            {"bbox_center": np.array([100.0, 60.0])},
+        ]
+        result = apply_mask(
+            [(0, 1)],
+            markers,
+            self.marker_group_pixels,
+            self.polygon,
+            self.image,
+            return_bbox=True,
+        )
+        self.assertEqual(len(result), 3)
+        bbox = result[2]
+        self.assertEqual(len(bbox), 4)
+
+    def test_allow_truncation(self):
+        """allow_truncation=True should not raise when ROI extends beyond image."""
+        # Place markers near edge so polygon extends beyond image
+        markers = [
+            {"bbox_center": np.array([5.0, 5.0])},
+            {"bbox_center": np.array([45.0, 5.0])},
+        ]
+        # Without truncation this would fail
+        result = apply_mask(
+            [(0, 1)],
+            markers,
+            self.marker_group_pixels,
+            self.polygon,
+            self.image,
+            allow_truncation=True,
+        )
+        self.assertEqual(len(result), 2)
 
 
 if __name__ == "__main__":

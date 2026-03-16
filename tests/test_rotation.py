@@ -7,10 +7,13 @@ import torch
 
 from dart_mlci.rotation import (
     angle_between,
+    compute_marker_group_angles,
     rotate_image_and_markers,
     rotate_image_kornia,
     rotate_image_opencv,
+    rotate_markers,
     rotate_point,
+    signed_angle_between,
 )
 
 
@@ -212,6 +215,91 @@ class TestImageRotationGPU(unittest.TestCase):
 
         # Markers should be identical (same transformation logic, independent of GPU)
         np.testing.assert_allclose(markers_cpu[0]["bbox_center"], markers_gpu[0]["bbox_center"])
+
+
+class TestSignedAngleBetween(unittest.TestCase):
+    """Test cases for signed_angle_between function."""
+
+    @staticmethod
+    def test_zero_angle():
+        """Parallel vectors should give 0 degrees."""
+        v1 = np.array([1, 0])
+        v2 = np.array([2, 0])
+        np.testing.assert_almost_equal(signed_angle_between(v1, v2), 0.0)
+
+    @staticmethod
+    def test_90_degrees():
+        """Perpendicular vectors should give +90 degrees."""
+        v1 = np.array([1, 0])
+        v2 = np.array([0, 1])
+        np.testing.assert_almost_equal(signed_angle_between(v1, v2), 90.0)
+
+    @staticmethod
+    def test_negative_90_degrees():
+        """Perpendicular vectors (other direction) should give -90 degrees."""
+        v1 = np.array([1, 0])
+        v2 = np.array([0, -1])
+        np.testing.assert_almost_equal(signed_angle_between(v1, v2), -90.0)
+
+    @staticmethod
+    def test_180_degrees():
+        """Opposite vectors should give ±180 degrees."""
+        v1 = np.array([1, 0])
+        v2 = np.array([-1, 0])
+        np.testing.assert_almost_equal(abs(signed_angle_between(v1, v2)), 180.0)
+
+
+class TestRotateMarkers(unittest.TestCase):
+    """Test cases for rotate_markers function."""
+
+    def test_rotate_markers_90(self):
+        """Markers should rotate correctly with the image."""
+        image = np.zeros((100, 100), dtype=np.uint8)
+        markers = [{"bbox_center": np.array([50.0, 0.0])}]
+
+        new_markers = rotate_markers(markers, image, 90.0)
+
+        self.assertEqual(len(new_markers), 1)
+        # After 90 deg CW rotation around center (50, 50): (50, 0) -> (~0, 50)
+        np.testing.assert_almost_equal(
+            new_markers[0]["bbox_center"], np.array([0.0, 50.0]), decimal=3
+        )
+
+
+class TestComputeMarkerGroupAngles(unittest.TestCase):
+    """Test cases for compute_marker_group_angles function."""
+
+    def test_zero_rotation(self):
+        """Aligned markers should give ~0 degree angle."""
+        markers = [
+            {"bbox_center": np.array([10.0, 50.0])},
+            {"bbox_center": np.array([60.0, 50.0])},
+        ]
+        matched_indices = [(0, 1)]
+        marker_group = {
+            "cross": np.array([10.0, 50.0]),
+            "circle": np.array([60.0, 50.0]),
+        }
+
+        angles = compute_marker_group_angles(markers, matched_indices, marker_group)
+        self.assertEqual(len(angles), 1)
+        np.testing.assert_almost_equal(angles[0], 0.0, decimal=3)
+
+    def test_unsigned_angle(self):
+        """Unsigned angles should always be positive."""
+        markers = [
+            {"bbox_center": np.array([10.0, 50.0])},
+            {"bbox_center": np.array([10.0, 0.0])},  # 90 deg rotated
+        ]
+        matched_indices = [(0, 1)]
+        marker_group = {
+            "cross": np.array([10.0, 50.0]),
+            "circle": np.array([60.0, 50.0]),
+        }
+
+        angles = compute_marker_group_angles(markers, matched_indices, marker_group, signed=False)
+        self.assertEqual(len(angles), 1)
+        self.assertGreater(angles[0], 0)
 
 
 if __name__ == "__main__":

@@ -1,17 +1,16 @@
-"""Test utilities for DMC Masking.
+"""Test utilities for DART MLCI.
 
-This package provides utilities for testing image processing pipelines,
-including pixel-level image comparison and visual regression testing.
+This package re-exports from dart_mlci.test_utils, which is the canonical source.
 """
 
-from tests.utils.image_comparison import (
+from dart_mlci.test_utils.image_comparison import (
     ImageComparisonResult,
     compare_images,
     compute_mse,
     compute_psnr,
     compute_ssim,
 )
-from tests.utils.visual_regression import (
+from dart_mlci.test_utils.visual_regression import (
     DEFAULT_MSE_THRESHOLD,
     DEFAULT_PSNR_THRESHOLD,
     DEFAULT_SSIM_THRESHOLD,

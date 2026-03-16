@@ -1,3 +1,7 @@
+![pipeline](https://jugit.fz-juelich.de/emsig/dmc-masking/badges/main/pipeline.svg)
+![coverage](https://jugit.fz-juelich.de/emsig/dmc-masking/badges/main/coverage.svg)
+<!-- [![codecov](https://codecov.io/gh/OWNER/REPO/graph/badge.svg)](https://codecov.io/gh/OWNER/REPO) -->
+
 # DART
 
 Real-time microfluidic chamber image processing library with two core capabilities:

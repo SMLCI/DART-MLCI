@@ -169,5 +169,62 @@ class TestLoadRoiStructures(unittest.TestCase):
             self.assertIn("coordinates", structure)
 
 
+class TestLoadImageSynthetic(unittest.TestCase):
+    """Tests using synthetic images (no external files needed)."""
+
+    def test_load_image_grayscale_synthetic(self):
+        """Grayscale PNG should be converted to HxWx3 uint8."""
+        import cv2
+
+        tmp = Path("/tmp/test_gray.png")
+        gray = np.random.randint(0, 256, (64, 64), dtype=np.uint8)
+        cv2.imwrite(str(tmp), gray)
+
+        image = load_image(tmp)
+        self.assertEqual(image.shape, (64, 64, 3))
+        self.assertEqual(image.dtype, np.uint8)
+        # All channels should be equal (grayscale replicated)
+        np.testing.assert_array_equal(image[:, :, 0], image[:, :, 1])
+        np.testing.assert_array_equal(image[:, :, 0], image[:, :, 2])
+        tmp.unlink()
+
+    def test_load_image_tiff_ndim4(self):
+        """4D TIFF (TxCxHxW) should extract first frame, first channel."""
+        import tifffile
+
+        tmp = Path("/tmp/test_4d.tif")
+        data = np.random.randint(0, 65535, (2, 3, 32, 32), dtype=np.uint16)
+        tifffile.imwrite(str(tmp), data)
+
+        image = load_image(tmp)
+        self.assertEqual(len(image.shape), 3)
+        self.assertEqual(image.shape[2], 3)
+        self.assertEqual(image.dtype, np.uint8)
+        tmp.unlink()
+
+    def test_load_image_tiff_channel_first(self):
+        """CxHxW TIFF should take first channel."""
+        import tifffile
+
+        tmp = Path("/tmp/test_chw.tif")
+        data = np.random.randint(0, 65535, (3, 48, 48), dtype=np.uint16)
+        tifffile.imwrite(str(tmp), data)
+
+        image = load_image(tmp)
+        self.assertEqual(len(image.shape), 3)
+        self.assertEqual(image.shape[2], 3)
+        self.assertEqual(image.dtype, np.uint8)
+        tmp.unlink()
+
+    def test_load_image_invalid_file(self):
+        """Garbage bytes file should raise ValueError."""
+        tmp = Path("/tmp/test_garbage.png")
+        tmp.write_bytes(b"\x00\x01\x02garbage data")
+
+        with self.assertRaises(ValueError):
+            load_image(tmp)
+        tmp.unlink()
+
+
 if __name__ == "__main__":
     unittest.main()
