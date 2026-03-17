@@ -41,8 +41,7 @@ import pandas as pd
 from matplotlib.patches import Polygon as MplPolygon
 from shapely import affinity
 
-import dart_mlci
-from dart_mlci import ChipStructureLibrary, MarkerDetectionStep
+from dart_mlci import MarkerDetectionStep, create_structure_library
 from dart_mlci.calibration import (
     CalibrationResult,
     ImageCalibrationResult,
@@ -54,9 +53,10 @@ from dart_mlci.calibration import (
 from dart_mlci.calibration import (
     run_calibration as _run_calibration,
 )
+from dart_mlci.constants import DEFAULT_MODEL_PATH, DEFAULT_STRUCTURE_LIBRARY_PATH
 from dart_mlci.io import load_image
 from dart_mlci.map import AffineTransformResult, Map
-from dart_mlci.mask import RoIPolygon, SAKRoIStructureLibrary, apply_mask_rotation_free
+from dart_mlci.mask import RoIPolygon, apply_mask_rotation_free
 
 
 def load_config(path: Path) -> dict:
@@ -280,9 +280,7 @@ def run_calibration(
 
     # Set default model path if not specified
     if model_path is None:
-        model_path = (
-            Path(dart_mlci.__file__).parent.parent / "artifacts/models/v26_detect_s_imgsz1280.pt"
-        )
+        model_path = DEFAULT_MODEL_PATH
     else:
         model_path = Path(model_path)
 
@@ -290,9 +288,7 @@ def run_calibration(
     chip_config_path = config.get("chip_config_path")
     structure_library_path = config.get("structure_library_path")
     if chip_config_path is None and structure_library_path is None:
-        structure_library_path = (
-            Path(dart_mlci.__file__).parent.parent / "artifacts/chamber_structure.json"
-        )
+        structure_library_path = DEFAULT_STRUCTURE_LIBRARY_PATH
     elif structure_library_path is not None:
         structure_library_path = Path(structure_library_path)
 
@@ -306,7 +302,9 @@ def run_calibration(
 
     # Load blueprint map: prefer chip_config_path, fall back to blueprint_map_path CSV
     if chip_config_path is not None:
-        structure_library = ChipStructureLibrary.from_file(chip_config_path, pixel_size=pixel_size)
+        structure_library = create_structure_library(
+            chip_config_path=chip_config_path, pixel_size=pixel_size
+        )
         blueprint_map = structure_library.get_blueprint_map()
         blueprint_map_source = chip_config_path
     elif blueprint_map_path is not None:
@@ -331,8 +329,8 @@ def run_calibration(
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", DeprecationWarning)
-            structure_library = SAKRoIStructureLibrary(
-                lookup_path=structure_library_path,
+            structure_library = create_structure_library(
+                structure_library_path=structure_library_path,
                 pixel_size=pixel_size,
             )
 

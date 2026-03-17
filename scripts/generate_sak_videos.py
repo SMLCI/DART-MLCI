@@ -22,9 +22,9 @@ try:
 except ImportError:
     ACIA_AVAILABLE = False
 
-import dart_mlci
 from dart_mlci import DEFAULT_MODEL_PATH, MarkerDetectionModel
 from dart_mlci.chip import ChipStructureLibrary
+from dart_mlci.constants import ARTIFACTS_DIR
 from dart_mlci.mask import apply_mask, filter_segmentation_by_mask
 from dart_mlci.match import match_markers
 from dart_mlci.rotation import compute_marker_group_angles, rotate_image_and_markers
@@ -42,7 +42,7 @@ from dart_mlci.visualization import (
     write_frames,
 )
 
-ARTIFACTS_DIR = Path(dart_mlci.__file__).parent.parent / "artifacts"
+# ARTIFACTS_DIR imported from dart_mlci.constants
 
 # Image-to-chamber-type mapping (from tests/test_full.py)
 CONFIGS = [

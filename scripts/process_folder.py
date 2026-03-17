@@ -10,7 +10,6 @@ Example usage:
 """
 
 import argparse
-import json
 import sys
 import time
 from dataclasses import dataclass, field
@@ -40,7 +39,6 @@ try:
     import pint
     from acia.segm.local import THWCSequenceSource
     from acia.segm.processor.cellpose_sam import CellposeSAMSegmenter
-    from acia.viz import colorize_instance_mask, render_scalebar
 
     ACIA_AVAILABLE = True
 except ImportError:
@@ -53,7 +51,6 @@ try:
 except ImportError:
     OMNIPOSE_AVAILABLE = False
 
-import dart_mlci
 from dart_mlci import (
     ChipStructureLibrary,
     ImageRotationStep,
@@ -63,8 +60,14 @@ from dart_mlci import (
     RoIMaskingStep,
     TimelapseRegistration,
 )
+from dart_mlci.constants import ARTIFACTS_DIR
 from dart_mlci.mask import filter_segmentation_by_mask
+from dart_mlci.script_utils import load_json_config
+from dart_mlci.types import PipelineTimings
+from dart_mlci.types import StackResult as _StackResult
 from dart_mlci.utils import normalize_image
+from dart_mlci.utils import to_hwc_numpy as _to_hwc_numpy
+from dart_mlci.visualization.rendering import render_cell_visualization
 
 # Preferred display order for chamber types in timing tables (numbers skip 4)
 _CHAMBER_ORDER = [
@@ -104,68 +107,11 @@ def create_segmenter(name: str):
 
 
 @dataclass
-class FrameTimings:
-    """Timing information for a single frame's pipeline steps (in seconds)."""
+class StackResult(_StackResult):
+    """Result for a single TIFF stack, with script-specific fields."""
 
-    detection: float = 0.0
-    matching: float = 0.0
-    rotation: float = 0.0
-    registration: float = 0.0
-    masking: float = 0.0
-    segmentation: float = 0.0
-
-    @property
-    def total(self) -> float:
-        return (
-            self.detection
-            + self.matching
-            + self.rotation
-            + self.registration
-            + self.masking
-            + self.segmentation
-        )
-
-    def as_dict(self) -> dict:
-        return {
-            "t_detection": self.detection,
-            "t_matching": self.matching,
-            "t_rotation": self.rotation,
-            "t_registration": self.registration,
-            "t_masking": self.masking,
-            "t_segmentation": self.segmentation,
-            "t_total": self.total,
-        }
-
-
-@dataclass
-class StackResult:
-    """Result for a single TIFF stack."""
-
-    folder: str
-    file_name: str
-    chamber_type: str
-    n_frames: int = 0
-    n_success: int = 0
-    n_cells_total: int = 0
-    success: bool = False
-    error: str = ""
     output_dir: str = ""
-    frame_timings: list[FrameTimings] = field(default_factory=list)
-
-
-def add_scalebar(image: np.ndarray, pixel_size: float, bar_um: float = 10) -> np.ndarray:
-    source = THWCSequenceSource(image[None, :, :, :].astype(np.uint8))
-    result = render_scalebar(
-        image_source=source,
-        xy_position=(0.80, 0.95),
-        size_of_pixel=pixel_size * UNIT_REGISTRY.micrometer,
-        bar_width=bar_um * UNIT_REGISTRY.micrometer,
-        bar_height=2 * UNIT_REGISTRY.micrometer,
-        color=(255, 255, 255),
-        font_size=20,
-        show_text=True,
-    )
-    return result.image_stack[0]
+    frame_timings: list[PipelineTimings] = field(default_factory=list)
 
 
 def render_frame_visualization(
@@ -175,30 +121,17 @@ def render_frame_visualization(
     pixel_size: float,
     alpha: float = 0.5,
 ) -> np.ndarray:
-    colored_cells = colorize_instance_mask(labeled_mask, seed=42)
-    output = cropped_image.copy().astype(np.float32)
-    cell_area = labeled_mask > 0
-    output[cell_area] = (
-        alpha * colored_cells[cell_area].astype(np.float32) + (1 - alpha) * output[cell_area]
+    return render_cell_visualization(
+        cropped_image=cropped_image,
+        labeled_mask=labeled_mask,
+        chamber_mask=chamber_mask,
+        pixel_size=pixel_size,
+        alpha=alpha,
     )
-    output[chamber_mask] = 0.3 * output[chamber_mask] + 0.7 * np.array(
-        [128, 128, 128], dtype=np.float32
-    )
-    output = output.astype(np.uint8)
-    output = add_scalebar(output, pixel_size)
-    return output
 
 
 def load_config(config_path: str) -> dict:
-    with open(config_path) as f:
-        config = json.load(f)
-
-    required = ["input_dir", "output_dir", "folders"]
-    missing = [k for k in required if k not in config]
-    if missing:
-        raise ValueError(f"Config missing required keys: {missing}")
-
-    return config
+    return load_json_config(config_path, required_keys=["input_dir", "output_dir", "folders"])
 
 
 def collect_files(config: dict, base_dir: Path) -> list[dict]:
@@ -301,7 +234,7 @@ def process_stack(
         frame_uint8 = normalize_image(frame_raw)
         frame_rgb = np.stack((frame_uint8,) * 3, axis=-1)  # HxWx3
 
-        timings = FrameTimings()
+        timings = PipelineTimings()
         frame_info = {
             "timepoint": t,
             "success": False,
@@ -597,18 +530,6 @@ def process_stack(
         print(f"    Done: {n_success}/{n_frames} frames, {result.n_cells_total} cells total")
 
     return result
-
-
-def _to_hwc_numpy(image) -> np.ndarray:
-    """Convert image to HWC numpy format."""
-    if TORCH_AVAILABLE and isinstance(image, torch.Tensor):
-        image = image.cpu().numpy()
-        if image.ndim == 3 and image.shape[0] <= 4:
-            image = np.moveaxis(image, 0, -1)
-    elif isinstance(image, np.ndarray):
-        if image.ndim == 3 and image.shape[0] <= 4:
-            image = np.moveaxis(image, 0, -1)
-    return image
 
 
 def _save_meta(output_dir: Path, frame_data: list[dict], n_frames: int):
@@ -961,7 +882,7 @@ def generate_summary(
         step_names = [s for s in step_names if s != "registration"]
 
     # Collect timings grouped by chamber type
-    chamber_timings: dict[str, list[FrameTimings]] = {ct: [] for ct in chamber_types}
+    chamber_timings: dict[str, list[PipelineTimings]] = {ct: [] for ct in chamber_types}
     for r in results:
         if r.frame_timings:
             chamber_timings[r.chamber_type].extend(r.frame_timings)
@@ -983,7 +904,7 @@ def generate_summary(
             ]
         )
 
-        def _fmt_timing_row(label: str, timings_list: list[FrameTimings]) -> str:
+        def _fmt_timing_row(label: str, timings_list: list[PipelineTimings]) -> str:
             n = len(timings_list)
             if n == 0:
                 return f"| {label} | 0 | " + " | ".join(["-"] * (len(step_names) + 3)) + " |"
@@ -1032,8 +953,8 @@ def generate_summary(
 
 def _generate_latex_timing_table(
     chamber_types: list[str],
-    chamber_timings: dict[str, list[FrameTimings]],
-    all_timings: list[FrameTimings],
+    chamber_timings: dict[str, list[PipelineTimings]],
+    all_timings: list[PipelineTimings],
     step_names: list[str],
 ) -> str:
     """Generate a LaTeX tabular for the pipeline step timings."""
@@ -1056,7 +977,7 @@ def _generate_latex_timing_table(
         "FPS w/o Seg",
     ]
 
-    def _fmt_latex_row(label: str, timings_list: list[FrameTimings]) -> str:
+    def _fmt_latex_row(label: str, timings_list: list[PipelineTimings]) -> str:
         n = len(timings_list)
         if n == 0:
             return f"  {label} & 0 & " + " & ".join(["-"] * (len(step_names) + 3)) + " \\\\"
@@ -1096,7 +1017,7 @@ def _generate_latex_timing_table(
 
 
 def _plot_pipeline_timing_chart(
-    all_timings: list[FrameTimings], output_dir: Path, enable_registration: bool = True
+    all_timings: list[PipelineTimings], output_dir: Path, enable_registration: bool = True
 ) -> None:
     """Generate a horizontal bar chart of pipeline step timings with a broken x-axis."""
     if not BROKENAXES_AVAILABLE:
@@ -1316,8 +1237,8 @@ def main():
 
     config = load_config(str(args.config))
 
-    # Resolve paths relative to project root (parent of scripts/)
-    base_dir = Path(dart_mlci.__file__).parent.parent
+    # Resolve paths relative to project root
+    base_dir = ARTIFACTS_DIR.parent
     input_dir = base_dir / config["input_dir"]
     output_dir = base_dir / config["output_dir"]
     chip_config_path = base_dir / config.get("chip_config", "artifacts/chips/sak.json")
@@ -1354,7 +1275,7 @@ def main():
         results_df = pd.read_csv(results_csv)
         timings_df = pd.read_csv(timings_csv) if timings_csv.exists() else pd.DataFrame()
 
-        # Reconstruct StackResult objects with FrameTimings
+        # Reconstruct StackResult objects with PipelineTimings
         results: list[StackResult] = []
         for _, row in results_df.iterrows():
             r = StackResult(
@@ -1375,7 +1296,7 @@ def main():
                 ]
                 for _, ft_row in ft_rows.iterrows():
                     r.frame_timings.append(
-                        FrameTimings(
+                        PipelineTimings(
                             detection=ft_row["t_detection"],
                             matching=ft_row["t_matching"],
                             rotation=ft_row["t_rotation"],
@@ -1478,7 +1399,7 @@ def main():
                 result.success = n_success > 0
                 # Store segmentation timings
                 for st in seg_times:
-                    ft = FrameTimings(segmentation=st)
+                    ft = PipelineTimings(segmentation=st)
                     result.frame_timings.append(ft)
                 print(f"  -> OK: {n_success}/{n_frames} frames, {n_cells} cells")
             except Exception as e:

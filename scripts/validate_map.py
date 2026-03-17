@@ -20,83 +20,33 @@ JSON config format:
 """
 
 import argparse
-import json
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from calibrate_map import (
-    compute_chamber_center,
-    filter_matched_pairs_by_bounds,
-)
 from matplotlib.patches import Polygon as MplPolygon
 from shapely import affinity
 from tqdm import tqdm
 
-import dart_mlci
-from dart_mlci import MarkerDetectionStep, MarkerMatchingStep
-from dart_mlci.io import load_image
+from dart_mlci import MarkerDetectionStep
+from dart_mlci.calibration.validation import (
+    ValidationDebugData,
+    ValidationResult,
+    ValidationSummary,
+    process_validation_image,
+)
+from dart_mlci.constants import DEFAULT_MODEL_PATH, DEFAULT_STRUCTURE_LIBRARY_PATH
 from dart_mlci.map import Map
-from dart_mlci.mask import RoIPolygon, SAKRoIStructureLibrary
-from dart_mlci.rotation import compute_marker_group_angles
-
-
-@dataclass
-class ValidationDebugData:
-    """Debug data for per-image validation visualization."""
-
-    image: np.ndarray | None = None
-    markers: list[dict] | None = None
-    matched_indices: list[tuple[int, int]] | None = None
-    chamber_center_pixels: np.ndarray | None = None  # Measured center in pixels
-    expected_center_pixels: np.ndarray | None = None  # Expected center from map (in pixels)
-    stage_position: dict[str, float] | None = None
-    pixel_size: float | None = None
-    structure_name: str | None = None
-    roi_polygon: RoIPolygon | None = None
-    marker_group_pixels: dict[str, np.ndarray] | None = None
-    rotation_angle: float | None = None
-    error_microns: float | None = None  # L2 error in microns
-
-
-@dataclass
-class ValidationResult:
-    """Result of validating a single image."""
-
-    roi_id: str
-    success: bool
-    map_x: float | None
-    map_y: float | None
-    measured_x: float | None
-    measured_y: float | None
-    error: float | None
-    error_message: str | None = None
-    debug_data: ValidationDebugData | None = None
-
-
-@dataclass
-class ValidationSummary:
-    """Summary of validation results."""
-
-    results: list[ValidationResult]
-    mean_error: float
-    median_error: float
-    std_error: float
-    max_error: float
-    min_error: float
-    p90_error: float
-    n_success: int
-    n_failed: int
+from dart_mlci.mask import SAKRoIStructureLibrary
+from dart_mlci.script_utils import load_json_config
 
 
 def load_config(path: Path) -> dict:
     """Load validation configuration from JSON file."""
-    with open(path) as f:
-        return json.load(f)
+    return load_json_config(path)
 
 
 def validate_config(config: dict, config_path: Path | None = None) -> None:
@@ -135,226 +85,7 @@ def validate_config(config: dict, config_path: Path | None = None) -> None:
             raise ValueError(f"'model_path'{source}: File not found: {model_path}")
 
 
-def process_validation_image(
-    image_path: Path,
-    roi_id: str,
-    stage_position: dict[str, float],
-    expected_position: np.ndarray,
-    detection_step: MarkerDetectionStep,
-    structure_library: SAKRoIStructureLibrary,
-    pixel_size: float,
-    verbose: bool = False,
-    collect_debug: bool = False,
-    conf_threshold: float = 0.5,
-    max_angle_deviation: float = 5.0,
-) -> ValidationResult:
-    """Process a single validation image and compute error.
-
-    Args:
-        image_path: Path to the image file
-        roi_id: RoI identifier (e.g., "0050")
-        stage_position: Stage position dict with x, y, z
-        expected_position: Expected position from calibrated map (x, y)
-        detection_step: Marker detection step
-        structure_library: SAK structure library for chamber type lookup
-        pixel_size: Pixel size in microns
-        verbose: Print progress information
-        collect_debug: Collect debug data for visualization
-        conf_threshold: Minimum confidence for detected markers (default: 0.5)
-
-    Returns:
-        ValidationResult with error or failure reason
-    """
-    debug_data = ValidationDebugData() if collect_debug else None
-
-    try:
-        # 1. Auto-detect chamber type from roi_id
-        structure_name, roi_polygon, marker_group_pixels = structure_library(roi_id)
-
-        if verbose:
-            print(f"    - Chamber type: {structure_name}")
-
-        # 2. Create matching step for this chamber type
-        matching_step = MarkerMatchingStep(marker_group_pixels, tolerance=60)
-
-        # 3. Load and process image
-        image = load_image(image_path)
-
-        # Store debug data
-        if collect_debug:
-            debug_data.image = image
-            debug_data.stage_position = stage_position
-            debug_data.pixel_size = pixel_size
-            debug_data.structure_name = structure_name
-            debug_data.roi_polygon = roi_polygon
-            debug_data.marker_group_pixels = marker_group_pixels
-
-        # 4. Detect markers
-        detection_result = detection_step(image)
-        markers = detection_result["markers"]
-
-        # Filter markers by confidence threshold
-        markers = [m for m in markers if m.get("conf", 0.0) >= conf_threshold]
-        detection_result["markers"] = markers
-
-        if verbose:
-            print(f"    - Markers detected: {len(markers)} (conf >= {conf_threshold})")
-
-        if collect_debug:
-            debug_data.markers = markers
-
-        if not markers:
-            return ValidationResult(
-                roi_id=roi_id,
-                success=False,
-                map_x=expected_position[0],
-                map_y=expected_position[1],
-                measured_x=None,
-                measured_y=None,
-                error=None,
-                error_message="DETECTION: No markers found",
-                debug_data=debug_data,
-            )
-
-        # 5. Match markers
-        matching_result = matching_step(detection_result)
-        matched_indices = matching_result["matched_marker_indices"]
-
-        if verbose:
-            print(f"    - Pairs matched: {len(matched_indices)}")
-
-        if not matched_indices:
-            return ValidationResult(
-                roi_id=roi_id,
-                success=False,
-                map_x=expected_position[0],
-                map_y=expected_position[1],
-                measured_x=None,
-                measured_y=None,
-                error=None,
-                error_message="MATCHING: No marker pairs matched",
-                debug_data=debug_data,
-            )
-
-        # 5b. Compute rotation angle from detected markers (needed for bounds check)
-        angles = compute_marker_group_angles(
-            markers, matched_indices, marker_group_pixels, signed=True
-        )
-
-        # Check angle consistency across pairs
-        if len(angles) >= 2:
-            angle_range = max(angles) - min(angles)
-            if angle_range > max_angle_deviation:
-                return ValidationResult(
-                    roi_id=roi_id,
-                    success=False,
-                    map_x=expected_position[0],
-                    map_y=expected_position[1],
-                    measured_x=None,
-                    measured_y=None,
-                    error=None,
-                    error_message=f"ANGLES: Inconsistent rotation angles (range={angle_range:.2f}° > {max_angle_deviation:.1f}°)",
-                    debug_data=debug_data,
-                )
-
-        rotation_angle = np.mean(angles)
-
-        if verbose:
-            print(f"    - Rotation angle: {rotation_angle:.2f} deg")
-
-        # 5c. Filter matched pairs to keep only those with RoI fully in image bounds
-        # Pass rotation_angle so the polygon is positioned correctly (matching apply_mask_rotation_free)
-        matched_indices = filter_matched_pairs_by_bounds(
-            markers=markers,
-            matched_indices=matched_indices,
-            marker_group_pixels=marker_group_pixels,
-            roi_polygon=roi_polygon,
-            image_shape=image.shape[:2],
-            rotation_angle=rotation_angle,
-        )
-
-        if verbose:
-            print(f"    - Valid pairs (in bounds): {len(matched_indices)}")
-
-        if collect_debug:
-            debug_data.matched_indices = matched_indices
-            debug_data.rotation_angle = rotation_angle
-
-        if not matched_indices:
-            return ValidationResult(
-                roi_id=roi_id,
-                success=False,
-                map_x=expected_position[0],
-                map_y=expected_position[1],
-                measured_x=None,
-                measured_y=None,
-                error=None,
-                error_message="BOUNDS: No marker pairs with RoI fully in image bounds",
-                debug_data=debug_data,
-            )
-
-        # 6. Compute chamber center in pixels (with rotation correction)
-        chamber_center_pixels = compute_chamber_center(
-            markers, matched_indices, marker_group_pixels, roi_polygon, rotation_angle
-        )
-
-        if collect_debug:
-            debug_data.chamber_center_pixels = chamber_center_pixels
-            # Compute expected center in pixels: expected_position is in microns,
-            # convert to pixels relative to image origin (stage position)
-            expected_offset_microns = expected_position - np.array(
-                [stage_position["x"], stage_position["y"]]
-            )
-            debug_data.expected_center_pixels = expected_offset_microns / pixel_size
-
-        # 8. Convert to microns
-        chamber_center_microns = chamber_center_pixels * pixel_size
-
-        # 9. Compute measured microscope position (stage is at top-left corner of image)
-        measured_x = stage_position["x"] + chamber_center_microns[0]
-        measured_y = stage_position["y"] + chamber_center_microns[1]
-
-        # 10. Compute L2 error
-        error = np.sqrt(
-            (measured_x - expected_position[0]) ** 2 + (measured_y - expected_position[1]) ** 2
-        )
-
-        if collect_debug:
-            debug_data.error_microns = error
-
-        if verbose:
-            print(f"    - Measured: ({measured_x:.2f}, {measured_y:.2f})")
-            print(f"    - Expected: ({expected_position[0]:.2f}, {expected_position[1]:.2f})")
-            print(f"    - L2 Error: {error:.3f} microns")
-            print("    - Status: SUCCESS")
-
-        return ValidationResult(
-            roi_id=roi_id,
-            success=True,
-            map_x=expected_position[0],
-            map_y=expected_position[1],
-            measured_x=measured_x,
-            measured_y=measured_y,
-            error=error,
-            error_message=None,
-            debug_data=debug_data,
-        )
-
-    except Exception as e:
-        return ValidationResult(
-            roi_id=roi_id,
-            success=False,
-            map_x=expected_position[0] if expected_position is not None else None,
-            map_y=expected_position[1] if expected_position is not None else None,
-            measured_x=None,
-            measured_y=None,
-            error=None,
-            error_message=f"ERROR: {e!s}",
-            debug_data=debug_data,
-        )
-
-
-def run_validation(
+def run_validation_cli(
     config: dict,
     verbose: bool = False,
     max_images: int | None = None,
@@ -382,18 +113,14 @@ def run_validation(
 
     # Set default model path if not specified
     if model_path is None:
-        model_path = (
-            Path(dart_mlci.__file__).parent.parent / "artifacts/models/v26_detect_s_imgsz1280.pt"
-        )
+        model_path = DEFAULT_MODEL_PATH
     else:
         model_path = Path(model_path)
 
     # Set default structure library path
     structure_library_path = config.get("structure_library_path")
     if structure_library_path is None:
-        structure_library_path = (
-            Path(dart_mlci.__file__).parent.parent / "artifacts/chamber_structure.json"
-        )
+        structure_library_path = DEFAULT_STRUCTURE_LIBRARY_PATH
     else:
         structure_library_path = Path(structure_library_path)
 
@@ -1151,7 +878,7 @@ def validate_map(
     max_angle_deviation = config.get("max_angle_deviation", 5.0)
 
     # Run validation
-    summary = run_validation(
+    summary = run_validation_cli(
         config,
         verbose=verbose,
         max_images=max_images,

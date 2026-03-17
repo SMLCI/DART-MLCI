@@ -18,8 +18,8 @@ from pathlib import Path
 import numpy as np
 import tifffile
 
-import dart_mlci
 from dart_mlci.chip import ChipStructureLibrary
+from dart_mlci.constants import ARTIFACTS_DIR
 from dart_mlci.detection import MarkerDetectionModel
 from dart_mlci.utils import normalize_image
 
@@ -54,7 +54,7 @@ def main():
 
     config = load_config(str(args.config))
 
-    base_dir = Path(dart_mlci.__file__).parent.parent
+    base_dir = ARTIFACTS_DIR.parent
     input_dir = base_dir / config["input_dir"]
     chip_config_path = base_dir / config.get("chip_config", "artifacts/chips/sak.json")
     model_path = base_dir / config.get("model_path", "artifacts/models/v26_detect_s_imgsz1280.pt")

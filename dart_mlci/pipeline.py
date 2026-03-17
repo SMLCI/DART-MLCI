@@ -1,9 +1,11 @@
 """Step-based pipeline classes for marker detection, matching, rotation, and masking."""
 
+from __future__ import annotations
+
 import numpy as np
 import torch
 
-from dart_mlci.constants import DEFAULT_MODEL_PATH
+from dart_mlci.constants import DEFAULT_MARKER_TOLERANCE_PX, DEFAULT_MODEL_PATH
 from dart_mlci.detection import MarkerDetectionModel
 from dart_mlci.mask import apply_mask
 from dart_mlci.match import match_markers
@@ -181,3 +183,62 @@ class RoIMaskingStep:
         data["mask"] = cropped_mask
 
         return data
+
+
+class ChamberPipelineCache:
+    """Cache for chamber-specific pipeline components.
+
+    Lazily creates and caches MarkerMatchingStep, ImageRotationStep, and
+    RoIMaskingStep for each chamber type so they can be reused across frames.
+    """
+
+    def __init__(
+        self,
+        structure_library,
+        tolerance: int = DEFAULT_MARKER_TOLERANCE_PX,
+        allow_truncation: bool = False,
+    ):
+        """Initialize the cache.
+
+        Args:
+            structure_library: ChipStructureLibrary or SAKRoIStructureLibrary
+                providing polygon_library and marker_group_configs.
+            tolerance: Pixel tolerance for marker matching.
+            allow_truncation: Allow ROI mask beyond image boundaries.
+        """
+        self.structure_library = structure_library
+        self.tolerance = tolerance
+        self.allow_truncation = allow_truncation
+        self._cache: dict[str, dict] = {}
+
+    def get(self, structure_name: str) -> dict:
+        """Get or create pipeline components for a chamber type.
+
+        Args:
+            structure_name: Chamber structure name (e.g., "NormaleBox-inner").
+
+        Returns:
+            Dict with keys: roi_polygon, marker_group, matching_step,
+            rotation_step, masking_step.
+
+        Raises:
+            KeyError: If structure_name is not in the structure library.
+        """
+        if structure_name not in self._cache:
+            if structure_name not in self.structure_library.polygon_library:
+                raise KeyError(
+                    f"Unknown structure name: '{structure_name}'. "
+                    f"Available: {list(self.structure_library.polygon_library.keys())}"
+                )
+            roi_polygon = self.structure_library.polygon_library[structure_name]
+            marker_group = self.structure_library.marker_group_configs[structure_name]
+            self._cache[structure_name] = {
+                "roi_polygon": roi_polygon,
+                "marker_group": marker_group,
+                "matching_step": MarkerMatchingStep(marker_group, tolerance=self.tolerance),
+                "rotation_step": ImageRotationStep(),
+                "masking_step": RoIMaskingStep(
+                    marker_group, roi_polygon, allow_truncation=self.allow_truncation
+                ),
+            }
+        return self._cache[structure_name]

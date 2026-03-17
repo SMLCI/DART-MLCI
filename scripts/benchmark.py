@@ -15,7 +15,6 @@ CSV format (chamber_type is a structure name string):
 """
 
 import argparse
-import time
 import warnings
 from pathlib import Path
 
@@ -38,16 +37,14 @@ try:
 except ImportError:
     ACIA_AVAILABLE = False
 
-import dart_mlci
 from dart_mlci import (
     DEFAULT_MODEL_PATH,
-    ImageRotationStep,
+    ChamberPipelineCache,
     MarkerDetectionStep,
-    MarkerMatchingStep,
-    RoIMaskingStep,
+    create_structure_library,
 )
 from dart_mlci.io import load_image
-from dart_mlci.mask import SAKRoIStructureLibrary
+from dart_mlci.script_utils import Timer, load_image_list
 
 # Available chamber types
 CHAMBER_TYPES = [
@@ -62,20 +59,6 @@ CHAMBER_TYPES = [
 ]
 
 
-class Timer:
-    """Context manager for precise timing measurements."""
-
-    def __init__(self):
-        self.elapsed = 0.0
-
-    def __enter__(self):
-        self.start = time.perf_counter()
-        return self
-
-    def __exit__(self, *args):
-        self.elapsed = time.perf_counter() - self.start
-
-
 def get_peak_gpu_memory_mb() -> float:
     """Get peak GPU memory usage in MB (returns 0 if CUDA unavailable)."""
     if TORCH_AVAILABLE and torch.cuda.is_available():
@@ -87,19 +70,6 @@ def reset_gpu_memory_stats():
     """Reset GPU memory tracking statistics."""
     if TORCH_AVAILABLE and torch.cuda.is_available():
         torch.cuda.reset_peak_memory_stats()
-
-
-def load_image_list(csv_path: Path) -> list[tuple[str, str]]:
-    """Load image list from CSV file.
-
-    Args:
-        csv_path: Path to CSV file with columns: image_path, chamber_type
-
-    Returns:
-        List of (image_path, chamber_type) tuples
-    """
-    df = pd.read_csv(csv_path, dtype=str).dropna()
-    return list(zip(df["image_path"].str.strip(), df["chamber_type"].str.strip(), strict=False))
 
 
 class PipelineBenchmark:
@@ -128,23 +98,17 @@ class PipelineBenchmark:
         self.skip_segmentation = skip_segmentation
         self.device = device
 
-        # Default structure library path
-        if structure_library_path is None:
-            structure_library_path = (
-                Path(dart_mlci.__file__).parent.parent / "artifacts/chamber_structure.json"
-            )
-
-        # Initialize SAK structure library (provides polygon and marker configs)
-        self.structure_library = SAKRoIStructureLibrary(
-            lookup_path=structure_library_path,
+        # Initialize structure library
+        self.structure_library = create_structure_library(
+            structure_library_path=structure_library_path,
             pixel_size=pixel_size,
         )
 
         # Initialize detection step (shared across all chamber types)
         self.detection_step = MarkerDetectionStep(model_path, device=device, verbose=verbose)
 
-        # Cache for chamber-specific pipeline components (keyed by structure_name)
-        self._chamber_cache: dict[str, dict] = {}
+        # Cache for chamber-specific pipeline components
+        self._pipeline_cache = ChamberPipelineCache(self.structure_library)
 
         # Initialize segmenter (if enabled and acia is available)
         self.segmenter = None
@@ -164,19 +128,7 @@ class PipelineBenchmark:
         Returns:
             Tuple of (structure_name, component dict with pipeline steps)
         """
-        # Use chamber_type directly as the structure name
-        structure_name = chamber_type
-        if structure_name not in self._chamber_cache:
-            roi_polygon = self.structure_library.polygon_library[structure_name]
-            marker_group = self.structure_library.marker_group_configs[structure_name]
-            self._chamber_cache[structure_name] = {
-                "roi_polygon": roi_polygon,
-                "marker_group": marker_group,
-                "matching_step": MarkerMatchingStep(marker_group, tolerance=60),
-                "rotation_step": ImageRotationStep(),
-                "masking_step": RoIMaskingStep(marker_group, roi_polygon),
-            }
-        return structure_name, self._chamber_cache[structure_name]
+        return chamber_type, self._pipeline_cache.get(chamber_type)
 
     def warmup(self, image: np.ndarray, chamber_type: str, n_warmup: int = 3):
         """Run warmup iterations to stabilize GPU/JIT compilation.

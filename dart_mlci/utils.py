@@ -1,6 +1,7 @@
 """Utility functionality."""
 
 import numpy as np
+from skimage.exposure import rescale_intensity
 
 
 def normalize_image(im: np.ndarray, low_quantile=0.01, high_quantile=0.99) -> np.ndarray:
@@ -14,12 +15,30 @@ def normalize_image(im: np.ndarray, low_quantile=0.01, high_quantile=0.99) -> np
     Returns:
         np.ndarray: the resulting image with values in the uint8 space [0...255]
     """
+    im_min, im_max = np.quantile(im, [low_quantile, high_quantile])
+    return rescale_intensity(im, in_range=(im_min, im_max), out_range=np.uint8).astype(np.uint8)
 
-    # compute min max
-    im_max, im_min = np.quantile(im, high_quantile), np.quantile(im, low_quantile)
 
-    # normalize image
-    return (np.clip((im - im_min) / (im_max - im_min), 0, 1) * 255).astype(np.uint8)
+def to_hwc_numpy(image) -> np.ndarray:
+    """Convert image to HWC numpy format from tensor or CHW numpy.
+
+    Args:
+        image: Input image as numpy array (CHW or HWC) or torch Tensor.
+
+    Returns:
+        HWC numpy array.
+    """
+    try:
+        import torch
+
+        if isinstance(image, torch.Tensor):
+            image = image.cpu().numpy()
+    except ImportError:
+        pass
+
+    if isinstance(image, np.ndarray) and image.ndim == 3 and image.shape[0] <= 4:
+        image = np.moveaxis(image, 0, -1)
+    return image
 
 
 def center_of_mask_mass(mask: np.ndarray) -> tuple[float, float]:

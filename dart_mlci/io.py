@@ -93,9 +93,12 @@ def load_image(image_path: Path | str) -> np.ndarray:
 
     # Convert grayscale to RGB
     if len(image.shape) == 2:
-        image = np.stack((image,) * 3, axis=-1)
+        from skimage.color import gray2rgb
+
+        image = gray2rgb(image)
     elif len(image.shape) == 3 and image.shape[2] == 1:
-        # Single channel HxWx1
-        image = np.stack((image[:, :, 0],) * 3, axis=-1)
+        from skimage.color import gray2rgb
+
+        image = gray2rgb(image[:, :, 0])
 
     return image

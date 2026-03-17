@@ -20,17 +20,16 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-import dart_mlci
 from dart_mlci import (
     DEFAULT_MODEL_PATH,
-    ChipStructureLibrary,
     ImageRotationStep,
     MarkerDetectionStep,
     MarkerMatchingStep,
     RoIMaskingStep,
+    create_structure_library,
 )
 from dart_mlci.io import load_image
-from dart_mlci.mask import SAKRoIStructureLibrary
+from dart_mlci.types import PipelineError
 
 # Pipeline step names for error reporting
 STEP_VALIDATION = "VALIDATION"
@@ -92,15 +91,6 @@ def print_success(timings: PipelineTimings, output_path: Path, mask_path: Path |
     if mask_path:
         msg += f" | mask={mask_path}"
     print(msg)
-
-
-class PipelineError(Exception):
-    """Exception raised during pipeline processing with step information."""
-
-    def __init__(self, step: str, message: str):
-        self.step = step
-        self.message = message
-        super().__init__(f"{step}: {message}")
 
 
 def process_image(
@@ -356,31 +346,15 @@ Chamber ID patterns:
             if not args.chip_config.exists():
                 print_error(STEP_VALIDATION, f"Chip config not found: {args.chip_config}")
                 sys.exit(1)
-            structure_library = ChipStructureLibrary.from_file(
-                args.chip_config, pixel_size=args.pixel_size
+            structure_library = create_structure_library(
+                chip_config_path=args.chip_config,
+                pixel_size=args.pixel_size,
             )
         else:
-            if args.structure_library is not None:
-                import warnings
-
-                warnings.warn(
-                    "--structure-library is deprecated. Use --chip-config instead.",
-                    DeprecationWarning,
-                    stacklevel=1,
-                )
-            else:
-                args.structure_library = (
-                    Path(dart_mlci.__file__).parent.parent / "artifacts/chamber_structure.json"
-                )
-
-            import warnings
-
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", DeprecationWarning)
-                structure_library = SAKRoIStructureLibrary(
-                    lookup_path=args.structure_library,
-                    pixel_size=args.pixel_size,
-                )
+            structure_library = create_structure_library(
+                structure_library_path=args.structure_library,
+                pixel_size=args.pixel_size,
+            )
     except Exception as e:
         print_error(STEP_VALIDATION, f"Failed to load structure library: {e}")
         sys.exit(1)

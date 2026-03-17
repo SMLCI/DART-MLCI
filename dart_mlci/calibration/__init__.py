@@ -68,6 +68,13 @@ from .core import (
     process_calibration_image,
     run_calibration,
 )
+from .validation import (
+    ValidationDebugData,
+    ValidationResult,
+    ValidationSummary,
+    process_validation_image,
+    run_validation,
+)
 
 __all__ = [
     "AffineTransform2D",
@@ -79,11 +86,16 @@ __all__ = [
     "ImageToStageTransform",
     "PixelToMicronTransform",
     "TransformFitResult",
+    "ValidationDebugData",
+    "ValidationResult",
+    "ValidationSummary",
     "apply_rotation_to_offset",
     "compute_blueprint_to_image_offset",
     "compute_chamber_center",
     "compute_microscope_position",
     "filter_matched_pairs_by_bounds",
     "process_calibration_image",
+    "process_validation_image",
     "run_calibration",
+    "run_validation",
 ]

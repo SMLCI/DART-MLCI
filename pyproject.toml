@@ -35,6 +35,8 @@ dependencies = [
     "shapely",
     "rasterio",
     "pandas",
+    "pydantic>=2.0",
+    "scikit-image>=0.20",
     "tqdm",
     "matplotlib",
     "seaborn",

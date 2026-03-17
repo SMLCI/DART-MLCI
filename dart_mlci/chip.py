@@ -19,6 +19,7 @@ from pathlib import Path
 import numpy as np
 from shapely.geometry import shape
 
+from .constants import DEFAULT_PIXEL_SIZE_UM, DEFAULT_STRUCTURE_LIBRARY_PATH
 from .map import Map
 from .mask import RoIPolygon
 
@@ -55,6 +56,49 @@ class ChipConfig:
     pixel_size: float
     chamber_types: dict[str, ChamberTypeConfig]
     blueprint_map: list[dict] = field(default_factory=list)
+
+
+def create_structure_library(
+    chip_config_path: Path | str | None = None,
+    structure_library_path: Path | str | None = None,
+    pixel_size: float = DEFAULT_PIXEL_SIZE_UM,
+) -> ChipStructureLibrary:
+    """Create a structure library, preferring chip config over legacy format.
+
+    Args:
+        chip_config_path: Path to unified chip config JSON file. If provided,
+            takes precedence over structure_library_path.
+        structure_library_path: Path to legacy chamber structure JSON file.
+            If neither path is provided, defaults to the legacy structure library.
+        pixel_size: Pixel size in microns per pixel.
+
+    Returns:
+        ChipStructureLibrary (from chip config) or SAKRoIStructureLibrary (legacy).
+    """
+    if chip_config_path is not None:
+        return ChipStructureLibrary.from_file(chip_config_path, pixel_size=pixel_size)
+
+    # Legacy path
+    import warnings
+
+    from .mask import SAKRoIStructureLibrary
+
+    if structure_library_path is None:
+        structure_library_path = DEFAULT_STRUCTURE_LIBRARY_PATH
+
+    warnings.warn(
+        "Using legacy SAKRoIStructureLibrary. "
+        "Pass chip_config_path instead for the unified chip config.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        return SAKRoIStructureLibrary(
+            lookup_path=structure_library_path,
+            pixel_size=pixel_size,
+        )
 
 
 def load_chip_config(path: Path | str) -> ChipConfig:

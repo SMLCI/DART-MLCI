@@ -13,11 +13,14 @@ Example usage:
     0.065789
 """
 
+from __future__ import annotations
+
 import json
 import os
-from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
+
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class AxisDirection(Enum):
@@ -31,8 +34,7 @@ class AxisDirection(Enum):
     NEGATIVE = -1
 
 
-@dataclass
-class CoordinateSystemConfig:
+class CoordinateSystemConfig(BaseModel):
     """Configuration for a single coordinate system's axis conventions.
 
     Attributes:
@@ -42,14 +44,22 @@ class CoordinateSystemConfig:
         flip_y: Whether to mirror around X-axis
     """
 
+    model_config = ConfigDict(use_enum_values=False)
+
     x_direction: AxisDirection = AxisDirection.POSITIVE
     y_direction: AxisDirection = AxisDirection.POSITIVE
     flip_x: bool = False
     flip_y: bool = False
 
+    @field_validator("x_direction", "y_direction", mode="before")
+    @classmethod
+    def _parse_direction(cls, v):
+        if isinstance(v, str):
+            return AxisDirection.POSITIVE if v.lower() == "positive" else AxisDirection.NEGATIVE
+        return v
 
-@dataclass
-class CoordinatesConfig:
+
+class CoordinatesConfig(BaseModel):
     """Configuration for all coordinate system conventions.
 
     Key insight (verified from code):
@@ -65,29 +75,13 @@ class CoordinatesConfig:
         blueprint_to_image_invert_y: Whether Y is inverted from blueprint to image
     """
 
-    # Blueprint: Design coordinates
-    # Default: +X right, +Y UP (Cartesian convention)
-    blueprint: CoordinateSystemConfig = field(
-        default_factory=lambda: CoordinateSystemConfig(
-            y_direction=AxisDirection.NEGATIVE  # Y increases upward (opposite of image)
-        )
-    )
-
-    # Image: Camera/pixel coordinates
-    # Default: +X right, +Y DOWN (standard image convention)
-    image: CoordinateSystemConfig = field(default_factory=CoordinateSystemConfig)
-
-    # Stage: Microscope stage coordinates (hardware-dependent)
-    # Default: +X right, +Y down (but verify with your hardware!)
-    stage: CoordinateSystemConfig = field(default_factory=CoordinateSystemConfig)
-
-    # Whether blueprint->image requires Y inversion
-    # True because blueprint uses Y-up, image uses Y-down
+    blueprint: CoordinateSystemConfig = CoordinateSystemConfig(y_direction=AxisDirection.NEGATIVE)
+    image: CoordinateSystemConfig = CoordinateSystemConfig()
+    stage: CoordinateSystemConfig = CoordinateSystemConfig()
     blueprint_to_image_invert_y: bool = True
 
 
-@dataclass
-class DetectionConfig:
+class DetectionConfig(BaseModel):
     """Configuration for marker detection and matching.
 
     Attributes:
@@ -95,12 +89,11 @@ class DetectionConfig:
         confidence: YOLO confidence threshold
     """
 
-    tolerance: int = 60  # pixels
+    tolerance: int = 60
     confidence: float = 0.6
 
 
-@dataclass
-class PathConfig:
+class PathConfig(BaseModel):
     """Configuration for file paths.
 
     Attributes:
@@ -114,29 +107,28 @@ class PathConfig:
             blueprint_map_path.
     """
 
-    model_path: Path = field(
-        default_factory=lambda: Path("artifacts/models/v26_detect_s_imgsz1280.pt")
-    )
-    structure_library_path: Path = field(
-        default_factory=lambda: Path("artifacts/chamber_structure.json")
-    )
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    model_path: Path = Path("artifacts/models/v26_detect_s_imgsz1280.pt")
+    structure_library_path: Path = Path("artifacts/chamber_structure.json")
     blueprint_map_path: Path | None = None
     chip_config_path: Path | None = None
 
-    def __post_init__(self):
-        # Convert strings to Path objects
-        if isinstance(self.model_path, str):
-            self.model_path = Path(self.model_path)
-        if isinstance(self.structure_library_path, str):
-            self.structure_library_path = Path(self.structure_library_path)
-        if isinstance(self.blueprint_map_path, str):
-            self.blueprint_map_path = Path(self.blueprint_map_path)
-        if isinstance(self.chip_config_path, str):
-            self.chip_config_path = Path(self.chip_config_path)
+    @field_validator(
+        "model_path",
+        "structure_library_path",
+        "blueprint_map_path",
+        "chip_config_path",
+        mode="before",
+    )
+    @classmethod
+    def _coerce_path(cls, v):
+        if isinstance(v, str):
+            return Path(v)
+        return v
 
 
-@dataclass
-class CalibrationConfig:
+class CalibrationConfig(BaseModel):
     """Configuration for calibration parameters.
 
     Attributes:
@@ -144,12 +136,11 @@ class CalibrationConfig:
         min_calibration_points: Minimum number of calibration points required
     """
 
-    pixel_size: float = 0.065789  # microns per pixel
+    pixel_size: float = 0.065789
     min_calibration_points: int = 3
 
 
-@dataclass
-class DARTConfig:
+class DARTConfig(BaseModel):
     """Main configuration class for DMC masking.
 
     This class consolidates all configuration parameters used throughout
@@ -168,13 +159,15 @@ class DARTConfig:
         >>> config = DARTConfig.from_env()
     """
 
-    detection: DetectionConfig = field(default_factory=DetectionConfig)
-    paths: PathConfig = field(default_factory=PathConfig)
-    calibration: CalibrationConfig = field(default_factory=CalibrationConfig)
-    coordinates: CoordinatesConfig = field(default_factory=CoordinatesConfig)
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    detection: DetectionConfig = DetectionConfig()
+    paths: PathConfig = PathConfig()
+    calibration: CalibrationConfig = CalibrationConfig()
+    coordinates: CoordinatesConfig = CoordinatesConfig()
 
     @classmethod
-    def from_json(cls, path: Path | str) -> "DARTConfig":
+    def from_json(cls, path: Path | str) -> DARTConfig:
         """Load configuration from a JSON file.
 
         Args:
@@ -197,7 +190,7 @@ class DARTConfig:
         return cls._from_dict(data)
 
     @classmethod
-    def from_env(cls) -> "DARTConfig":
+    def from_env(cls) -> DARTConfig:
         """Load configuration from environment variables.
 
         Environment variable mapping:
@@ -213,17 +206,12 @@ class DARTConfig:
         """
         config = cls()
 
-        # Detection config
         if "DART_TOLERANCE" in os.environ:
             config.detection.tolerance = int(os.environ["DART_TOLERANCE"])
         if "DART_CONFIDENCE" in os.environ:
             config.detection.confidence = float(os.environ["DART_CONFIDENCE"])
-
-        # Calibration config
         if "DART_PIXEL_SIZE" in os.environ:
             config.calibration.pixel_size = float(os.environ["DART_PIXEL_SIZE"])
-
-        # Path config
         if "DART_MODEL_PATH" in os.environ:
             config.paths.model_path = Path(os.environ["DART_MODEL_PATH"])
         if "DART_STRUCTURE_LIBRARY_PATH" in os.environ:
@@ -236,7 +224,7 @@ class DARTConfig:
         return config
 
     @classmethod
-    def _from_dict(cls, data: dict) -> "DARTConfig":
+    def _from_dict(cls, data: dict) -> DARTConfig:
         """Create config from dictionary.
 
         Args:
@@ -247,7 +235,6 @@ class DARTConfig:
         """
         config = cls()
 
-        # Detection config
         if "detection" in data:
             det = data["detection"]
             if "tolerance" in det:
@@ -255,7 +242,6 @@ class DARTConfig:
             if "confidence" in det:
                 config.detection.confidence = float(det["confidence"])
 
-        # Calibration config
         if "calibration" in data:
             cal = data["calibration"]
             if "pixel_size" in cal:
@@ -263,7 +249,6 @@ class DARTConfig:
             if "min_calibration_points" in cal:
                 config.calibration.min_calibration_points = int(cal["min_calibration_points"])
 
-        # Path config
         if "paths" in data:
             paths = data["paths"]
             if "model_path" in paths:
@@ -275,60 +260,35 @@ class DARTConfig:
             if paths.get("chip_config_path"):
                 config.paths.chip_config_path = Path(paths["chip_config_path"])
 
-        # Coordinates config
         if "coordinates" in data:
             coords = data["coordinates"]
             if "blueprint_to_image_invert_y" in coords:
                 config.coordinates.blueprint_to_image_invert_y = bool(
                     coords["blueprint_to_image_invert_y"]
                 )
-            # Parse axis direction configs if present
-            config.coordinates = cls._parse_coordinates_config(coords, config.coordinates)
+            for system_name in ["blueprint", "image", "stage"]:
+                if system_name in coords:
+                    system_data = coords[system_name]
+                    system_config = getattr(config.coordinates, system_name)
 
-        return config
-
-    @classmethod
-    def _parse_coordinates_config(cls, data: dict, default: CoordinatesConfig) -> CoordinatesConfig:
-        """Parse coordinate system configuration from dictionary.
-
-        Args:
-            data: Coordinates configuration dictionary
-            default: Default configuration to use for missing values
-
-        Returns:
-            CoordinatesConfig instance
-        """
-        config = default
-
-        for system_name in ["blueprint", "image", "stage"]:
-            if system_name in data:
-                system_data = data[system_name]
-                system_config = getattr(config, system_name)
-
-                if "x_direction" in system_data:
-                    direction = system_data["x_direction"].lower()
-                    system_config.x_direction = (
-                        AxisDirection.POSITIVE
-                        if direction == "positive"
-                        else AxisDirection.NEGATIVE
-                    )
-
-                if "y_direction" in system_data:
-                    direction = system_data["y_direction"].lower()
-                    system_config.y_direction = (
-                        AxisDirection.POSITIVE
-                        if direction == "positive"
-                        else AxisDirection.NEGATIVE
-                    )
-
-                if "flip_x" in system_data:
-                    system_config.flip_x = bool(system_data["flip_x"])
-
-                if "flip_y" in system_data:
-                    system_config.flip_y = bool(system_data["flip_y"])
-
-        if "blueprint_to_image_invert_y" in data:
-            config.blueprint_to_image_invert_y = bool(data["blueprint_to_image_invert_y"])
+                    if "x_direction" in system_data:
+                        direction = system_data["x_direction"].lower()
+                        system_config.x_direction = (
+                            AxisDirection.POSITIVE
+                            if direction == "positive"
+                            else AxisDirection.NEGATIVE
+                        )
+                    if "y_direction" in system_data:
+                        direction = system_data["y_direction"].lower()
+                        system_config.y_direction = (
+                            AxisDirection.POSITIVE
+                            if direction == "positive"
+                            else AxisDirection.NEGATIVE
+                        )
+                    if "flip_x" in system_data:
+                        system_config.flip_x = bool(system_data["flip_x"])
+                    if "flip_y" in system_data:
+                        system_config.flip_y = bool(system_data["flip_y"])
 
         return config
 

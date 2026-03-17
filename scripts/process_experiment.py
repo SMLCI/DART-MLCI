@@ -29,21 +29,19 @@ try:
     import pint
     from acia.segm.local import THWCSequenceSource
     from acia.segm.processor.cellpose_sam import CellposeSAMSegmenter
-    from acia.viz import colorize_instance_mask, render_scalebar
+    from acia.viz import colorize_instance_mask
 
     ACIA_AVAILABLE = True
 except ImportError:
     ACIA_AVAILABLE = False
 
-import dart_mlci
 from dart_mlci import (
-    ImageRotationStep,
+    ChamberPipelineCache,
     MarkerDetectionStep,
-    MarkerMatchingStep,
-    RoIMaskingStep,
+    create_structure_library,
 )
+from dart_mlci.constants import DEFAULT_MODEL_PATH, DEFAULT_STRUCTURE_LIBRARY_PATH
 from dart_mlci.io import load_image
-from dart_mlci.mask import SAKRoIStructureLibrary
 from dart_mlci.visualization import plot_markers_on_image
 
 # Unit registry for scalebar (only if pint is available)
@@ -51,36 +49,7 @@ if ACIA_AVAILABLE:
     UNIT_REGISTRY = pint.UnitRegistry()
 
 
-def add_scalebar(
-    image: np.ndarray,
-    pixel_size: float,
-    bar_um: float = 10,
-) -> np.ndarray:
-    """Add scalebar to image using acia's render_scalebar.
-
-    Args:
-        image: HxWxC RGB image (uint8)
-        pixel_size: Pixel size in micrometers
-        bar_um: Scalebar width in micrometers
-
-    Returns:
-        Image with scalebar added
-    """
-    # Wrap image as THWCSequenceSource (T=1, H, W, C=3)
-    source = THWCSequenceSource(image[None, :, :, :].astype(np.uint8))
-
-    # Render scalebar at bottom-right with enough space from edge
-    result = render_scalebar(
-        image_source=source,
-        xy_position=(0.80, 0.95),  # Relative position (bottom-right, with margin)
-        size_of_pixel=pixel_size * UNIT_REGISTRY.micrometer,
-        bar_width=bar_um * UNIT_REGISTRY.micrometer,
-        bar_height=2 * UNIT_REGISTRY.micrometer,  # 2 micrometers high
-        color=(255, 255, 255),
-        font_size=20,
-        show_text=True,
-    )
-    return result.image_stack[0]
+from dart_mlci.visualization.rendering import add_scalebar, render_cell_visualization
 
 
 def render_cropped_visualization(
@@ -91,40 +60,16 @@ def render_cropped_visualization(
     scalebar_um: float = 10,
     alpha: float = 0.5,
 ) -> np.ndarray:
-    """Render visualization with colored cells, chamber mask, and scalebar.
-
-    Args:
-        cropped_image: HxWxC cropped chamber image (uint8, RGB)
-        labeled_mask: HxW instance mask (0=bg, 1..N=cells)
-        chamber_mask: HxW binary mask (True=outside ROI)
-        pixel_size: Pixel size in micrometers
-        scalebar_um: Scalebar width in micrometers
-        alpha: Cell mask transparency (0-1)
-
-    Returns:
-        Rendered visualization image (HxWxC, uint8, RGB)
-    """
-    # 1. Colorize cell masks using acia
-    colored_cells = colorize_instance_mask(labeled_mask, seed=42)
-
-    # 2. Alpha blend cell colors onto image
-    output = cropped_image.copy().astype(np.float32)
-    cell_area = labeled_mask > 0
-    output[cell_area] = (
-        alpha * colored_cells[cell_area].astype(np.float32) + (1 - alpha) * output[cell_area]
+    """Render visualization with colored cells, chamber mask, and scalebar."""
+    return render_cell_visualization(
+        cropped_image=cropped_image,
+        labeled_mask=labeled_mask,
+        chamber_mask=chamber_mask,
+        pixel_size=pixel_size,
+        alpha=alpha,
+        scalebar=True,
+        scalebar_um=scalebar_um,
     )
-
-    # 3. Gray out area outside chamber (ROI mask)
-    output[chamber_mask] = 0.3 * output[chamber_mask] + 0.7 * np.array(
-        [128, 128, 128], dtype=np.float32
-    )
-
-    output = output.astype(np.uint8)
-
-    # 4. Add scalebar using acia's render_scalebar
-    output = add_scalebar(output, pixel_size, scalebar_um)
-
-    return output
 
 
 def render_uncropped_visualization(
@@ -299,17 +244,17 @@ class ExperimentProcessor:
         self.render_stacks = render_stacks
         self.stack_video_fps = stack_video_fps
 
-        # Initialize SAK structure library (provides polygon and marker configs)
-        self.structure_library = SAKRoIStructureLibrary(
-            lookup_path=structure_library_path,
+        # Initialize structure library
+        self.structure_library = create_structure_library(
+            structure_library_path=structure_library_path,
             pixel_size=pixel_size,
         )
 
         # Initialize detection step (shared across all images)
         self.detection_step = MarkerDetectionStep(model_path, device=device, verbose=verbose)
 
-        # Cache for chamber-specific pipeline components (keyed by structure_name)
-        self._chamber_cache: dict[str, dict] = {}
+        # Cache for chamber-specific pipeline components
+        self._pipeline_cache = ChamberPipelineCache(self.structure_library)
 
         # Initialize segmenter
         self.segmenter = None
@@ -329,37 +274,27 @@ class ExperimentProcessor:
         Returns:
             Component dict with pipeline steps
         """
-        if structure_name not in self._chamber_cache:
-            roi_polygon = self.structure_library.polygon_library[structure_name]
-            marker_group = self.structure_library.marker_group_configs[structure_name]
+        components = self._pipeline_cache.get(structure_name)
 
-            components = {
-                "roi_polygon": roi_polygon,
-                "marker_group": marker_group,
-                "matching_step": MarkerMatchingStep(marker_group, tolerance=60),
-                "rotation_step": ImageRotationStep(),
-                "masking_step": RoIMaskingStep(marker_group, roi_polygon),
-            }
+        # Add registration if enabled (only once per structure type)
+        if self.enable_registration and "registration" not in components:
+            from dart_mlci import PhaseCorrelationRegistration, TimelapseRegistration
 
-            # Add registration if enabled
-            if self.enable_registration:
-                from dart_mlci import PhaseCorrelationRegistration, TimelapseRegistration
+            marker_group = components["marker_group"]
+            if self.registration_method == "phase":
+                components["registration"] = PhaseCorrelationRegistration(
+                    marker_group_pixel=marker_group,
+                    padding=self.registration_padding,
+                )
+            else:
+                components["registration"] = TimelapseRegistration(
+                    marker_group_pixel=marker_group,
+                    max_translation=self.max_translation,
+                    padding=self.registration_padding,
+                    device=self.device,
+                )
 
-                if self.registration_method == "phase":
-                    components["registration"] = PhaseCorrelationRegistration(
-                        marker_group_pixel=marker_group,
-                        padding=self.registration_padding,
-                    )
-                else:
-                    components["registration"] = TimelapseRegistration(
-                        marker_group_pixel=marker_group,
-                        max_translation=self.max_translation,
-                        padding=self.registration_padding,
-                        device=self.device,
-                    )
-
-            self._chamber_cache[structure_name] = components
-        return self._chamber_cache[structure_name]
+        return components
 
     def process_image(
         self,
@@ -1527,14 +1462,10 @@ Output structure:
 
     # Set default paths
     if args.model_path is None:
-        args.model_path = (
-            Path(dart_mlci.__file__).parent.parent / "artifacts/models/v26_detect_s_imgsz1280.pt"
-        )
+        args.model_path = DEFAULT_MODEL_PATH
 
     if args.structure_library is None:
-        args.structure_library = (
-            Path(dart_mlci.__file__).parent.parent / "artifacts/chamber_structure.json"
-        )
+        args.structure_library = DEFAULT_STRUCTURE_LIBRARY_PATH
 
     # Validate paths
     if not args.model_path.exists():
