@@ -21,7 +21,7 @@ from dart_mlci.mask import RoIPolygon
 
 MODEL_PATH = Path("artifacts/models/v26_detect_s_imgsz1280.pt")
 CHIP_CONFIG_PATH = Path("artifacts/chips/sak.json")
-CAL_SAMPLE_DIR = Path("scripts/calibration_sample")
+CAL_SAMPLE_DIR = Path("artifacts/images/calibration_sample")
 
 
 class TestImageDebugData(unittest.TestCase):

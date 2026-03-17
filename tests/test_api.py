@@ -47,7 +47,7 @@ def test_image_base64():
 @pytest.fixture
 def calibration_images_base64():
     """Load calibration sample images as base64."""
-    cal_dir = Path("scripts/calibration_sample")
+    cal_dir = Path("artifacts/images/calibration_sample")
     if not cal_dir.exists():
         pytest.skip("Calibration sample not found")
 
@@ -390,16 +390,23 @@ class TestCalibrateEndpoint:
         assert response.status_code == 422
 
     @pytest.mark.skipif(
-        not (Path("scripts/calibration_sample").exists()),
-        reason="Calibration sample not found",
+        not (
+            Path("artifacts/images/calibration_sample").exists()
+            and Path("artifacts/models/v26_detect_s_imgsz1280.pt").exists()
+            and Path("artifacts/chips").exists()
+        ),
+        reason="Calibration sample, model, or chips not found",
     )
-    def test_calibrate_with_base64_images(self, client, calibration_images_base64, viz_dir):
+    def test_calibrate_with_base64_images(self, monkeypatch, calibration_images_base64, viz_dir):
         """Test calibration with base64 images and visualize results."""
+        from dart_mlci.api.main import app
+        from dart_mlci.api.settings import get_settings
+
         if len(calibration_images_base64) < 3:
             pytest.skip("Need at least 3 calibration images")
 
         # Load config
-        cal_config_path = Path("scripts/calibration_sample/calibration_config.json")
+        cal_config_path = Path("artifacts/images/calibration_sample/calibration_config.json")
         if not cal_config_path.exists():
             pytest.skip("Calibration config not found")
 
@@ -426,29 +433,34 @@ class TestCalibrateEndpoint:
             "chip_name": "SAK",
             "calibration_images": cal_images,
             "pixel_size": config["pixel_size"],
-            "blueprint_map_path": config["blueprint_map_path"],
         }
 
-        # Send request
-        response = client.post("/calibrate", json=request_body)
-        assert response.status_code == 200
+        get_settings.cache_clear()
+        monkeypatch.setenv("DART_MODEL_PATH", "artifacts/models/v26_detect_s_imgsz1280.pt")
+        monkeypatch.setenv("DART_CHIP_CONFIGS_DIR", "artifacts/chips")
+        try:
+            with TestClient(app) as client:
+                response = client.post("/calibrate", json=request_body)
+                assert response.status_code == 200
 
-        data = response.json()
-        if data["success"]:
-            assert "calibrated_map" in data
-            assert "statistics" in data
+                data = response.json()
+                if data["success"]:
+                    assert "calibrated_map" in data
+                    assert "statistics" in data
 
-            # Save calibrated map as JSON
-            json_path = viz_dir / "calibrated_map.json"
-            json_path.write_text(json.dumps(data["calibrated_map"], indent=2))
+                    # Save calibrated map as JSON
+                    json_path = viz_dir / "calibrated_map.json"
+                    json_path.write_text(json.dumps(data["calibrated_map"], indent=2))
 
-            # Print statistics
-            stats = data["statistics"]
-            print("\nCalibration Statistics:")
-            print(f"  RMSE: {stats['rmse']:.4f}")
-            print(f"  Max Error: {stats['max_error']:.4f}")
-            print(f"  Points: {stats['n_points']}")
-            print(f"\nCalibrated map: {json_path}")
+                    # Print statistics
+                    stats = data["statistics"]
+                    print("\nCalibration Statistics:")
+                    print(f"  RMSE: {stats['rmse']:.4f}")
+                    print(f"  Max Error: {stats['max_error']:.4f}")
+                    print(f"  Points: {stats['n_points']}")
+                    print(f"\nCalibrated map: {json_path}")
+        finally:
+            get_settings.cache_clear()
 
     def test_calibrate_invalid_base64(self, client):
         """Invalid base64 should fail validation."""
@@ -476,8 +488,11 @@ class TestCalibrateEndpoint:
         assert response.status_code == 422  # Validation error
 
     @pytest.mark.skipif(
-        not (Path("artifacts/chips").exists()),
-        reason="Chips directory not found",
+        not (
+            Path("artifacts/chips").exists()
+            and Path("artifacts/models/v26_detect_s_imgsz1280.pt").exists()
+        ),
+        reason="Chips directory or model not found",
     )
     def test_calibrate_failed_returns_per_image_errors(self, monkeypatch):
         """Failed calibration should return per-image error messages."""
@@ -487,13 +502,9 @@ class TestCalibrateEndpoint:
 
         get_settings.cache_clear()
         monkeypatch.setenv("DART_CHIP_CONFIGS_DIR", "artifacts/chips")
+        monkeypatch.setenv("DART_MODEL_PATH", "artifacts/models/v26_detect_s_imgsz1280.pt")
         try:
             with TestClient(app) as test_client:
-                # Check if model is loaded
-                health = test_client.get("/health").json()
-                if not health["model_loaded"]:
-                    pytest.skip("Model not loaded")
-
                 # Create 3 small synthetic (noise) images that will fail calibration
                 noise_images = []
                 for roi_id in ["0000", "0001", "0002"]:
@@ -564,39 +575,42 @@ class TestIntegration:
     @pytest.mark.skipif(
         not (
             Path("artifacts/models/v26_detect_s_imgsz1280.pt").exists()
-            and Path("artifacts/chamber_structure.json").exists()
+            and Path("artifacts/chips").exists()
         ),
         reason="Artifacts not found",
     )
-    def test_full_process_image_workflow(self, client):
+    def test_full_process_image_workflow(self, monkeypatch, test_image_base64):
         """Test complete image processing workflow."""
-        test_image = FIXTURES_DIR / "calibration_image_0000.tif"
-        if not test_image.exists():
-            pytest.skip("Calibration image not found")
+        from dart_mlci.api.main import app
+        from dart_mlci.api.settings import get_settings
 
-        # Check health first
-        health = client.get("/health").json()
-        if not health["model_loaded"]:
-            pytest.skip("Model not loaded")
+        get_settings.cache_clear()
+        monkeypatch.setenv("DART_MODEL_PATH", "artifacts/models/v26_detect_s_imgsz1280.pt")
+        monkeypatch.setenv("DART_CHIP_CONFIGS_DIR", "artifacts/chips")
+        try:
+            with TestClient(app) as client:
+                # Process image via JSON with base64
+                response = client.post(
+                    "/process-image",
+                    json={
+                        "image": test_image_base64,
+                        "roi_id": "0000",
+                        "pixel_size": 0.065789,
+                    },
+                )
 
-        # Process image
-        with open(test_image, "rb") as f:
-            response = client.post(
-                "/process-image",
-                files={"image": ("image.tif", f, "image/tiff")},
-                data={"roi_id": "0000", "pixel_size": "0.065789"},
-            )
+                assert response.status_code == 200
+                data = response.json()
+                if data["success"]:
+                    # Verify base64 encoded images
+                    import base64
 
-        assert response.status_code == 200
-        data = response.json()
-        if data["success"]:
-            # Verify base64 encoded images
-            import base64
-
-            cropped = base64.b64decode(data["cropped_image"])
-            mask = base64.b64decode(data["mask"])
-            assert len(cropped) > 0
-            assert len(mask) > 0
+                    cropped = base64.b64decode(data["cropped_image"])
+                    mask = base64.b64decode(data["mask"])
+                    assert len(cropped) > 0
+                    assert len(mask) > 0
+        finally:
+            get_settings.cache_clear()
 
     def test_gpu_detection(self, client):
         """Container should correctly detect GPU availability."""
@@ -766,8 +780,11 @@ class TestSegmentEndpoint:
 
     @pytest.mark.skipif(not ACIA_AVAILABLE, reason="acia not installed")
     @pytest.mark.skipif(
-        not Path("artifacts/models/v26_detect_s_imgsz1280.pt").exists(),
-        reason="Model file not found",
+        not (
+            Path("artifacts/models/v26_detect_s_imgsz1280.pt").exists()
+            and Path("artifacts/chips").exists()
+        ),
+        reason="Model file or chips directory not found",
     )
     def test_segment_roundtrip_with_process_image(self, monkeypatch, test_image_base64):
         """Integration test: full pipeline /process-image -> /segment."""
@@ -776,6 +793,8 @@ class TestSegmentEndpoint:
 
         get_settings.cache_clear()
         monkeypatch.setenv("DART_SEGMENTER", "cellpose-sam")
+        monkeypatch.setenv("DART_MODEL_PATH", "artifacts/models/v26_detect_s_imgsz1280.pt")
+        monkeypatch.setenv("DART_CHIP_CONFIGS_DIR", "artifacts/chips")
         try:
             with TestClient(app) as client:
                 # Step 1: process image
