@@ -475,6 +475,59 @@ class TestCalibrateEndpoint:
         response = client.post("/calibrate", json=request_body)
         assert response.status_code == 422  # Validation error
 
+    @pytest.mark.skipif(
+        not (Path("artifacts/chips").exists()),
+        reason="Chips directory not found",
+    )
+    def test_calibrate_failed_returns_per_image_errors(self, monkeypatch):
+        """Failed calibration should return per-image error messages."""
+        from dart_mlci.api.main import app
+        from dart_mlci.api.settings import get_settings
+        from dart_mlci.api.utils import array_to_base64_png
+
+        get_settings.cache_clear()
+        monkeypatch.setenv("DART_CHIP_CONFIGS_DIR", "artifacts/chips")
+        try:
+            with TestClient(app) as test_client:
+                # Check if model is loaded
+                health = test_client.get("/health").json()
+                if not health["model_loaded"]:
+                    pytest.skip("Model not loaded")
+
+                # Create 3 small synthetic (noise) images that will fail calibration
+                noise_images = []
+                for roi_id in ["0000", "0001", "0002"]:
+                    arr = np.random.randint(0, 255, (64, 64, 3), dtype=np.uint8)
+                    noise_images.append(
+                        {
+                            "image": array_to_base64_png(arr),
+                            "roi_id": roi_id,
+                            "stage_position": {"x": 0.0, "y": 0.0},
+                        }
+                    )
+
+                request_body = {
+                    "chip_name": "sak",
+                    "calibration_images": noise_images,
+                    "pixel_size": 0.065789,
+                }
+
+                response = test_client.post("/calibrate", json=request_body)
+                assert response.status_code == 200
+                data = response.json()
+
+                assert data["success"] is False
+                assert "image_results" in data
+                assert data["image_results"] is not None
+                assert len(data["image_results"]) == 3
+
+                for img_result in data["image_results"]:
+                    assert img_result["success"] is False
+                    assert img_result["error_message"] is not None
+                    assert len(img_result["error_message"]) > 0
+        finally:
+            get_settings.cache_clear()
+
 
 # === Validate Endpoint Tests ===
 

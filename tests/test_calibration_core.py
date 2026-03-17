@@ -1,18 +1,27 @@
 """Tests for the calibration core module."""
 
 import unittest
+from pathlib import Path
+from unittest.mock import MagicMock
 
 import numpy as np
 from shapely.geometry import box
 
 from dart_mlci.calibration import (
+    CalibrationError,
     ImageCalibrationResult,
     ImageDebugData,
     compute_chamber_center,
     compute_microscope_position,
     filter_matched_pairs_by_bounds,
+    process_calibration_image,
+    run_calibration,
 )
 from dart_mlci.mask import RoIPolygon
+
+MODEL_PATH = Path("artifacts/models/v26_detect_s_imgsz1280.pt")
+CHIP_CONFIG_PATH = Path("artifacts/chips/sak.json")
+CAL_SAMPLE_DIR = Path("scripts/calibration_sample")
 
 
 class TestImageDebugData(unittest.TestCase):
@@ -258,6 +267,248 @@ class TestComputeMicroscopePosition(unittest.TestCase):
         _pos_xy, z = compute_microscope_position(chamber_center_pixels, stage_position, pixel_size)
 
         self.assertIsNone(z)
+
+
+class TestProcessCalibrationImage(unittest.TestCase):
+    """Tests for process_calibration_image function."""
+
+    def test_returns_detection_error_on_blank_image(self):
+        """Blank image should return success=False with DETECTION error."""
+        # Create a mock detection step that returns no markers
+        detection_step = MagicMock()
+        detection_step.return_value = {"markers": []}
+
+        # Create a mock structure library
+        structure_library = MagicMock()
+        roi_polygon = RoIPolygon(box(0, 0, 100, 100))
+        structure_library.return_value = (
+            "test_structure",
+            roi_polygon,
+            {"cross": np.array([14.0, 8.0]), "circle": np.array([66.0, 8.0])},
+        )
+
+        blank_image = np.zeros((480, 640, 3), dtype=np.uint8)
+
+        result = process_calibration_image(
+            image=blank_image,
+            roi_id="0050",
+            stage_position={"x": 100.0, "y": 200.0, "z": 50.0},
+            detection_step=detection_step,
+            structure_library=structure_library,
+            pixel_size=0.065789,
+        )
+
+        self.assertFalse(result.success)
+        self.assertIn("DETECTION", result.error_message)
+        self.assertIsNone(result.microscope_position)
+
+    def test_returns_matching_error_when_no_pairs(self):
+        """When detection finds markers but matching fails, error contains MATCHING."""
+        # Detection returns markers but matching produces no pairs
+        detection_step = MagicMock()
+        detection_step.return_value = {
+            "markers": [
+                {"bbox_center": np.array([100.0, 100.0]), "label": "cross", "conf": 0.9},
+                {"bbox_center": np.array([500.0, 500.0]), "label": "circle", "conf": 0.9},
+            ]
+        }
+
+        structure_library = MagicMock()
+        roi_polygon = RoIPolygon(box(0, 0, 100, 100))
+        structure_library.return_value = (
+            "test_structure",
+            roi_polygon,
+            {"cross": np.array([14.0, 8.0]), "circle": np.array([66.0, 8.0])},
+        )
+
+        image = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+
+        result = process_calibration_image(
+            image=image,
+            roi_id="0050",
+            stage_position={"x": 100.0, "y": 200.0},
+            detection_step=detection_step,
+            structure_library=structure_library,
+            pixel_size=0.065789,
+        )
+
+        self.assertFalse(result.success)
+        self.assertIn("MATCHING", result.error_message)
+
+    @unittest.skipUnless(
+        MODEL_PATH.exists() and CHIP_CONFIG_PATH.exists(),
+        "Model or chip config not found",
+    )
+    def test_success_with_real_image(self):
+        """Real calibration image should produce a successful result."""
+        from dart_mlci import MarkerDetectionStep
+        from dart_mlci.chip import ChipStructureLibrary
+        from dart_mlci.io import load_image
+
+        test_image_path = Path("tests/fixtures/calibration_image_0000.tif")
+        if not test_image_path.exists():
+            self.skipTest("Test image not found")
+
+        image = load_image(test_image_path)
+        detection_step = MarkerDetectionStep(str(MODEL_PATH), verbose=False)
+        structure_library = ChipStructureLibrary.from_file(CHIP_CONFIG_PATH, pixel_size=0.065789)
+
+        result = process_calibration_image(
+            image=image,
+            roi_id="0000",
+            stage_position={"x": 6802.4, "y": -4272.9, "z": 2942.5},
+            detection_step=detection_step,
+            structure_library=structure_library,
+            pixel_size=0.065789,
+        )
+
+        self.assertTrue(result.success)
+        self.assertIsNotNone(result.microscope_position)
+        self.assertEqual(len(result.microscope_position), 2)
+
+
+class TestRunCalibration(unittest.TestCase):
+    """Tests for run_calibration function."""
+
+    def test_raises_on_insufficient_successful_images(self):
+        """3 blank images should raise CalibrationError with image_results."""
+        detection_step = MagicMock()
+        detection_step.return_value = {"markers": []}
+
+        structure_library = MagicMock()
+        roi_polygon = RoIPolygon(box(0, 0, 100, 100))
+        structure_library.return_value = (
+            "test_structure",
+            roi_polygon,
+            {"cross": np.array([14.0, 8.0]), "circle": np.array([66.0, 8.0])},
+        )
+
+        from dart_mlci.map import Map, RoIPosition
+
+        blueprint_map = Map(
+            [
+                RoIPosition(roi_id="0000", position=np.array([0.0, 0.0])),
+                RoIPosition(roi_id="0001", position=np.array([100.0, 0.0])),
+                RoIPosition(roi_id="0002", position=np.array([0.0, 100.0])),
+            ]
+        )
+
+        blank_images = [np.zeros((480, 640, 3), dtype=np.uint8) for _ in range(3)]
+
+        with self.assertRaises(CalibrationError) as ctx:
+            run_calibration(
+                images=blank_images,
+                roi_ids=["0000", "0001", "0002"],
+                stage_positions=[
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 100.0, "y": 0.0},
+                    {"x": 0.0, "y": 100.0},
+                ],
+                detection_step=detection_step,
+                structure_library=structure_library,
+                blueprint_map=blueprint_map,
+                pixel_size=0.065789,
+            )
+
+        err = ctx.exception
+        self.assertIn("got 0", str(err))
+
+    def test_image_results_attached_to_exception(self):
+        """CalibrationError should have image_results with per-image errors."""
+        detection_step = MagicMock()
+        detection_step.return_value = {"markers": []}
+
+        structure_library = MagicMock()
+        roi_polygon = RoIPolygon(box(0, 0, 100, 100))
+        structure_library.return_value = (
+            "test_structure",
+            roi_polygon,
+            {"cross": np.array([14.0, 8.0]), "circle": np.array([66.0, 8.0])},
+        )
+
+        from dart_mlci.map import Map, RoIPosition
+
+        blueprint_map = Map(
+            [
+                RoIPosition(roi_id="0000", position=np.array([0.0, 0.0])),
+                RoIPosition(roi_id="0001", position=np.array([100.0, 0.0])),
+                RoIPosition(roi_id="0002", position=np.array([0.0, 100.0])),
+            ]
+        )
+
+        blank_images = [np.zeros((480, 640, 3), dtype=np.uint8) for _ in range(3)]
+
+        with self.assertRaises(CalibrationError) as ctx:
+            run_calibration(
+                images=blank_images,
+                roi_ids=["0000", "0001", "0002"],
+                stage_positions=[
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 100.0, "y": 0.0},
+                    {"x": 0.0, "y": 100.0},
+                ],
+                detection_step=detection_step,
+                structure_library=structure_library,
+                blueprint_map=blueprint_map,
+                pixel_size=0.065789,
+            )
+
+        err = ctx.exception
+        self.assertEqual(len(err.image_results), 3)
+        for img_result in err.image_results:
+            self.assertFalse(img_result.success)
+            self.assertIsNotNone(img_result.error_message)
+            self.assertIn("DETECTION", img_result.error_message)
+
+    @unittest.skipUnless(
+        MODEL_PATH.exists() and CHIP_CONFIG_PATH.exists() and CAL_SAMPLE_DIR.exists(),
+        "Artifacts not found",
+    )
+    def test_success_with_real_images(self):
+        """Full calibration with real images should succeed."""
+        import json
+
+        from dart_mlci import MarkerDetectionStep
+        from dart_mlci.chip import ChipStructureLibrary
+        from dart_mlci.io import load_image
+
+        config_path = CAL_SAMPLE_DIR / "calibration_config.json"
+        if not config_path.exists():
+            self.skipTest("Calibration config not found")
+
+        with open(config_path) as f:
+            config = json.load(f)
+
+        detection_step = MarkerDetectionStep(str(MODEL_PATH), verbose=False)
+        structure_library = ChipStructureLibrary.from_file(
+            CHIP_CONFIG_PATH, pixel_size=config["pixel_size"]
+        )
+        blueprint_map = structure_library.get_blueprint_map()
+
+        images = []
+        roi_ids = []
+        stage_positions = []
+        for img_config in config["calibration_images"][:3]:
+            img_path = CAL_SAMPLE_DIR / Path(img_config["image_path"]).name
+            if not img_path.exists():
+                self.skipTest(f"Image not found: {img_path}")
+            images.append(load_image(img_path))
+            roi_ids.append(str(img_config["roi_id"]))
+            stage_positions.append(img_config["stage_position"])
+
+        result = run_calibration(
+            images=images,
+            roi_ids=roi_ids,
+            stage_positions=stage_positions,
+            detection_step=detection_step,
+            structure_library=structure_library,
+            blueprint_map=blueprint_map,
+            pixel_size=config["pixel_size"],
+        )
+
+        self.assertIsNotNone(result.calibrated_map)
+        self.assertIsNotNone(result.measured_map)
+        self.assertGreater(len(result.measured_map.roi_positions), 0)
 
 
 if __name__ == "__main__":

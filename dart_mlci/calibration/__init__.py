@@ -58,16 +58,20 @@ from .coordinates import (
     compute_blueprint_to_image_offset,
 )
 from .core import (
+    CalibrationError,
     CalibrationResult,
     ImageCalibrationResult,
     ImageDebugData,
     compute_chamber_center,
     compute_microscope_position,
     filter_matched_pairs_by_bounds,
+    process_calibration_image,
+    run_calibration,
 )
 
 __all__ = [
     "AffineTransform2D",
+    "CalibrationError",
     "CalibrationResult",
     "CoordinateSystem",
     "ImageCalibrationResult",
@@ -80,4 +84,6 @@ __all__ = [
     "compute_chamber_center",
     "compute_microscope_position",
     "filter_matched_pairs_by_bounds",
+    "process_calibration_image",
+    "run_calibration",
 ]

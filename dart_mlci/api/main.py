@@ -1,11 +1,8 @@
 """FastAPI application for DMC Masking calibration and image processing."""
 
-import tempfile
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 import numpy as np
-import tifffile
 import torch
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
@@ -670,16 +667,8 @@ async def calibrate_map_endpoint(request: CalibrateRequest) -> CalibrateResponse
     Returns:
         Calibrated CSV map and statistics
     """
-    # Import calibration script
-    import sys
-
     from dart_mlci.api.utils import base64_to_array
-
-    scripts_path = Path(__file__).parent.parent.parent / "scripts"
-    if str(scripts_path) not in sys.path:
-        sys.path.insert(0, str(scripts_path))
-
-    from scripts.calibrate_map import calibrate_map
+    from dart_mlci.calibration import CalibrationError, run_calibration
 
     # Validate number of images (Pydantic should already enforce min_length=3)
     n_images = len(request.calibration_images)
@@ -689,81 +678,88 @@ async def calibrate_map_endpoint(request: CalibrateRequest) -> CalibrateResponse
             error_message=f"At least 3 calibration images required, got {n_images}",
         )
 
-    # Decode all images to temp files
-    settings = get_settings()
-    calibration_images = []
+    # Decode all images to numpy arrays (no temp files)
+    images = []
+    roi_ids = []
+    stage_positions = []
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        for i, img_data in enumerate(request.calibration_images):
-            try:
-                # Decode base64
-                img_array = base64_to_array(img_data.image)
-
-                # Save to temp file (calibrate_map expects file paths)
-                img_path = Path(tmpdir) / f"image_{i}.tif"
-                tifffile.imwrite(str(img_path), img_array)
-
-                # Build calibration image entry
-                calibration_images.append(
-                    {
-                        "image_path": str(img_path),
-                        "roi_id": img_data.roi_id,
-                        "stage_position": {
-                            "x": img_data.stage_position.x,
-                            "y": img_data.stage_position.y,
-                            "z": img_data.stage_position.z,
-                        },
-                    }
-                )
-            except Exception as e:
-                return CalibrateResponse(
-                    success=False,
-                    error_message=f"Failed to decode calibration image {i}: {e}",
-                )
-
-        # Resolve chip config path from registry
-        registry = getattr(app.state, "chip_registry", {})
-        chip_key = request.chip_name.lower()
-        if chip_key not in registry:
-            available = sorted(registry.keys())
-            return CalibrateResponse(
-                success=False,
-                error_message=f"Unknown chip '{request.chip_name}'. Available: {available}",
-            )
-        chip_lib = registry[chip_key]
-        if chip_lib.source_path is None:
-            return CalibrateResponse(
-                success=False,
-                error_message=f"Chip '{request.chip_name}' has no source path",
-            )
-
-        # Build full config dict — chip_config_path provides both
-        # the blueprint map and the structure library
-        full_config = {
-            "calibration_images": calibration_images,
-            "pixel_size": request.pixel_size,
-            "chip_config_path": str(chip_lib.source_path),
-        }
-
-        if request.model_path:
-            full_config["model_path"] = request.model_path
-        else:
-            full_config["model_path"] = settings.model_path
-
-        if settings.device:
-            full_config["device"] = settings.device
-
-        # Run calibration
+    for i, img_data in enumerate(request.calibration_images):
         try:
-            result, _blueprint_map = calibrate_map(
-                config=full_config,
-                verbose=False,
-            )
+            images.append(base64_to_array(img_data.image))
         except Exception as e:
             return CalibrateResponse(
                 success=False,
-                error_message=f"Calibration failed: {e}",
+                error_message=f"Failed to decode calibration image {i}: {e}",
             )
+        roi_ids.append(img_data.roi_id)
+        stage_positions.append(
+            {
+                "x": img_data.stage_position.x,
+                "y": img_data.stage_position.y,
+                "z": img_data.stage_position.z,
+            }
+        )
+
+    # Resolve chip config from registry
+    registry = getattr(app.state, "chip_registry", {})
+    chip_key = request.chip_name.lower()
+    if chip_key not in registry:
+        available = sorted(registry.keys())
+        return CalibrateResponse(
+            success=False,
+            error_message=f"Unknown chip '{request.chip_name}'. Available: {available}",
+        )
+    chip_lib = registry[chip_key]
+
+    # Load blueprint map from chip config
+    blueprint_map = chip_lib.get_blueprint_map()
+
+    # Get detection step
+    detection_step = getattr(app.state, "detection_step", None)
+    if detection_step is None:
+        return CalibrateResponse(
+            success=False,
+            error_message="Model not loaded - check DART_MODEL_PATH configuration",
+        )
+
+    # Run calibration directly with numpy arrays
+    try:
+        result = run_calibration(
+            images=images,
+            roi_ids=roi_ids,
+            stage_positions=stage_positions,
+            detection_step=detection_step,
+            structure_library=chip_lib,
+            blueprint_map=blueprint_map,
+            pixel_size=request.pixel_size,
+        )
+    except (CalibrationError, ValueError) as e:
+        # Extract per-image results from CalibrationError
+        error_image_results = []
+        raw_results = getattr(e, "image_results", None)
+        if raw_results:
+            for img_result in raw_results:
+                pos = None
+                if img_result.microscope_position is not None:
+                    pos = img_result.microscope_position.tolist()
+                error_image_results.append(
+                    ImageResultInfo(
+                        roi_id=img_result.roi_id,
+                        success=img_result.success,
+                        error_message=img_result.error_message,
+                        microscope_position=pos,
+                    )
+                )
+        return CalibrateResponse(
+            success=False,
+            error_message=f"Calibration failed: {e}",
+            image_results=error_image_results if error_image_results else None,
+        )
+    except Exception as e:
+        return CalibrateResponse(
+            success=False,
+            error_message=f"Calibration failed: {e}",
+        )
 
     # Convert calibrated map to typed objects
     calibrated_map = []

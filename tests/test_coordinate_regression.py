@@ -37,8 +37,8 @@ class TestComputeChamberCenterRegression(unittest.TestCase):
         """
         from shapely.geometry import box
 
+        from dart_mlci.calibration import compute_chamber_center
         from dart_mlci.mask import RoIPolygon
-        from scripts.calibrate_map import compute_chamber_center
 
         # Create simple test polygon (100x100 pixels)
         polygon = RoIPolygon(box(0, 0, 100, 100))
@@ -206,8 +206,8 @@ class TestFilterMatchedPairsByBounds(unittest.TestCase):
         """Pairs that would place RoI outside image should be filtered."""
         from shapely.geometry import box
 
+        from dart_mlci.calibration import filter_matched_pairs_by_bounds
         from dart_mlci.mask import RoIPolygon
-        from scripts.calibrate_map import filter_matched_pairs_by_bounds
 
         # Create a 100x100 polygon
         polygon = RoIPolygon(box(0, 0, 100, 100))

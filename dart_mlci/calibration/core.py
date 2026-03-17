@@ -1,7 +1,8 @@
 """Core calibration dataclasses and functions.
 
 This module provides the core data structures and computation functions
-for the calibration pipeline.
+for the calibration pipeline, including per-image processing and the
+full calibration orchestration.
 """
 
 from dataclasses import dataclass, field
@@ -9,7 +10,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import numpy.typing as npt
 
-from dart_mlci.map import AffineTransformResult, Map
+from dart_mlci.map import AffineTransformResult, Map, RoIPosition
 from dart_mlci.mask import RoIPolygon
 
 
@@ -250,3 +251,333 @@ def compute_microscope_position(
     z_position = stage_position.get("z")
 
     return np.array([microscope_x, microscope_y]), z_position
+
+
+def process_calibration_image(
+    image: np.ndarray,
+    roi_id: str,
+    stage_position: dict[str, float],
+    detection_step,
+    structure_library,
+    pixel_size: float,
+    verbose: bool = False,
+    collect_debug: bool = False,
+    conf_threshold: float = 0.5,
+    max_angle_deviation: float = 5.0,
+) -> ImageCalibrationResult:
+    """Process a single calibration image from a numpy array.
+
+    Args:
+        image: HxWx3 uint8 image array (already loaded into memory)
+        roi_id: RoI identifier (e.g., "0050")
+        stage_position: Stage position dict with x, y, and optionally z
+        detection_step: MarkerDetectionStep instance
+        structure_library: ChipStructureLibrary or SAKRoIStructureLibrary
+        pixel_size: Pixel size in microns
+        verbose: Print progress information
+        collect_debug: Collect debug data for visualization
+        conf_threshold: Minimum confidence for detected markers (default: 0.5)
+        max_angle_deviation: Maximum allowed range (in degrees) between rotation
+            angles from different marker pairs. If exceeded, the image is
+            rejected. (default: 5.0)
+
+    Returns:
+        ImageCalibrationResult with microscope position or error
+    """
+    from dart_mlci import MarkerMatchingStep
+    from dart_mlci.rotation import compute_marker_group_angles
+
+    debug_data = ImageDebugData(stage_position=stage_position) if collect_debug else None
+
+    try:
+        # 1. Auto-detect chamber type from roi_id
+        structure_name, roi_polygon, marker_group_pixels = structure_library(roi_id)
+
+        if verbose:
+            print(f"    - Chamber type: {structure_name}")
+
+        if debug_data:
+            debug_data.structure_name = structure_name
+            debug_data.roi_polygon = roi_polygon
+            debug_data.marker_group_pixels = marker_group_pixels
+            debug_data.image = image
+
+        # 2. Create matching step for this chamber type
+        matching_step = MarkerMatchingStep(marker_group_pixels, tolerance=60)
+
+        # 3. Detect markers
+        detection_result = detection_step(image)
+        markers = detection_result["markers"]
+
+        # Filter markers by confidence threshold
+        markers = [m for m in markers if m.get("conf", 0.0) >= conf_threshold]
+        detection_result["markers"] = markers
+
+        if verbose:
+            print(f"    - Markers detected: {len(markers)} (conf >= {conf_threshold})")
+
+        if debug_data:
+            debug_data.markers = markers
+
+        if not markers:
+            return ImageCalibrationResult(
+                roi_id=roi_id,
+                success=False,
+                microscope_position=None,
+                z_position=None,
+                error_message="DETECTION: No markers found",
+                debug_data=debug_data,
+            )
+
+        # 4. Match markers
+        matching_result = matching_step(detection_result)
+        matched_indices = matching_result["matched_marker_indices"]
+
+        if verbose:
+            print(f"    - Pairs matched: {len(matched_indices)}")
+
+        if debug_data:
+            debug_data.matched_indices = matched_indices
+
+        if not matched_indices:
+            return ImageCalibrationResult(
+                roi_id=roi_id,
+                success=False,
+                microscope_position=None,
+                z_position=None,
+                error_message="MATCHING: No marker pairs matched",
+                debug_data=debug_data,
+            )
+
+        # 5. Compute rotation angle from detected markers
+        angles = compute_marker_group_angles(
+            markers, matched_indices, marker_group_pixels, signed=True
+        )
+
+        # Check angle consistency across pairs
+        if len(angles) >= 2:
+            angle_range = max(angles) - min(angles)
+            if angle_range > max_angle_deviation:
+                return ImageCalibrationResult(
+                    roi_id=roi_id,
+                    success=False,
+                    microscope_position=None,
+                    z_position=None,
+                    error_message=(
+                        f"ANGLES: Inconsistent rotation angles "
+                        f"(range={angle_range:.2f}° > {max_angle_deviation:.1f}°)"
+                    ),
+                    debug_data=debug_data,
+                )
+
+        rotation_angle = np.mean(angles)
+
+        if verbose:
+            print(f"    - Rotation angle: {rotation_angle:.2f}°")
+
+        if debug_data:
+            debug_data.rotation_angle = rotation_angle
+
+        # 6. Filter matched pairs to keep only those with RoI fully in image bounds
+        matched_indices = filter_matched_pairs_by_bounds(
+            markers=markers,
+            matched_indices=matched_indices,
+            marker_group_pixels=marker_group_pixels,
+            roi_polygon=roi_polygon,
+            image_shape=image.shape[:2],
+            rotation_angle=rotation_angle,
+        )
+
+        if verbose:
+            print(f"    - Valid pairs (in bounds): {len(matched_indices)}")
+
+        if not matched_indices:
+            return ImageCalibrationResult(
+                roi_id=roi_id,
+                success=False,
+                microscope_position=None,
+                z_position=None,
+                error_message="BOUNDS: No marker pairs with RoI fully in image bounds",
+                debug_data=debug_data,
+            )
+
+        # Update debug data with filtered indices
+        if debug_data:
+            debug_data.matched_indices = matched_indices
+
+        # 7. Compute chamber center in pixels (with rotation correction)
+        chamber_center_pixels = compute_chamber_center(
+            markers, matched_indices, marker_group_pixels, roi_polygon, rotation_angle
+        )
+
+        # 8. Convert to microns and compute microscope position
+        chamber_center_microns = chamber_center_pixels * pixel_size
+        microscope_x = stage_position["x"] + chamber_center_microns[0]
+        microscope_y = stage_position["y"] + chamber_center_microns[1]
+        z_position = stage_position.get("z", 0.0)
+
+        microscope_position = np.array([microscope_x, microscope_y])
+
+        if verbose:
+            print(
+                f"    - Chamber center (px): "
+                f"({chamber_center_pixels[0]:.1f}, {chamber_center_pixels[1]:.1f})"
+            )
+            print(
+                f"    - Stage position: "
+                f"({stage_position['x']:.2f}, {stage_position['y']:.2f}, {z_position:.2f})"
+            )
+            print(f"    - Microscope position: ({microscope_x:.2f}, {microscope_y:.2f})")
+            print("    - Status: SUCCESS")
+
+        if debug_data:
+            debug_data.chamber_center_pixels = chamber_center_pixels
+            debug_data.chamber_center_microns = np.array([microscope_x, microscope_y])
+            debug_data.pixel_size = pixel_size
+
+        return ImageCalibrationResult(
+            roi_id=roi_id,
+            success=True,
+            microscope_position=microscope_position,
+            z_position=z_position,
+            error_message=None,
+            debug_data=debug_data,
+        )
+
+    except Exception as e:
+        return ImageCalibrationResult(
+            roi_id=roi_id,
+            success=False,
+            microscope_position=None,
+            z_position=None,
+            error_message=f"ERROR: {e!s}",
+            debug_data=debug_data,
+        )
+
+
+class CalibrationError(ValueError):
+    """Raised when calibration fails, with per-image results attached."""
+
+    def __init__(self, message: str, image_results: list[ImageCalibrationResult]):
+        super().__init__(message)
+        self.image_results = image_results
+
+
+def run_calibration(
+    images: list[np.ndarray],
+    roi_ids: list[str],
+    stage_positions: list[dict[str, float]],
+    detection_step,
+    structure_library,
+    blueprint_map: Map,
+    pixel_size: float,
+    verbose: bool = False,
+    collect_debug: bool = False,
+    conf_threshold: float = 0.5,
+    max_angle_deviation: float = 5.0,
+) -> CalibrationResult:
+    """Run the full calibration pipeline on in-memory images.
+
+    Args:
+        images: List of HxWx3 uint8 image arrays
+        roi_ids: List of RoI identifiers (e.g., ["0050", "0100", "7000"])
+        stage_positions: List of stage position dicts with x, y, and optionally z
+        detection_step: MarkerDetectionStep instance
+        structure_library: ChipStructureLibrary or SAKRoIStructureLibrary
+        blueprint_map: Blueprint map with design-coordinate positions
+        pixel_size: Pixel size in microns
+        verbose: Print progress information
+        collect_debug: Collect debug data for visualizations
+        conf_threshold: Minimum confidence for detected markers (default: 0.5)
+        max_angle_deviation: Maximum allowed angle range in degrees (default: 5.0)
+
+    Returns:
+        CalibrationResult with calibrated map and statistics
+
+    Raises:
+        CalibrationError: If fewer than 3 images succeed (includes image_results)
+    """
+    if verbose:
+        print("[Step 1/3] Processing calibration images")
+
+    image_results: list[ImageCalibrationResult] = []
+
+    for i, (image, roi_id, stage_position) in enumerate(
+        zip(images, roi_ids, stage_positions, strict=True)
+    ):
+        roi_id = str(roi_id).zfill(4)  # Ensure 4-digit format
+
+        if verbose:
+            print(f"  Image {i + 1}/{len(images)}")
+            print(f"    - RoI ID: {roi_id}")
+
+        result = process_calibration_image(
+            image=image,
+            roi_id=roi_id,
+            stage_position=stage_position,
+            detection_step=detection_step,
+            structure_library=structure_library,
+            pixel_size=pixel_size,
+            verbose=verbose,
+            collect_debug=collect_debug,
+            conf_threshold=conf_threshold,
+            max_angle_deviation=max_angle_deviation,
+        )
+
+        image_results.append(result)
+
+        if not result.success and verbose:
+            print(f"    - Status: FAILED - {result.error_message}")
+
+    if verbose:
+        print()
+
+    # Build measured map from successful calibrations
+    successful_results = [r for r in image_results if r.success]
+
+    if len(successful_results) < 3:
+        raise CalibrationError(
+            f"Need at least 3 successful calibration images for affine transform, "
+            f"got {len(successful_results)}",
+            image_results=image_results,
+        )
+
+    measured_positions = [
+        RoIPosition(roi_id=r.roi_id, position=r.microscope_position) for r in successful_results
+    ]
+    measured_map = Map(measured_positions)
+
+    # Store z positions for later
+    z_positions = {r.roi_id: r.z_position for r in successful_results if r.z_position is not None}
+
+    # Compute affine transform from blueprint to measured
+    if verbose:
+        print("[Step 2/3] Computing affine transform")
+        print(f"  Calibration points: {len(successful_results)}")
+
+    transform_result = blueprint_map.compute_affine_transform(measured_map)
+
+    if verbose:
+        print(f"  RMSE: {transform_result.rmse:.3f} microns")
+        print(f"  Max error: {transform_result.max_error:.3f} microns")
+        print()
+
+    # Apply transform to full blueprint map
+    if verbose:
+        print("[Step 3/3] Applying transform")
+        print(f"  Transformed {len(blueprint_map.roi_positions)} chamber positions")
+        print()
+
+    calibrated_map = blueprint_map.apply_transform(transform_result)
+
+    if verbose:
+        print("=== Calibration Complete ===")
+        print()
+
+    return CalibrationResult(
+        measured_map=measured_map,
+        transform_result=transform_result,
+        calibrated_map=calibrated_map,
+        image_results=image_results,
+        z_positions=z_positions,
+    )
