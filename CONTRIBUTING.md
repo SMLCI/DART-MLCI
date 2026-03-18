@@ -4,9 +4,12 @@
 
 ```bash
 # Clone and install in development mode
-git clone <repo-url>
+git clone https://github.com/JojoDevel/dart-mlci.git
 cd dart-mlci
 pip install -e ".[dev]"
+
+# Download model weights and test images
+bash scripts/download_artifacts.sh
 ```
 
 ## Running Tests

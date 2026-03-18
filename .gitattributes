@@ -1,3 +1,2 @@
-*.pt filter=lfs diff=lfs merge=lfs -text
-*.tif filter=lfs diff=lfs merge=lfs -text
-*.png filter=lfs diff=lfs merge=lfs -text
+# Binary artifacts are hosted on Sciebo — see scripts/download_artifacts.sh
+# LFS tracking removed for GitHub compatibility (free tier limits).

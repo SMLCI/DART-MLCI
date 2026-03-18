@@ -13,11 +13,14 @@ coco*
 *.tif
 *.png
 
-# Allow artifacts folder to be tracked (exceptions after ignores)
+# Allow artifacts folder structure to be tracked (JSON/CSV configs stay in git)
 !artifacts/
-!artifacts/**/*.tif
-!artifacts/**/*.png
-!artifacts/**/*.pt
+!artifacts/**/
+!artifacts/**/*.json
+!artifacts/**/*.csv
+# Binary artifacts (models, images) are downloaded via scripts/download_artifacts.sh
+artifacts/models/*.pt
+artifacts/images/
 *.avi
 *.pkl
 *.profile
@@ -158,3 +161,5 @@ dart_experiment/DART_Experiment/
 dart_experiment/DART_Experiment_old/
 dart_experiment/output*/
 validation_output/
+test_docker_integration.py
+TODOs.md

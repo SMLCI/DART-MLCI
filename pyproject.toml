@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "dart"
+name = "dart-mlci"
 version = "0.1.0"
 description = "DART: Real-time microfluidic chamber masking library with marker detection, rotation, cropping, and masking capabilities"
 readme = "README.md"
@@ -86,7 +86,7 @@ include = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v"
+addopts = "-v -m 'not integration'"
 markers = [
     "integration: marks tests as integration tests (require full environment setup)",
 ]

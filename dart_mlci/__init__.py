@@ -7,6 +7,13 @@ Two core capabilities:
      stage coordinates via affine transform.
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("dart-mlci")
+except PackageNotFoundError:
+    __version__ = "0.1.0"
+
 # Constants
 from dart_mlci.chip import ChipConfig as ChipConfig
 from dart_mlci.chip import ChipStructureLibrary as ChipStructureLibrary
@@ -68,6 +75,7 @@ __all__ = [
     "TimelapseProcessor",
     "TimelapseRegistration",
     "TimelapseResult",
+    "__version__",
     "apply_mask",
     "compute_marker_angles",
     "create_segmenter",

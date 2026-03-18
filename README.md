@@ -1,8 +1,11 @@
-![pipeline](https://jugit.fz-juelich.de/emsig/dmc-masking/badges/main/pipeline.svg)
-![coverage](https://jugit.fz-juelich.de/emsig/dmc-masking/badges/main/coverage.svg)
-<!-- [![codecov](https://codecov.io/gh/OWNER/REPO/graph/badge.svg)](https://codecov.io/gh/OWNER/REPO) -->
+<!-- GitLab CI (internal) -->
+![GitLab pipeline](https://jugit.fz-juelich.de/emsig/dmc-masking/badges/main/pipeline.svg)
+![GitLab coverage](https://jugit.fz-juelich.de/emsig/dmc-masking/badges/main/coverage.svg)
+<!-- GitHub CI (public) -->
+![GitHub CI](https://github.com/JojoDevel/dart-mlci/actions/workflows/ci.yml/badge.svg)
+[![codecov](https://codecov.io/gh/JojoDevel/dart-mlci/branch/main/graph/badge.svg)](https://codecov.io/gh/JojoDevel/dart-mlci)
 
-# DART
+# DART-MLCI
 
 Real-time microfluidic chamber image processing library with two core capabilities:
 masking pipeline (marker detection, rotation correction, polygon masking, and cropping)
@@ -19,6 +22,9 @@ pip install ".[api]"
 
 # Development (tests, linting)
 pip install ".[dev]"
+
+# Download model weights and test images (hosted on Sciebo)
+bash scripts/download_artifacts.sh
 ```
 
 ## Usage
@@ -281,12 +287,12 @@ This detects markers in the first frame of each subfolder and compares the detec
 
 ## Citation
 
-If you use DART in your research, please cite:
+If you use DART-MLCI in your research, please cite:
 
 ```
-@software{dart,
+@software{dart-mlci,
   author  = {Seiffarth, Johannes},
-  title   = {DART: Real-time microfluidic chamber image processing},
+  title   = {DART-MLCI: Real-time microfluidic chamber image processing},
   year    = {2025},
   url     = {https://github.com/JojoDevel/dart-mlci}
 }

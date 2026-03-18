@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+title: "DART-MLCI: Real-time Microfluidic Chamber Image Processing"
+message: "If you use this software, please cite it as below."
+type: software
+authors:
+  - given-names: Johannes
+    family-names: Seiffarth
+    affiliation: Forschungszentrum Jülich GmbH
+    email: j.seiffarth@fz-juelich.de
+version: 0.1.0
+license: MIT
+repository-code: https://github.com/JojoDevel/dart-mlci
