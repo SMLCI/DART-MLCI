@@ -15,6 +15,13 @@ except PackageNotFoundError:
     __version__ = "0.1.0"
 
 # Constants
+# Analysis
+from dart_mlci.analysis import ExponentialFitResult as ExponentialFitResult
+from dart_mlci.analysis import compute_growth_stats as compute_growth_stats
+from dart_mlci.analysis import discover_cells_csvs as discover_cells_csvs
+from dart_mlci.analysis import filter_cells_by_area as filter_cells_by_area
+from dart_mlci.analysis import fit_exponential_growth as fit_exponential_growth
+from dart_mlci.analysis import load_cells_data as load_cells_data
 from dart_mlci.chip import ChipConfig as ChipConfig
 from dart_mlci.chip import ChipStructureLibrary as ChipStructureLibrary
 from dart_mlci.chip import create_structure_library as create_structure_library
@@ -59,6 +66,7 @@ __all__ = [
     "ChamberPipelineCache",
     "ChipConfig",
     "ChipStructureLibrary",
+    "ExponentialFitResult",
     "FrameResult",
     "ImageRotationStep",
     "MarkerDetectionModel",
@@ -77,10 +85,15 @@ __all__ = [
     "TimelapseResult",
     "__version__",
     "apply_mask",
+    "compute_growth_stats",
     "compute_marker_angles",
     "create_segmenter",
     "create_structure_library",
+    "discover_cells_csvs",
     "extract_data",
+    "filter_cells_by_area",
     "filter_segmentation_by_mask",
+    "fit_exponential_growth",
+    "load_cells_data",
     "load_chip_config",
 ]
