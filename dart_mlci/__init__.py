@@ -17,10 +17,12 @@ except PackageNotFoundError:
 # Constants
 # Analysis
 from dart_mlci.analysis import ExponentialFitResult as ExponentialFitResult
+from dart_mlci.analysis import LogisticFitResult as LogisticFitResult
 from dart_mlci.analysis import compute_growth_stats as compute_growth_stats
 from dart_mlci.analysis import discover_cells_csvs as discover_cells_csvs
 from dart_mlci.analysis import filter_cells_by_area as filter_cells_by_area
 from dart_mlci.analysis import fit_exponential_growth as fit_exponential_growth
+from dart_mlci.analysis import fit_logistic_growth as fit_logistic_growth
 from dart_mlci.analysis import load_cells_data as load_cells_data
 from dart_mlci.chip import ChipConfig as ChipConfig
 from dart_mlci.chip import ChipStructureLibrary as ChipStructureLibrary
@@ -69,6 +71,7 @@ __all__ = [
     "ExponentialFitResult",
     "FrameResult",
     "ImageRotationStep",
+    "LogisticFitResult",
     "MarkerDetectionModel",
     "MarkerDetectionStep",
     "MarkerMatchingStep",
@@ -94,6 +97,7 @@ __all__ = [
     "filter_cells_by_area",
     "filter_segmentation_by_mask",
     "fit_exponential_growth",
+    "fit_logistic_growth",
     "load_cells_data",
     "load_chip_config",
 ]

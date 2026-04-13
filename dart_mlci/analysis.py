@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from scipy.optimize import curve_fit
 
 CELLS_CSV_REQUIRED_COLUMNS = {"timepoint", "cell_id", "area_px", "area_um2"}
 
@@ -135,4 +136,91 @@ def fit_exponential_growth(
         doubling_time=doubling_time,
         r_squared=r_squared,
         fitted_values=fitted_values,
+    )
+
+
+@dataclasses.dataclass
+class LogisticFitResult:
+    """Result of logistic growth fit."""
+
+    n0: float
+    """Estimated initial population."""
+    growth_rate: float
+    """Intrinsic growth rate r."""
+    doubling_time: float
+    """Doubling time = ln(2)/r.  ``inf`` when r ≤ 0."""
+    carrying_capacity: float
+    """Carrying capacity K (the plateau)."""
+    r_squared: float
+    """Coefficient of determination on the original scale."""
+    fitted_values: np.ndarray
+    """Fitted counts at each input timepoint."""
+
+
+def fit_logistic_growth(
+    timepoints: np.ndarray | list,
+    counts: np.ndarray | list,
+) -> LogisticFitResult:
+    """Fit logistic growth model: N(t) = K / (1 + ((K - N₀)/N₀) · exp(-r·t)).
+
+    Timepoints with count ≤ 0 are skipped.
+
+    Raises ``ValueError`` if fewer than 3 valid data points remain or if the
+    optimiser fails to converge.
+    """
+    t = np.asarray(timepoints, dtype=float)
+    n = np.asarray(counts, dtype=float)
+
+    valid = n > 0
+    t_valid = t[valid]
+    n_valid = n[valid]
+
+    if len(t_valid) < 3:
+        raise ValueError("Need at least 3 timepoints with positive counts for logistic fit")
+
+    def _logistic(t, n0, r, K):
+        return K / (1.0 + ((K - n0) / n0) * np.exp(-r * t))
+
+    # Initial guesses
+    n0_guess = float(np.min(n_valid[: max(1, len(n_valid) // 4 + 1)]))
+    K_guess = float(np.max(n_valid)) * 1.1
+
+    # Estimate r from log-slope of first half
+    half = max(2, len(t_valid) // 2)
+    t_half = t_valid[:half]
+    n_half = n_valid[:half]
+    log_n_half = np.log(n_half)
+    slope, _ = np.polyfit(t_half, log_n_half, 1)
+    r_guess = max(slope, 0.01)
+
+    try:
+        popt, _ = curve_fit(
+            _logistic,
+            t_valid,
+            n_valid,
+            p0=[n0_guess, r_guess, K_guess],
+            bounds=(0, np.inf),
+            maxfev=10000,
+        )
+    except RuntimeError as e:
+        raise ValueError(f"Logistic fit failed to converge: {e}") from e
+
+    n0_fit, r_fit, K_fit = popt
+    doubling_time = np.log(2) / r_fit if r_fit > 0 else float("inf")
+
+    fitted_all = _logistic(t, n0_fit, r_fit, K_fit)
+
+    # R² on original scale (using valid points only)
+    fitted_valid = _logistic(t_valid, n0_fit, r_fit, K_fit)
+    ss_res = np.sum((n_valid - fitted_valid) ** 2)
+    ss_tot = np.sum((n_valid - np.mean(n_valid)) ** 2)
+    r_squared = 1.0 - ss_res / ss_tot if ss_tot > 0 else 1.0
+
+    return LogisticFitResult(
+        n0=n0_fit,
+        growth_rate=r_fit,
+        doubling_time=doubling_time,
+        carrying_capacity=K_fit,
+        r_squared=r_squared,
+        fitted_values=fitted_all,
     )

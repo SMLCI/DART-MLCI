@@ -20,6 +20,7 @@ from dart_mlci.analysis import (
     discover_cells_csvs,
     filter_cells_by_area,
     fit_exponential_growth,
+    fit_logistic_growth,
     load_cells_data,
 )
 
@@ -64,6 +65,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--show", action="store_true", help="Display plots interactively")
     parser.add_argument("--folders", nargs="+", default=None, help="Filter to specific subfolders")
     parser.add_argument("--separate", action="store_true", help="One figure per ROI")
+    parser.add_argument(
+        "--model",
+        choices=["logistic", "exponential"],
+        default="logistic",
+        help="Growth model for fitting (default: logistic)",
+    )
 
     return parser.parse_args(argv)
 
@@ -205,9 +212,10 @@ def _plot_single(label, data, args, save_dir, x_label, color_idx=0):
 
 
 def _overlay_fit(ax, t, counts, color, label, args):
-    """Fit exponential and overlay on axis."""
+    """Fit growth model and overlay on axis."""
+    fit_func = fit_logistic_growth if args.model == "logistic" else fit_exponential_growth
     try:
-        result = fit_exponential_growth(t, counts)
+        result = fit_func(t, counts)
     except ValueError:
         return
 
@@ -215,11 +223,14 @@ def _overlay_fit(ax, t, counts, color, label, args):
 
     rate_unit = "/min" if args.time_interval else "/tp"
     dt_unit = "min" if args.time_interval else "tp"
+    rate_label = "r" if args.model == "logistic" else "λ"
     annotation = (
-        f"λ={result.growth_rate:.4f}{rate_unit}\n"
+        f"{rate_label}={result.growth_rate:.4f}{rate_unit}\n"
         f"t₂={result.doubling_time:.1f} {dt_unit}\n"
         f"R²={result.r_squared:.3f}"
     )
+    if args.model == "logistic":
+        annotation += f"\nK={result.carrying_capacity:.1f}"
     ax.annotate(
         annotation,
         xy=(0.02, 0.98),
@@ -233,12 +244,17 @@ def _overlay_fit(ax, t, counts, color, label, args):
 
 def _print_summary(datasets, args):
     """Print a summary table to stdout."""
+    rate_col = "r" if args.model == "logistic" else "λ"
     print(f"\n{'Label':<30} {'Timepoints':>10} {'Max Count':>10} {'Max Area µm²':>12}", end="")
     if args.fit:
-        print(f" {'λ':>10} {'t_double':>10} {'R²':>8}", end="")
+        print(f" {rate_col:>10} {'t_double':>10} {'R²':>8}", end="")
+        if args.model == "logistic":
+            print(f" {'K':>10}", end="")
     print()
-    print("-" * (72 + (28 if args.fit else 0)))
+    fit_width = 28 + (10 if args.model == "logistic" else 0) if args.fit else 0
+    print("-" * (72 + fit_width))
 
+    fit_func = fit_logistic_growth if args.model == "logistic" else fit_exponential_growth
     for label, data in datasets.items():
         stats = data["stats"]
         t = _timepoints(stats, args)
@@ -246,10 +262,14 @@ def _print_summary(datasets, args):
 
         if args.fit:
             try:
-                result = fit_exponential_growth(t, stats["cell_count"].values)
+                result = fit_func(t, stats["cell_count"].values)
                 line += f" {result.growth_rate:>10.4f} {result.doubling_time:>10.1f} {result.r_squared:>8.3f}"
+                if args.model == "logistic":
+                    line += f" {result.carrying_capacity:>10.1f}"
             except ValueError:
                 line += f" {'N/A':>10} {'N/A':>10} {'N/A':>8}"
+                if args.model == "logistic":
+                    line += f" {'N/A':>10}"
 
         print(line)
 

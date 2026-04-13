@@ -8,10 +8,12 @@ import pytest
 
 from dart_mlci.analysis import (
     ExponentialFitResult,
+    LogisticFitResult,
     compute_growth_stats,
     discover_cells_csvs,
     filter_cells_by_area,
     fit_exponential_growth,
+    fit_logistic_growth,
     load_cells_data,
 )
 
@@ -228,3 +230,55 @@ class TestFitExponentialGrowth:
         result = fit_exponential_growth(t, counts)
         assert result.growth_rate > 0
         assert len(result.fitted_values) == len(t)
+
+
+# ---------------------------------------------------------------------------
+# TestFitLogisticGrowth
+# ---------------------------------------------------------------------------
+
+
+class TestFitLogisticGrowth:
+    def test_perfect_logistic(self):
+        """Exact logistic data should give R²≈1 and recover parameters."""
+        n0, r, K = 10.0, 0.05, 1000.0
+        t = np.arange(100, dtype=float)
+        counts = K / (1.0 + ((K - n0) / n0) * np.exp(-r * t))
+        result = fit_logistic_growth(t, counts)
+        assert isinstance(result, LogisticFitResult)
+        assert result.r_squared > 0.999
+        np.testing.assert_allclose(result.n0, n0, rtol=0.05)
+        np.testing.assert_allclose(result.growth_rate, r, rtol=0.05)
+        np.testing.assert_allclose(result.carrying_capacity, K, rtol=0.05)
+
+    def test_noisy_data(self):
+        """Noisy logistic data should still fit reasonably."""
+        rng = np.random.default_rng(42)
+        n0, r, K = 20.0, 0.08, 500.0
+        t = np.arange(80, dtype=float)
+        counts = K / (1.0 + ((K - n0) / n0) * np.exp(-r * t))
+        counts = counts * (1 + 0.05 * rng.standard_normal(len(t)))
+        counts = np.maximum(counts, 1)
+        result = fit_logistic_growth(t, counts)
+        assert result.r_squared > 0.95
+
+    def test_too_few_points(self):
+        """Fewer than 3 points should raise ValueError."""
+        with pytest.raises(ValueError, match="at least 3"):
+            fit_logistic_growth([0, 1], [5, 10])
+
+    def test_doubling_time(self):
+        """Doubling time should equal ln(2)/r."""
+        n0, r, K = 10.0, 0.1, 1000.0
+        t = np.arange(100, dtype=float)
+        counts = K / (1.0 + ((K - n0) / n0) * np.exp(-r * t))
+        result = fit_logistic_growth(t, counts)
+        expected_dt = np.log(2) / r
+        np.testing.assert_allclose(result.doubling_time, expected_dt, rtol=0.05)
+
+    def test_carrying_capacity_recovery(self):
+        """Carrying capacity K should be recovered near true value."""
+        n0, r, K = 5.0, 0.06, 800.0
+        t = np.arange(120, dtype=float)
+        counts = K / (1.0 + ((K - n0) / n0) * np.exp(-r * t))
+        result = fit_logistic_growth(t, counts)
+        np.testing.assert_allclose(result.carrying_capacity, K, rtol=0.05)
