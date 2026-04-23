@@ -30,36 +30,40 @@ import pandas as pd
 DATA_DIR = Path("/mnt/ibg-1_omerostorage/2025_02_21/mapping/data/output-2025-02-25_16:10:00")
 META_CSV = DATA_DIR / "meta.csv"
 
-# Calibration images (from calibration_test.json)
-CALIBRATION_IMAGES = [
-    {
-        "image_file": "b8d19459-1e7c-435a-9afe-ddf0a8defe93.tif",
-        "roi_id": "0000",
-        "stage_position": {
-            "x": 6802.400101363659,
-            "y": -4272.900063671172,
-            "z": 2942.5750438477844,
-        },
-    },
-    {
-        "image_file": "12bf3a67-8cd2-4bf8-bb7a-7559a7090550.tif",
-        "roi_id": "7000",
-        "stage_position": {
-            "x": 6691.900099717081,
-            "y": 2697.8000402003527,
-            "z": 2937.400043770671,
-        },
-    },
-    {
-        "image_file": "6faf8511-c2fc-487f-ba72-578a982408ac.tif",
-        "roi_id": "7040",
-        "stage_position": {
-            "x": 2463.4000367075205,
-            "y": 2647.0000394433737,
-            "z": 2951.0000439733267,
-        },
-    },
-]
+# Calibration roi_ids — image_file and stage_position are resolved from
+# meta.csv at runtime to guarantee the association stays correct.
+CALIBRATION_ROI_IDS = ["0000", "7000", "7129"]
+
+
+def resolve_calibration_images(meta_df: pd.DataFrame) -> list[dict]:
+    """Look up image_file and stage_position for each calibration roi_id.
+
+    Raises ValueError if a roi_id is missing or matches multiple rows.
+    """
+    resolved = []
+    for roi_id in CALIBRATION_ROI_IDS:
+        rows = meta_df[meta_df["roi_id"] == roi_id]
+        if len(rows) == 0:
+            raise ValueError(f"Calibration roi_id {roi_id!r} not found in meta.csv")
+        if len(rows) > 1:
+            raise ValueError(
+                f"Calibration roi_id {roi_id!r} matches {len(rows)} rows in meta.csv; "
+                f"expected exactly one"
+            )
+        row = rows.iloc[0]
+        resolved.append(
+            {
+                "image_file": row["image_file"],
+                "roi_id": roi_id,
+                "stage_position": {
+                    "x": float(row["position_x"]),
+                    "y": float(row["position_y"]),
+                    "z": float(row["position_z"]),
+                },
+            }
+        )
+    return resolved
+
 
 PIXEL_SIZE = 0.065789
 N_VALIDATION = 20
@@ -113,10 +117,10 @@ def select_validation_images(
     return candidates.iloc[selected_indices]
 
 
-def build_calibration_config(image_dir: str = "images") -> dict:
+def build_calibration_config(calibration_images: list[dict], image_dir: str = "images") -> dict:
     """Build calibration_config.json content."""
     cal_images = []
-    for img in CALIBRATION_IMAGES:
+    for img in calibration_images:
         cal_images.append(
             {
                 "image_path": f"{image_dir}/{img['image_file']}",
@@ -149,6 +153,7 @@ def create_zip(
     output_path: Path,
     meta_df: pd.DataFrame,
     data_dir: Path,
+    calibration_images: list[dict],
     verbose: bool = False,
 ) -> None:
     """Create a zip file with calibration data.
@@ -161,37 +166,53 @@ def create_zip(
     """
     prefix = "calibration_data"
 
+    # Map each source filename -> roi-id-prefixed filename (e.g. "7030.tif").
+    # meta.csv is rewritten so image_file matches the new names in images/.
+    meta_df = meta_df.copy()
+    rename_map: dict[str, str] = {}
+    for _, row in meta_df.iterrows():
+        src_name = row["image_file"]
+        ext = Path(src_name).suffix or ".tif"
+        new_name = f"{row['roi_id']}{ext}"
+        if src_name in rename_map and rename_map[src_name] != new_name:
+            raise ValueError(
+                f"Image {src_name} is referenced by multiple roi_ids; cannot rename uniquely"
+            )
+        rename_map[src_name] = new_name
+    meta_df["image_file"] = meta_df["image_file"].map(rename_map)
+
+    # Mirror the rename into the calibration_images list used by the config
+    renamed_calibration_images = [
+        {**img, "image_file": rename_map[img["image_file"]]} for img in calibration_images
+    ]
+
     with zipfile.ZipFile(output_path, "w", zipfile.ZIP_STORED) as zf:
-        # Write configs
-        cal_config = build_calibration_config(image_dir="images")
+        cal_config = build_calibration_config(renamed_calibration_images, image_dir="images")
         zf.writestr(
             f"{prefix}/calibration_config.json",
-            json.dumps(cal_config, indent=2),
+            json.dumps(cal_config, indent=2) + "\n",
         )
 
         val_config = build_validation_config()
         zf.writestr(
             f"{prefix}/validation_config.json",
-            json.dumps(val_config, indent=2),
+            json.dumps(val_config, indent=2) + "\n",
         )
 
-        # Write meta.csv
-        csv_content = meta_df.to_csv(index=False)
-        zf.writestr(f"{prefix}/meta.csv", csv_content)
+        zf.writestr(f"{prefix}/meta.csv", meta_df.to_csv(index=False))
 
-        # Copy image files
-        image_files = meta_df["image_file"].unique()
-        for i, image_file in enumerate(image_files):
-            src = data_dir / image_file
+        items = list(rename_map.items())
+        for i, (src_name, new_name) in enumerate(items):
+            src = data_dir / src_name
             if not src.exists():
                 print(f"  WARNING: {src} not found, skipping")
                 continue
-            if verbose and (i % 50 == 0 or i == len(image_files) - 1):
-                print(f"  Adding image {i + 1}/{len(image_files)}: {image_file}")
-            zf.write(src, f"{prefix}/images/{image_file}")
+            if verbose and (i % 50 == 0 or i == len(items) - 1):
+                print(f"  Adding image {i + 1}/{len(items)}: {new_name}")
+            zf.write(src, f"{prefix}/images/{new_name}")
 
     size_mb = output_path.stat().st_size / (1024 * 1024)
-    print(f"  Created {output_path} ({size_mb:.1f} MB, {len(image_files)} images)")
+    print(f"  Created {output_path} ({size_mb:.1f} MB, {len(rename_map)} images)")
 
 
 def main():
@@ -224,8 +245,11 @@ def main():
     meta_df["roi_id"] = meta_df["roi_id"].apply(lambda rid: f"{int(rid):04d}")
     print(f"  {len(meta_df)} images total")
 
-    # Identify calibration image files
-    cal_files = {img["image_file"] for img in CALIBRATION_IMAGES}
+    # Resolve calibration image_file + stage_position from meta.csv
+    calibration_images = resolve_calibration_images(meta_df)
+    cal_files = {img["image_file"] for img in calibration_images}
+    for img in calibration_images:
+        print(f"  roi {img['roi_id']} -> {img['image_file']}")
 
     # Select validation images for subset
     print("Selecting spatially distributed validation images...")
@@ -241,13 +265,13 @@ def main():
     # Create subset zip
     print("\nCreating subset zip...")
     subset_path = args.output_dir / "calibration_data_subset.zip"
-    create_zip(subset_path, subset_df, DATA_DIR, verbose=args.verbose)
+    create_zip(subset_path, subset_df, DATA_DIR, calibration_images, verbose=args.verbose)
 
     if not args.subset_only:
         # Create full zip
         print("\nCreating full zip...")
         full_path = args.output_dir / "calibration_data_full.zip"
-        create_zip(full_path, meta_df, DATA_DIR, verbose=args.verbose)
+        create_zip(full_path, meta_df, DATA_DIR, calibration_images, verbose=args.verbose)
 
     print("\nDone! Upload the zip files to sciebo and update the URLs in reproduce.sh")
 

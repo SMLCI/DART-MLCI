@@ -498,6 +498,118 @@ def save_intermediate_outputs(
         json.dump(params, f, indent=2)
 
 
+# Font sizes for calibration plots — tweak here to rescale all panels at once
+CAL_PLOT_TITLE_FS = 18
+CAL_PLOT_AXIS_LABEL_FS = 16
+CAL_PLOT_TICK_FS = 14
+CAL_PLOT_ANNOT_FS = 10
+CAL_PLOT_LEGEND_FS = 11
+CAL_PLOT_SUPTITLE_FS = 13
+
+
+def _draw_blueprint_panel(ax, blueprint_map: Map, roi_color_map: dict) -> None:
+    ax.set_title("Blueprint Map (Design Coordinates)", fontsize=CAL_PLOT_TITLE_FS)
+    blueprint_df = blueprint_map.to_df()
+    ax.scatter(
+        blueprint_df["x"],
+        blueprint_df["y"],
+        c="gray",
+        s=20,
+        alpha=0.5,
+        marker="+",
+        label="All chambers",
+    )
+    cal_blueprint = blueprint_df[blueprint_df["roi_id"].isin(roi_color_map.keys())]
+    for _, row in cal_blueprint.iterrows():
+        color = roi_color_map[row["roi_id"]]
+        ax.scatter(
+            row["x"],
+            row["y"],
+            c=color,
+            s=100,
+            marker="+",
+            linewidths=2,
+            label=row["roi_id"],
+            zorder=5,
+        )
+        ax.annotate(
+            row["roi_id"],
+            (row["x"], row["y"]),
+            xytext=(5, 5),
+            textcoords="offset points",
+            fontsize=CAL_PLOT_ANNOT_FS,
+            color=color,
+        )
+    ax.set_xlabel(r"X ($\mu m$)", fontsize=CAL_PLOT_AXIS_LABEL_FS)
+    ax.set_ylabel(r"Y ($\mu m$)", fontsize=CAL_PLOT_AXIS_LABEL_FS)
+    ax.tick_params(axis="both", which="major", labelsize=CAL_PLOT_TICK_FS)
+    ax.set_aspect("equal")
+    ax.grid(True, alpha=0.3)
+
+
+def _draw_calibrated_panel(
+    ax,
+    blueprint_map: Map,
+    calibrated_map: Map,
+    measured_map: Map,
+    transform_result: AffineTransformResult,
+    roi_color_map: dict,
+) -> None:
+    ax.set_title("Calibrated Map (Microscope Coordinates)", fontsize=CAL_PLOT_TITLE_FS)
+    calibrated_df = calibrated_map.to_df()
+    ax.scatter(
+        calibrated_df["x"],
+        calibrated_df["y"],
+        c="gray",
+        s=20,
+        alpha=0.5,
+        marker="+",
+        label="All chambers",
+    )
+    measured_df = measured_map.to_df()
+    for _, row in measured_df.iterrows():
+        color = roi_color_map[row["roi_id"]]
+        ax.scatter(
+            row["x"],
+            row["y"],
+            c=color,
+            s=100,
+            marker="+",
+            linewidths=2,
+            label=row["roi_id"],
+            zorder=5,
+        )
+    for roi_id in measured_map.roi_positions:
+        blueprint_pos = blueprint_map.roi_positions[roi_id].position
+        transformed_pos = transform_result.transform(blueprint_pos)
+        measured_pos = measured_map.roi_positions[roi_id].position
+        dx = measured_pos[0] - transformed_pos[0]
+        dy = measured_pos[1] - transformed_pos[1]
+        if np.sqrt(dx**2 + dy**2) > 0.1:
+            ax.annotate(
+                "",
+                xy=(measured_pos[0], measured_pos[1]),
+                xytext=(transformed_pos[0], transformed_pos[1]),
+                arrowprops=dict(arrowstyle="->", color="blue", lw=1.5),
+                zorder=4,
+            )
+    for _, row in measured_df.iterrows():
+        color = roi_color_map[row["roi_id"]]
+        ax.annotate(
+            row["roi_id"],
+            (row["x"], row["y"]),
+            xytext=(5, 5),
+            textcoords="offset points",
+            fontsize=CAL_PLOT_ANNOT_FS,
+            color=color,
+        )
+    ax.set_xlabel(r"X ($\mu m$)", fontsize=CAL_PLOT_AXIS_LABEL_FS)
+    ax.set_ylabel(r"Y ($\mu m$)", fontsize=CAL_PLOT_AXIS_LABEL_FS)
+    ax.tick_params(axis="both", which="major", labelsize=CAL_PLOT_TICK_FS)
+    ax.set_aspect("equal")
+    ax.grid(True, alpha=0.3)
+
+
 def plot_calibration_result(
     blueprint_map: Map,
     calibrated_map: Map,
@@ -507,130 +619,20 @@ def plot_calibration_result(
 ) -> None:
     """Generate side-by-side visualization of calibration.
 
-    Args:
-        blueprint_map: Original blueprint map
-        calibrated_map: Transformed map in microscope coordinates
-        measured_map: Map of measured calibration points
-        transform_result: Affine transform result with residuals
-        output_path: Path to save the plot
+    Also exports each panel as a standalone figure alongside ``output_path``
+    (suffixed ``_blueprint`` and ``_calibrated``) for use in publications.
     """
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
-
-    # Get calibration point IDs
     calibration_ids = set(measured_map.roi_positions.keys())
-
-    # Left panel: Blueprint map
-    ax1.set_title("Blueprint Map (Design Coordinates)", fontsize=14)
-
-    # Plot all chambers as gray + markers
-    blueprint_df = blueprint_map.to_df()
-    ax1.scatter(
-        blueprint_df["x"],
-        blueprint_df["y"],
-        c="gray",
-        s=20,
-        alpha=0.5,
-        marker="+",
-        label="All chambers",
-    )
-
-    # Highlight calibration chambers with distinct colors per ROI
-    cal_blueprint = blueprint_df[blueprint_df["roi_id"].isin(calibration_ids)]
     cal_colors = ["#377eb8", "#ff7f00", "#984ea3", "#e41a1c", "#4daf4a"]
     roi_color_map = {
         roi_id: cal_colors[i % len(cal_colors)] for i, roi_id in enumerate(sorted(calibration_ids))
     }
-    for _, row in cal_blueprint.iterrows():
-        color = roi_color_map[row["roi_id"]]
-        ax1.scatter(
-            row["x"],
-            row["y"],
-            c=color,
-            s=100,
-            marker="+",
-            linewidths=2,
-            label=row["roi_id"],
-            zorder=5,
-        )
-        ax1.annotate(
-            row["roi_id"],
-            (row["x"], row["y"]),
-            xytext=(5, 5),
-            textcoords="offset points",
-            fontsize=8,
-            color=color,
-        )
 
-    ax1.set_xlabel(r"X ($\mu m$)")
-    ax1.set_ylabel(r"Y ($\mu m$)")
-    ax1.set_aspect("equal")
-    ax1.grid(True, alpha=0.3)
-
-    # Right panel: Calibrated map
-    ax2.set_title("Calibrated Map (Microscope Coordinates)", fontsize=14)
-
-    # Plot all chambers as gray + markers
-    calibrated_df = calibrated_map.to_df()
-    ax2.scatter(
-        calibrated_df["x"],
-        calibrated_df["y"],
-        c="gray",
-        s=20,
-        alpha=0.5,
-        marker="+",
-        label="All chambers",
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
+    _draw_blueprint_panel(ax1, blueprint_map, roi_color_map)
+    _draw_calibrated_panel(
+        ax2, blueprint_map, calibrated_map, measured_map, transform_result, roi_color_map
     )
-
-    # Plot calibration points (measured positions) with distinct colors per ROI
-    measured_df = measured_map.to_df()
-    for _, row in measured_df.iterrows():
-        color = roi_color_map[row["roi_id"]]
-        ax2.scatter(
-            row["x"],
-            row["y"],
-            c=color,
-            s=100,
-            marker="+",
-            linewidths=2,
-            label=row["roi_id"],
-            zorder=5,
-        )
-
-    # Draw residual arrows from transformed blueprint to measured
-    for roi_id in measured_map.roi_positions:
-        # Get transformed blueprint position
-        blueprint_pos = blueprint_map.roi_positions[roi_id].position
-        transformed_pos = transform_result.transform(blueprint_pos)
-        measured_pos = measured_map.roi_positions[roi_id].position
-
-        # Draw arrow from transformed to measured (residual)
-        dx = measured_pos[0] - transformed_pos[0]
-        dy = measured_pos[1] - transformed_pos[1]
-        if np.sqrt(dx**2 + dy**2) > 0.1:  # Only draw if residual is visible
-            ax2.annotate(
-                "",
-                xy=(measured_pos[0], measured_pos[1]),
-                xytext=(transformed_pos[0], transformed_pos[1]),
-                arrowprops=dict(arrowstyle="->", color="blue", lw=1.5),
-                zorder=4,
-            )
-
-    # Add labels for calibration points
-    for _, row in measured_df.iterrows():
-        color = roi_color_map[row["roi_id"]]
-        ax2.annotate(
-            row["roi_id"],
-            (row["x"], row["y"]),
-            xytext=(5, 5),
-            textcoords="offset points",
-            fontsize=8,
-            color=color,
-        )
-
-    ax2.set_xlabel(r"X ($\mu m$)")
-    ax2.set_ylabel(r"Y ($\mu m$)")
-    ax2.set_aspect("equal")
-    ax2.grid(True, alpha=0.3)
 
     # Decompose affine transform parameters
     origin = transform_result.transform(np.array([0.0, 0.0]))
@@ -650,7 +652,7 @@ def plot_calibration_result(
         f"Matrix: [[{A[0,0]:.4f}, {A[0,1]:.4f}], [{A[1,0]:.4f}, {A[1,1]:.4f}]]"
         f" | RMSE = {transform_result.rmse:.3f} $\\mu m$,"
         f" Max Error = {transform_result.max_error:.3f} $\\mu m$",
-        fontsize=11,
+        fontsize=CAL_PLOT_SUPTITLE_FS,
         y=1.02,
     )
 
@@ -669,12 +671,32 @@ def plot_calibration_result(
         loc="lower center",
         ncol=min(len(unique_labels), 6),
         bbox_to_anchor=(0.5, -0.02),
-        fontsize=9,
+        fontsize=CAL_PLOT_LEGEND_FS,
     )
 
     fig.subplots_adjust(bottom=0.12)
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
-    plt.close()
+    plt.close(fig)
+
+    # Also export each panel as a standalone figure for papers
+    output_path = Path(output_path)
+    stem = output_path.stem
+    suffix = output_path.suffix or ".png"
+    parent = output_path.parent
+
+    fig_bp, ax_bp = plt.subplots(figsize=(8, 8))
+    _draw_blueprint_panel(ax_bp, blueprint_map, roi_color_map)
+    fig_bp.tight_layout()
+    fig_bp.savefig(parent / f"{stem}_blueprint{suffix}", dpi=150, bbox_inches="tight")
+    plt.close(fig_bp)
+
+    fig_cal, ax_cal = plt.subplots(figsize=(8, 8))
+    _draw_calibrated_panel(
+        ax_cal, blueprint_map, calibrated_map, measured_map, transform_result, roi_color_map
+    )
+    fig_cal.tight_layout()
+    fig_cal.savefig(parent / f"{stem}_calibrated{suffix}", dpi=150, bbox_inches="tight")
+    plt.close(fig_cal)
 
 
 def plot_image_debug(
@@ -983,7 +1005,9 @@ def calibrate_map(
 
         # Generate per-image debug visualizations
         images_dir = output_dir / "images"
+        raw_images_dir = output_dir / "raw_images"
         images_dir.mkdir(parents=True, exist_ok=True)
+        raw_images_dir.mkdir(parents=True, exist_ok=True)
 
         for img_result in result.image_results:
             if img_result.debug_data:
@@ -992,8 +1016,14 @@ def calibrate_map(
                     roi_id=img_result.roi_id,
                     output_path=images_dir / f"{img_result.roi_id}_debug.png",
                 )
+                if img_result.debug_data.image is not None:
+                    cv2.imwrite(
+                        str(raw_images_dir / f"{img_result.roi_id}.png"),
+                        img_result.debug_data.image,
+                    )
         if verbose:
             print(f"Per-image debug plots saved to: {images_dir}")
+            print(f"Raw images saved to: {raw_images_dir}")
 
     return result, blueprint_map
 

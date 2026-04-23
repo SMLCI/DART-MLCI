@@ -2,7 +2,7 @@
   "chip_name": "SAK",
   "calibration_images": [
     {
-      "image_path": "images/b8d19459-1e7c-435a-9afe-ddf0a8defe93.tif",
+      "image_path": "images/0000.tif",
       "roi_id": "0000",
       "stage_position": {
         "x": 6802.400101363659,
@@ -11,7 +11,7 @@
       }
     },
     {
-      "image_path": "images/12bf3a67-8cd2-4bf8-bb7a-7559a7090550.tif",
+      "image_path": "images/7000.tif",
       "roi_id": "7000",
       "stage_position": {
         "x": 6691.900099717081,
@@ -20,12 +20,12 @@
       }
     },
     {
-      "image_path": "images/6faf8511-c2fc-487f-ba72-578a982408ac.tif",
-      "roi_id": "7040",
+      "image_path": "images/7129.tif",
+      "roi_id": "7129",
       "stage_position": {
-        "x": 2463.4000367075205,
-        "y": 2647.0000394433737,
-        "z": 2951.0000439733267
+        "x": 2402.1000357940798,
+        "y": 2784.500041492284,
+        "z": 2950.825043970719
       }
     }
   ],
