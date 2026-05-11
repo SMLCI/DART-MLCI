@@ -16,7 +16,7 @@ stages:
 lint:
   stage: lint
   script:
-    - pip install ruff
+    - pip install ruff==0.14.10
     - ruff check dart_mlci/ tests/
     - ruff format --check dart_mlci/ tests/
 

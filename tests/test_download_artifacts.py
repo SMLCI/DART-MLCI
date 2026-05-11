@@ -43,9 +43,9 @@ def test_download_and_extract(fake_repo):
         text=True,
         timeout=600,
     )
-    assert (
-        result.returncode == 0
-    ), f"Script failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    assert result.returncode == 0, (
+        f"Script failed:\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    )
 
     for rel_path in EXPECTED_FILES:
         full_path = fake_repo / rel_path
@@ -53,9 +53,9 @@ def test_download_and_extract(fake_repo):
         assert full_path.stat().st_size > 0, f"File is empty: {rel_path}"
 
     # Verify no nested artifacts/artifacts/ directory
-    assert not (
-        fake_repo / "artifacts" / "artifacts"
-    ).exists(), "Nested artifacts/artifacts/ directory found — extraction path bug"
+    assert not (fake_repo / "artifacts" / "artifacts").exists(), (
+        "Nested artifacts/artifacts/ directory found — extraction path bug"
+    )
 
 
 @pytest.mark.integration
