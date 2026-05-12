@@ -2,8 +2,8 @@
 ![GitLab pipeline](https://jugit.fz-juelich.de/emsig/dmc-masking/badges/main/pipeline.svg)
 ![GitLab coverage](https://jugit.fz-juelich.de/emsig/dmc-masking/badges/main/coverage.svg)
 <!-- GitHub CI (public) -->
-![GitHub CI](https://github.com/JojoDevel/dart-mlci/actions/workflows/ci.yml/badge.svg)
-[![codecov](https://codecov.io/gh/JojoDevel/dart-mlci/branch/main/graph/badge.svg)](https://codecov.io/gh/JojoDevel/dart-mlci)
+![GitHub CI](https://github.com/JuBiotech/dart/actions/workflows/ci.yml/badge.svg)
+[![codecov](https://codecov.io/gh/JuBiotech/dart/branch/main/graph/badge.svg)](https://codecov.io/gh/JuBiotech/dart)
 
 # DART-MLCI
 
@@ -293,7 +293,7 @@ If you use DART-MLCI in your research, please cite:
 @software{dart-mlci,
   author  = {Seiffarth, Johannes},
   title   = {DART-MLCI: Real-time microfluidic chamber image processing},
-  year    = {2025},
-  url     = {https://github.com/JojoDevel/dart-mlci}
+  year    = {2026},
+  url     = {https://github.com/JuBiotech/dart}
 }
 ```

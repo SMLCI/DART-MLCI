@@ -65,22 +65,28 @@ segmentation = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/JojoDevel/dart-mlci"
-Repository = "https://github.com/JojoDevel/dart-mlci"
-Issues = "https://github.com/JojoDevel/dart-mlci/issues"
+Homepage = "https://github.com/JuBiotech/dart"
+Repository = "https://github.com/JuBiotech/dart"
+Documentation = "https://github.com/JuBiotech/dart#readme"
+Changelog = "https://github.com/JuBiotech/dart/blob/main/CHANGELOG.md"
+Issues = "https://github.com/JuBiotech/dart/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["dart_mlci"]
 
 [tool.hatch.build.targets.sdist]
+# Model weights (artifacts/models/*.pt) are intentionally excluded — they are
+# ~40MB combined and would bloat the PyPI package. Users run
+# `scripts/download_artifacts.sh` once after install to fetch them.
 include = [
     "dart_mlci/",
     "tests/",
     "artifacts/chamber_structure.json",
     "artifacts/chips/",
-    "artifacts/models/*.pt",
+    "scripts/download_artifacts.sh",
     "README.md",
     "LICENSE",
+    "CHANGELOG.md",
     "pyproject.toml",
 ]
 
