@@ -38,7 +38,9 @@ except ImportError:
 from dart_mlci import (
     ChamberPipelineCache,
     MarkerDetectionStep,
+    absolutize_image_paths,
     create_structure_library,
+    resolve_time_column,
 )
 from dart_mlci.constants import DEFAULT_MODEL_PATH, DEFAULT_STRUCTURE_LIBRARY_PATH
 from dart_mlci.io import load_image
@@ -1558,24 +1560,15 @@ Output structure:
         print("\n=== TIME-LAPSE STACKING MODE ===")
 
         # Check for time/timestamp column
-        time_col = None
-        if "time" in df.columns:
-            time_col = "time"
-        elif "timestamp" in df.columns:
-            time_col = "timestamp"
-        else:
-            raise ValueError(
-                "Stacking mode requires 'time' or 'timestamp' column in metadata. "
-                f"Available columns: {list(df.columns)}"
-            )
+        try:
+            time_col = resolve_time_column(df)
+        except ValueError as e:
+            raise ValueError(f"Stacking mode requires a time column: {e}") from e
 
         print(f"Using '{time_col}' column for temporal ordering")
 
         # Make image paths absolute if they're relative
-        if "image_file" in df.columns:
-            df["image_file"] = df["image_file"].apply(
-                lambda x: str(image_base_dir / x) if not Path(x).is_absolute() else x
-            )
+        df = absolutize_image_paths(df, image_base_dir)
 
         # Group by roi_id and sort by timestamp
         print(f"\nGrouping by roi_id and sorting by {time_col}...")

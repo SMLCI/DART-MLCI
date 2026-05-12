@@ -351,7 +351,7 @@ def plot_error_histogram(
     if font_family is not None:
         plt.rcParams["font.family"] = font_family
 
-    fig, ax = plt.subplots(figsize=figsize)
+    _fig, ax = plt.subplots(figsize=figsize)
 
     # Plot histogram
     n_bins = min(30, len(errors) // 2 + 1)
@@ -417,6 +417,97 @@ def plot_error_histogram(
     plt.close()
 
 
+def plot_error_histogram_pixels(
+    summary: ValidationSummary,
+    output_path: Path,
+    figsize: tuple[float, float] = (10, 6),
+    label_fontsize: float = 12,
+    title_fontsize: float = 14,
+    tick_fontsize: float = 10,
+    legend_fontsize: float = 10,
+    stats_fontsize: float = 10,
+    font_family: str | None = None,
+    dpi: int = 150,
+) -> None:
+    """Generate histogram of L2 errors expressed in pixels.
+
+    Reads ``error_px`` from the results (populated by save_validation_results
+    or load_validation_results). Skips if no pixel errors are available.
+    """
+    errors_px = [r.error_px for r in summary.results if r.success and r.error_px is not None]
+
+    if not errors_px:
+        print("Warning: No successful results with error_px to plot pixel histogram")
+        return
+
+    if font_family is not None:
+        plt.rcParams["font.family"] = font_family
+
+    mean_px = float(np.mean(errors_px))
+    median_px = float(np.median(errors_px))
+    std_px = float(np.std(errors_px))
+    p90_px = float(np.percentile(errors_px, 90))
+    max_px = float(np.max(errors_px))
+
+    _fig, ax = plt.subplots(figsize=figsize)
+    n_bins = max(10, min(30, len(errors_px) // 2 + 1))
+    ax.hist(errors_px, bins=n_bins, edgecolor="black", alpha=0.7, color="steelblue")
+
+    ax.axvline(
+        mean_px,
+        color="darkorange",
+        linestyle="--",
+        linewidth=2,
+        label=f"Mean: {mean_px:.2f} px",
+    )
+    ax.axvline(
+        median_px,
+        color="purple",
+        linestyle="-.",
+        linewidth=2,
+        label=f"Median: {median_px:.2f} px",
+    )
+    ax.axvline(
+        p90_px,
+        color="black",
+        linestyle=":",
+        linewidth=2,
+        label=f"P90: {p90_px:.2f} px",
+    )
+
+    ax.set_xlabel("L2 Error [pixels]", fontsize=label_fontsize)
+    ax.set_ylabel("Count", fontsize=label_fontsize)
+    ax.set_title("Distribution of Position Errors (pixels)", fontsize=title_fontsize)
+    ax.tick_params(axis="both", labelsize=tick_fontsize)
+
+    stats_text = (
+        f"N = {len(errors_px)}\n"
+        f"Mean = {mean_px:.2f} px\n"
+        f"Median = {median_px:.2f} px\n"
+        f"Std = {std_px:.2f} px\n"
+        f"P90 = {p90_px:.2f} px\n"
+        f"Max = {max_px:.2f} px"
+    )
+    ax.text(
+        0.95,
+        0.95,
+        stats_text,
+        transform=ax.transAxes,
+        fontsize=stats_fontsize,
+        verticalalignment="top",
+        horizontalalignment="right",
+        bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.8),
+    )
+
+    ax.legend(loc="upper right", bbox_to_anchor=(0.95, 0.70), fontsize=legend_fontsize)
+    ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=dpi, bbox_inches=None)
+    plt.savefig(output_path.with_suffix(".svg"), bbox_inches=None)
+    plt.close()
+
+
 def plot_error_map(
     summary: ValidationSummary,
     output_path: Path,
@@ -468,7 +559,7 @@ def plot_error_map(
     if font_family is not None:
         plt.rcParams["font.family"] = font_family
 
-    fig, ax = plt.subplots(figsize=figsize)
+    _fig, ax = plt.subplots(figsize=figsize)
 
     # Create scatter plot with cross markers colored by error
     scatter = ax.scatter(
@@ -543,7 +634,7 @@ def plot_validation_debug(
     else:
         image_rgb = image
 
-    fig, ax = plt.subplots(figsize=(12, 10))
+    _fig, ax = plt.subplots(figsize=(12, 10))
     ax.imshow(image_rgb)
 
     # Draw markers if available
@@ -745,15 +836,19 @@ def plot_validation_debug(
 def save_validation_results(
     summary: ValidationSummary,
     output_path: Path,
+    pixel_size: float,
 ) -> None:
     """Save validation results to CSV file.
 
     Args:
         summary: ValidationSummary with results
         output_path: Path to output CSV file
+        pixel_size: Pixel size in microns, used to populate the error_px column
     """
     rows = []
     for r in summary.results:
+        error_px = r.error / pixel_size if r.error is not None else None
+        r.error_px = error_px
         rows.append(
             {
                 "roi_id": r.roi_id,
@@ -762,6 +857,7 @@ def save_validation_results(
                 "measured_x": r.measured_x,
                 "measured_y": r.measured_y,
                 "error": r.error,
+                "error_px": error_px,
                 "success": r.success,
                 "error_message": r.error_message,
             }
@@ -793,6 +889,11 @@ def load_validation_results(csv_path: Path) -> ValidationSummary:
                 measured_y=row["measured_y"] if pd.notna(row["measured_y"]) else None,
                 error=row["error"] if pd.notna(row["error"]) else None,
                 error_message=row["error_message"] if pd.notna(row["error_message"]) else None,
+                error_px=(
+                    row["error_px"]
+                    if "error_px" in df.columns and pd.notna(row["error_px"])
+                    else None
+                ),
             )
         )
 
@@ -893,17 +994,23 @@ def validate_map(
         print("=== Generating Outputs ===")
         print()
 
-    # Save validation results CSV
+    # Save validation results CSV (populates error_px on each result)
+    pixel_size = config["pixel_size"]
     results_path = output_dir / "validation_results.csv"
-    save_validation_results(summary, results_path)
+    save_validation_results(summary, results_path, pixel_size)
     if verbose:
         print(f"  Results saved to: {results_path}")
 
-    # Generate error histogram
+    # Generate error histograms (microns + pixels)
     histogram_path = output_dir / "error_histogram.png"
     plot_error_histogram(summary, histogram_path, **(hist_kwargs or {}))
     if verbose:
         print(f"  Histogram saved to: {histogram_path}")
+
+    histogram_px_path = output_dir / "error_histogram_pixels.png"
+    plot_error_histogram_pixels(summary, histogram_px_path, **(hist_kwargs or {}))
+    if verbose:
+        print(f"  Pixel histogram saved to: {histogram_px_path}")
 
     # Generate error map
     map_path = output_dir / "error_map.png"
@@ -1095,6 +1202,10 @@ JSON config format:
             histogram_path = output_dir / "error_histogram.png"
             plot_error_histogram(summary, histogram_path, **hist_kwargs)
             print(f"  Histogram saved to: {histogram_path}")
+
+            histogram_px_path = output_dir / "error_histogram_pixels.png"
+            plot_error_histogram_pixels(summary, histogram_px_path, **hist_kwargs)
+            print(f"  Pixel histogram saved to: {histogram_px_path}")
 
             map_path = output_dir / "error_map.png"
             plot_error_map(summary, map_path, **map_kwargs)

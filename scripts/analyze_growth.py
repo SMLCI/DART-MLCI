@@ -38,6 +38,13 @@ OKABE_ITO = [
 
 LINE_STYLES = ["-", "--", "-.", ":"]
 
+# Tripled vs matplotlib defaults so figures stay legible when shrunk into papers.
+FS_TICK = 30
+FS_LABEL = 30
+FS_TITLE = 30
+FS_LEGEND = 30
+FS_ANNOTATION = 24
+
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -139,8 +146,8 @@ def _timepoints(stats, args):
 
 
 def _plot_combined(datasets, args, save_dir, x_label):
-    fig_count, ax_count = plt.subplots(figsize=(8, 5))
-    fig_area, ax_area = plt.subplots(figsize=(8, 5))
+    fig_count, ax_count = plt.subplots(figsize=(16, 10))
+    fig_area, ax_area = plt.subplots(figsize=(16, 10))
 
     for i, (label, data) in enumerate(datasets.items()):
         stats = data["stats"]
@@ -154,16 +161,18 @@ def _plot_combined(datasets, args, save_dir, x_label):
             _overlay_fit(ax_count, t, stats["cell_count"].values, color, label, args)
             _overlay_fit(ax_area, t, stats["total_area_um2"].values, color, label, args)
 
-    ax_count.set_xlabel(x_label)
-    ax_count.set_ylabel("Cell count")
-    ax_count.legend()
-    ax_count.set_title("Cell Count Over Time")
+    ax_count.set_xlabel(x_label, fontsize=FS_LABEL)
+    ax_count.set_ylabel("Cell count", fontsize=FS_LABEL)
+    ax_count.tick_params(axis="both", labelsize=FS_TICK)
+    ax_count.legend(fontsize=FS_LEGEND)
+    ax_count.set_title("Cell Count Over Time", fontsize=FS_TITLE)
     fig_count.tight_layout()
 
-    ax_area.set_xlabel(x_label)
-    ax_area.set_ylabel("Total single-cell area (µm²)")
-    ax_area.legend()
-    ax_area.set_title("Total Single-Cell Area Over Time")
+    ax_area.set_xlabel(x_label, fontsize=FS_LABEL)
+    ax_area.set_ylabel("Total single-cell area (µm²)", fontsize=FS_LABEL)
+    ax_area.tick_params(axis="both", labelsize=FS_TICK)
+    ax_area.legend(fontsize=FS_LEGEND)
+    ax_area.set_title("Total Single-Cell Area Over Time", fontsize=FS_TITLE)
     fig_area.tight_layout()
 
     fmt = args.format
@@ -183,20 +192,22 @@ def _plot_single(label, data, args, save_dir, x_label, color_idx=0):
     color = OKABE_ITO[0]
     t = _timepoints(stats, args)
 
-    fig, (ax_count, ax_area) = plt.subplots(1, 2, figsize=(12, 5))
+    fig, (ax_count, ax_area) = plt.subplots(1, 2, figsize=(24, 10))
 
     ax_count.plot(t, stats["cell_count"], marker="o", color=color)
-    ax_count.set_xlabel(x_label)
-    ax_count.set_ylabel("Cell count")
-    ax_count.set_title(f"{label} — Cell Count")
+    ax_count.set_xlabel(x_label, fontsize=FS_LABEL)
+    ax_count.set_ylabel("Cell count", fontsize=FS_LABEL)
+    ax_count.set_title(f"{label} — Cell Count", fontsize=FS_TITLE)
+    ax_count.tick_params(axis="both", labelsize=FS_TICK)
 
     if args.fit:
         _overlay_fit(ax_count, t, stats["cell_count"].values, color, label, args)
 
     ax_area.plot(t, stats["total_area_um2"], marker="s", color=color)
-    ax_area.set_xlabel(x_label)
-    ax_area.set_ylabel("Total single-cell area (µm²)")
-    ax_area.set_title(f"{label} — Total Single-Cell Area")
+    ax_area.set_xlabel(x_label, fontsize=FS_LABEL)
+    ax_area.set_ylabel("Total single-cell area (µm²)", fontsize=FS_LABEL)
+    ax_area.set_title(f"{label} — Total Single-Cell Area", fontsize=FS_TITLE)
+    ax_area.tick_params(axis="both", labelsize=FS_TICK)
 
     if args.fit:
         _overlay_fit(ax_area, t, stats["total_area_um2"].values, color, label, args)
@@ -236,7 +247,7 @@ def _overlay_fit(ax, t, counts, color, label, args):
         xy=(0.02, 0.98),
         xycoords="axes fraction",
         verticalalignment="top",
-        fontsize=8,
+        fontsize=FS_ANNOTATION,
         fontfamily="monospace",
         bbox=dict(boxstyle="round,pad=0.3", facecolor="white", alpha=0.8),
     )

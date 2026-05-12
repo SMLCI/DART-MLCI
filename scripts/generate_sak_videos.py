@@ -1,4 +1,4 @@
-"""Generate pipeline walkthrough videos for all SAK chamber types."""
+"""Generate pipeline walkthrough videos and/or stills for all SAK chamber types."""
 
 import argparse
 import warnings
@@ -42,9 +42,6 @@ from dart_mlci.visualization import (
     write_frames,
 )
 
-# ARTIFACTS_DIR imported from dart_mlci.constants
-
-# Image-to-chamber-type mapping (from tests/test_full.py)
 CONFIGS = [
     {"file_name": "0000.png", "chamber_type": "NormaleBox-pillar-inner"},
     {"file_name": "0001.png", "chamber_type": "BigBox-pillar-inner"},
@@ -70,15 +67,105 @@ def load_image(image_path: Path) -> np.ndarray:
     return image
 
 
+def _maybe_title(frame, title, args):
+    if args.no_titles:
+        return frame
+    return add_step_title(frame, title)
+
+
+def _maybe_progress(frame, step, total, name, progress, args):
+    if args.no_progress_bar:
+        return frame
+    return draw_progress_bar(frame, step, total, name, step_progress=progress)
+
+
+def _crop_black_borders(img: np.ndarray) -> np.ndarray:
+    """Crop all-black rows/cols from the edges of *img*."""
+    mask = img.sum(axis=-1) > 0
+    if not mask.any():
+        return img
+    ys, xs = np.where(mask)
+    return img[ys.min() : ys.max() + 1, xs.min() : xs.max() + 1]
+
+
+def _add_scalebar_cv(
+    frame: np.ndarray,
+    source_image_shape: tuple,
+    pixel_size_um: float,
+    bar_um: float,
+    frame_size: tuple = (FRAME_WIDTH, FRAME_HEIGHT),
+) -> np.ndarray:
+    """Draw a `bar_um` micrometer scale bar at the bottom-right of *frame*.
+
+    The bar pixel-width is derived from ``prepare_frame``'s scale factor
+    applied to *source_image_shape*, so the bar represents the requested
+    physical length regardless of how prepare_frame letterboxed the image.
+    """
+    if bar_um <= 0 or pixel_size_um <= 0:
+        return frame
+    target_w, target_h = frame_size
+    progress_bar_height = 80
+    usable_height = target_h - progress_bar_height
+    src_h, src_w = source_image_shape[:2]
+    scale = min(target_w / src_w, usable_height / src_h) * 0.95
+    new_w = int(src_w * scale)
+    new_h = int(src_h * scale)
+    x_offset = (target_w - new_w) // 2
+    y_offset = (usable_height - new_h) // 2
+
+    bar_px = max(1, round(bar_um / pixel_size_um * scale))
+    bar_h = 6
+    margin = 16
+    x1 = x_offset + new_w - margin - bar_px
+    x2 = x_offset + new_w - margin
+    y_bar = y_offset + new_h - margin - bar_h
+    cv2.rectangle(frame, (x1, y_bar), (x2, y_bar + bar_h), (255, 255, 255), -1)
+    label = f"{bar_um:g} um"
+    (tw, _th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)
+    text_x = x2 - tw
+    text_y = y_bar - 6
+    cv2.putText(
+        frame,
+        label,
+        (text_x, text_y),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (255, 255, 255),
+        2,
+        cv2.LINE_AA,
+    )
+    return frame
+
+
+def _save_still(frame, stills_dir, index, name, args, *, source_shape=None):
+    if stills_dir is None:
+        return
+    bar_um = getattr(args, "scalebar_um", 0.0) or 0.0
+    pixel_size = getattr(args, "pixel_size", None) or 0.065789
+    if bar_um > 0 and source_shape is not None:
+        frame = _add_scalebar_cv(frame.copy(), source_shape, pixel_size, bar_um)
+    img = _crop_black_borders(frame) if args.crop_black_borders else frame
+    path = stills_dir / f"{index:02d}_{name}.png"
+    cv2.imwrite(str(path), img)
+
+
+def _write_video(writer, frame, n):
+    if writer is None:
+        return
+    write_frames(writer, frame, n)
+
+
 def generate_pipeline_video(
     image: np.ndarray,
     chamber_name: str,
     roi_polygon,
     marker_group_pixels: dict[str, np.ndarray],
     model: MarkerDetectionModel,
-    output_path: Path,
+    video_path: Path | None,
+    stills_dir: Path | None,
+    args,
 ):
-    """Generate a pipeline walkthrough video for one chamber type."""
+    """Render the pipeline for one chamber as a video and/or a set of stills."""
     total_steps = 5
 
     # Run pipeline
@@ -92,20 +179,24 @@ def generate_pipeline_video(
     angles = compute_marker_group_angles(markers, matched_indices, marker_group_pixels)
     rotation_angle = np.mean(angles)
 
-    # Prepare video writer
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter(str(output_path), fourcc, FPS, (FRAME_WIDTH, FRAME_HEIGHT))
+    # Video writer only if requested
+    writer = None
+    if video_path is not None:
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        writer = cv2.VideoWriter(str(video_path), fourcc, FPS, (FRAME_WIDTH, FRAME_HEIGHT))
 
     # ==================== STEP 1: Detection ====================
     frame, scale, offset = prepare_frame(image)
-    frame = add_step_title(frame, "Detection: Raw Input Image")
-    frame = draw_progress_bar(frame, 1, total_steps, "Detection", step_progress=0.0)
-    write_frames(writer, frame, int(1.5 * FPS))
+    frame = _maybe_title(frame, "Detection: Raw Input Image", args)
+    frame = _maybe_progress(frame, 1, total_steps, "Detection", 0.0, args)
+    _write_video(writer, frame, int(1.5 * FPS))
+    _save_still(frame, stills_dir, 1, "detection_raw", args, source_shape=image.shape)
 
     frame = render_markers_to_frame(image, markers, [])
-    frame = add_step_title(frame, "Detection: Marker Detection")
-    frame = draw_progress_bar(frame, 1, total_steps, "Detection", step_progress=1.0)
-    write_frames(writer, frame, int(2 * FPS))
+    frame = _maybe_title(frame, "Detection: Marker Detection", args)
+    frame = _maybe_progress(frame, 1, total_steps, "Detection", 1.0, args)
+    _write_video(writer, frame, int(2 * FPS))
+    _save_still(frame, stills_dir, 2, "detection_markers", args, source_shape=image.shape)
 
     # ==================== STEP 2: Matching ====================
     matched_marker_indices = set()
@@ -117,9 +208,11 @@ def generate_pipeline_video(
     frame = render_markers_to_frame(
         image, markers, matched_indices, faded_indices=unmatched_indices
     )
-    frame = add_step_title(frame, "Matching: Marker Pair Matching")
-    frame = draw_progress_bar(frame, 2, total_steps, "Matching", step_progress=0.5)
-    write_frames(writer, frame, int(2 * FPS))
+    frame = _maybe_title(frame, "Matching: Marker Pair Matching", args)
+    frame = _maybe_progress(frame, 2, total_steps, "Matching", 0.5, args)
+    _write_video(writer, frame, int(2 * FPS))
+    _save_still(frame, stills_dir, 3, "matching_pairs", args, source_shape=image.shape)
+
     h, w = image.shape[:2]
     best_pair_idx = 0
     best_margin = -np.inf
@@ -151,13 +244,15 @@ def generate_pipeline_video(
         highlight_indices=highlight_indices,
         selected_pair_idx=selected_pair_idx,
     )
-    frame = add_step_title(frame, "Matching: ROI Selection (Valid Marker Pair)")
-    frame = draw_progress_bar(frame, 2, total_steps, "Matching", step_progress=1.0)
-    write_frames(writer, frame, int(2 * FPS))
+    frame = _maybe_title(frame, "Matching: ROI Selection (Valid Marker Pair)", args)
+    frame = _maybe_progress(frame, 2, total_steps, "Matching", 1.0, args)
+    _write_video(writer, frame, int(2 * FPS))
+    _save_still(frame, stills_dir, 4, "matching_selected", args, source_shape=image.shape)
 
     # ==================== STEP 3: Rotation ====================
     num_rotation_frames = int(2 * FPS)
     image_chw = np.moveaxis(image, -1, 0)
+    last_rotation_frame = None
 
     for i in range(num_rotation_frames):
         progress = i / num_rotation_frames
@@ -177,9 +272,24 @@ def generate_pipeline_video(
             selected_pair_idx=selected_pair_idx,
             faded_indices=unmatched_indices,
         )
-        frame = add_step_title(frame, f"Rotation: {current_angle:.1f}deg / {rotation_angle:.1f}deg")
-        frame = draw_progress_bar(frame, 3, total_steps, "Rotation", step_progress=progress)
-        writer.write(frame)
+        frame = _maybe_title(
+            frame, f"Rotation: {current_angle:.1f}deg / {rotation_angle:.1f}deg", args
+        )
+        frame = _maybe_progress(frame, 3, total_steps, "Rotation", progress, args)
+        if writer is not None:
+            writer.write(frame)
+        last_rotation_frame = frame
+
+    # Final rotation still (only the last frame, no intermediates)
+    if last_rotation_frame is not None:
+        _save_still(
+            last_rotation_frame,
+            stills_dir,
+            5,
+            "rotation_final",
+            args,
+            source_shape=image.shape,
+        )
 
     # ==================== STEP 4: Masking ====================
     rotated_result, rotated_markers = rotate_image_and_markers(image_chw, markers, rotation_angle)
@@ -197,6 +307,8 @@ def generate_pipeline_video(
     )
 
     masked_overlay = None
+    cropped_hwc = None
+    cropped_mask = None
     try:
         _, uncropped_mask = apply_mask(
             matched_indices,
@@ -212,17 +324,33 @@ def generate_pipeline_video(
         ).astype(np.uint8)
 
         frame, scale, offset = prepare_frame(masked_overlay)
-        frame = add_step_title(frame, "Masking: ROI Mask Applied")
-        frame = draw_progress_bar(frame, 4, total_steps, "Masking", step_progress=0.3)
-        write_frames(writer, frame, int(2 * FPS))
+        frame = _maybe_title(frame, "Masking: ROI Mask Applied", args)
+        frame = _maybe_progress(frame, 4, total_steps, "Masking", 0.3, args)
+        _write_video(writer, frame, int(2 * FPS))
+        _save_still(
+            frame,
+            stills_dir,
+            6,
+            "masking_overlay",
+            args,
+            source_shape=masked_overlay.shape,
+        )
 
     except ValueError as e:
         print(f"  Could not compute mask for step 4: {e}")
         frame, scale, offset = prepare_frame(rotated_image_hwc)
         frame = draw_roi_polygon(frame, translated_polygon, scale, offset, inverted=True)
-        frame = add_step_title(frame, "Masking: ROI Mask Overlay")
-        frame = draw_progress_bar(frame, 4, total_steps, "Masking", step_progress=0.3)
-        write_frames(writer, frame, int(2 * FPS))
+        frame = _maybe_title(frame, "Masking: ROI Mask Overlay", args)
+        frame = _maybe_progress(frame, 4, total_steps, "Masking", 0.3, args)
+        _write_video(writer, frame, int(2 * FPS))
+        _save_still(
+            frame,
+            stills_dir,
+            6,
+            "masking_overlay",
+            args,
+            source_shape=rotated_image_hwc.shape,
+        )
 
     # Step 4 continued: Cropping with Zoom Animation
     try:
@@ -244,14 +372,30 @@ def generate_pipeline_video(
 
         num_zoom_frames = int(2 * FPS)
         zoom_frames = animate_zoom_to_roi(masked_overlay, roi_bounds, num_zoom_frames)
+        last_zoom_frame = None
 
         for i, zoom_frame in enumerate(zoom_frames):
             progress = i / max(num_zoom_frames - 1, 1)
-            zoom_frame = add_step_title(zoom_frame, "Masking: Zooming to ROI Region")
-            zoom_frame = draw_progress_bar(
-                zoom_frame, 4, total_steps, "Masking", step_progress=0.3 + 0.7 * progress
+            zoom_frame = _maybe_title(zoom_frame, "Masking: Zooming to ROI Region", args)
+            zoom_frame = _maybe_progress(
+                zoom_frame, 4, total_steps, "Masking", 0.3 + 0.7 * progress, args
             )
-            writer.write(zoom_frame)
+            if writer is not None:
+                writer.write(zoom_frame)
+            last_zoom_frame = zoom_frame
+
+        if last_zoom_frame is not None:
+            # Zoom-final still shows the cropped chamber view
+            roi_w = roi_bounds[2] - roi_bounds[0]
+            roi_h = roi_bounds[3] - roi_bounds[1]
+            _save_still(
+                last_zoom_frame,
+                stills_dir,
+                7,
+                "masking_zoomed",
+                args,
+                source_shape=(roi_h, roi_w, 3),
+            )
 
         # Final cropped result with mask
         cropped_image, cropped_mask = apply_mask(
@@ -268,16 +412,24 @@ def generate_pipeline_video(
         ).astype(np.uint8)
 
         frame, scale, offset = prepare_frame(masked_display)
-        frame = add_step_title(frame, "Masking: Final Cropped Result")
-        frame = draw_progress_bar(frame, 4, total_steps, "Masking", step_progress=1.0)
-        write_frames(writer, frame, int(1.5 * FPS))
+        frame = _maybe_title(frame, "Masking: Final Cropped Result", args)
+        frame = _maybe_progress(frame, 4, total_steps, "Masking", 1.0, args)
+        _write_video(writer, frame, int(1.5 * FPS))
+        _save_still(
+            frame,
+            stills_dir,
+            8,
+            "masking_cropped",
+            args,
+            source_shape=masked_display.shape,
+        )
 
     except ValueError as e:
         print(f"  Could not apply mask: {e}")
-        write_frames(writer, frame, int(3.5 * FPS))
+        _write_video(writer, frame, int(3.5 * FPS))
 
     # ==================== STEP 5: Segmentation ====================
-    if ACIA_AVAILABLE:
+    if ACIA_AVAILABLE and cropped_hwc is not None and cropped_mask is not None:
         try:
             cropped_rgb = cv2.cvtColor(cropped_hwc, cv2.COLOR_BGR2RGB)
             segm_input = cropped_rgb[None, :, :, :].astype(np.uint8)
@@ -307,9 +459,17 @@ def generate_pipeline_video(
             display_bgr = cv2.cvtColor(output.astype(np.uint8), cv2.COLOR_RGB2BGR)
 
             frame, scale, offset = prepare_frame(display_bgr)
-            frame = add_step_title(frame, "Segmentation: Raw Instance Segmentation")
-            frame = draw_progress_bar(frame, 5, total_steps, "Segmentation", step_progress=0.5)
-            write_frames(writer, frame, int(2 * FPS))
+            frame = _maybe_title(frame, "Segmentation: Raw Instance Segmentation", args)
+            frame = _maybe_progress(frame, 5, total_steps, "Segmentation", 0.5, args)
+            _write_video(writer, frame, int(2 * FPS))
+            _save_still(
+                frame,
+                stills_dir,
+                9,
+                "segmentation_raw",
+                args,
+                source_shape=display_bgr.shape,
+            )
 
             # --- Substep 5b: Structure-Aware Filtering ---
             filtered_mask = filter_segmentation_by_mask(labeled_mask, cropped_mask, relabel=False)
@@ -321,20 +481,29 @@ def generate_pipeline_video(
             display_bgr = cv2.cvtColor(output.astype(np.uint8), cv2.COLOR_RGB2BGR)
 
             frame, scale, offset = prepare_frame(display_bgr)
-            frame = add_step_title(frame, "Segmentation: Structure-Aware Filtering")
-            frame = draw_progress_bar(frame, 5, total_steps, "Segmentation", step_progress=1.0)
-            write_frames(writer, frame, int(2 * FPS))
+            frame = _maybe_title(frame, "Segmentation: Structure-Aware Filtering", args)
+            frame = _maybe_progress(frame, 5, total_steps, "Segmentation", 1.0, args)
+            _write_video(writer, frame, int(2 * FPS))
+            _save_still(
+                frame,
+                stills_dir,
+                10,
+                "segmentation_filtered",
+                args,
+                source_shape=display_bgr.shape,
+            )
 
         except Exception as e:
             print(f"  Could not perform cell segmentation: {e}")
 
-    writer.release()
+    if writer is not None:
+        writer.release()
     return True
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Generate pipeline videos for all SAK chamber types."
+        description="Generate pipeline videos and/or stills for all SAK chamber types."
     )
     parser.add_argument(
         "--output-dir",
@@ -342,15 +511,45 @@ def main():
         default=Path(__file__).parent / "output" / "sak_videos",
         help="Output directory for generated videos",
     )
+    parser.add_argument(
+        "--stills-dir",
+        type=Path,
+        default=Path(__file__).parent / "output" / "sak_stills",
+        help="Output root for stills; one subdir per chamber type",
+    )
+    parser.add_argument(
+        "--mode",
+        choices=["video", "stills", "both"],
+        default="video",
+        help="What to produce (default: video)",
+    )
+    parser.add_argument("--no-titles", action="store_true", help="Omit the step-title text overlay")
+    parser.add_argument(
+        "--no-progress-bar", action="store_true", help="Omit the bottom progress-bar overlay"
+    )
+    parser.add_argument(
+        "--crop-black-borders",
+        action="store_true",
+        help="Crop all-black letterbox borders from saved stills "
+        "(auto-enabled when --no-titles and --no-progress-bar are both set)",
+    )
     args = parser.parse_args()
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
+    # Auto-enable border cropping when both overlays are suppressed (publication-clean stills)
+    if args.no_titles and args.no_progress_bar:
+        args.crop_black_borders = True
 
-    # Load chip structure library (new API)
+    produce_video = args.mode in ("video", "both")
+    produce_stills = args.mode in ("stills", "both")
+
+    if produce_video:
+        args.output_dir.mkdir(parents=True, exist_ok=True)
+    if produce_stills:
+        args.stills_dir.mkdir(parents=True, exist_ok=True)
+
     chip_config_path = ARTIFACTS_DIR / "chips" / "sak.json"
     lib = ChipStructureLibrary.from_file(chip_config_path)
 
-    # Load model once
     print("Loading marker detection model...")
     model = MarkerDetectionModel(DEFAULT_MODEL_PATH)
 
@@ -368,20 +567,36 @@ def main():
 
         image = load_image(image_path)
 
-        # Get polygon and marker positions directly by chamber type
-        # (image file names don't correspond to blueprint ROI IDs)
         roi_polygon = lib.polygon_library[chamber_type]
         marker_group_pixels = lib.marker_group_configs[chamber_type]
 
-        output_path = args.output_dir / f"{chamber_type}.mp4"
+        video_path = args.output_dir / f"{chamber_type}.mp4" if produce_video else None
+        stills_dir = None
+        if produce_stills:
+            stills_dir = args.stills_dir / chamber_type
+            stills_dir.mkdir(parents=True, exist_ok=True)
+
         ok = generate_pipeline_video(
-            image, chamber_type, roi_polygon, marker_group_pixels, model, output_path
+            image,
+            chamber_type,
+            roi_polygon,
+            marker_group_pixels,
+            model,
+            video_path,
+            stills_dir,
+            args,
         )
         if ok:
-            print(f"  Saved: {output_path}")
+            if video_path is not None:
+                print(f"  Saved video: {video_path}")
+            if stills_dir is not None:
+                print(f"  Saved stills: {stills_dir}")
             success_count += 1
 
-    print(f"\nDone. Generated {success_count}/{len(CONFIGS)} videos in {args.output_dir}")
+    summary_target = args.output_dir if produce_video else args.stills_dir
+    print(
+        f"\nDone. Processed {success_count}/{len(CONFIGS)} chambers (output root: {summary_target})"
+    )
 
 
 if __name__ == "__main__":

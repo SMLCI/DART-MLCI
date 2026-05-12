@@ -61,7 +61,7 @@ from dart_mlci import (
     TimelapseRegistration,
 )
 from dart_mlci.constants import ARTIFACTS_DIR
-from dart_mlci.mask import filter_segmentation_by_mask
+from dart_mlci.mask import filter_segmentation_by_area, filter_segmentation_by_mask
 from dart_mlci.script_utils import load_json_config
 from dart_mlci.types import PipelineTimings
 from dart_mlci.types import StackResult as _StackResult
@@ -173,6 +173,8 @@ def process_stack(
     device: str | None = None,
     flip: bool = False,
     allow_truncation: bool = False,
+    min_area_um2: float | None = None,
+    max_area_um2: float | None = None,
 ) -> StackResult:
     """Process a single TIFF stack through the full pipeline."""
     tif_path = file_info["path"]
@@ -394,6 +396,12 @@ def process_stack(
 
             # Post-segmentation structure filter
             labeled_mask = filter_segmentation_by_mask(labeled_mask, chamber_mask)
+            labeled_mask = filter_segmentation_by_area(
+                labeled_mask,
+                pixel_size=pixel_size,
+                min_area_um2=min_area_um2,
+                max_area_um2=max_area_um2,
+            )
             timings.segmentation = time.perf_counter() - t0
 
             n_cells = int(labeled_mask.max())
@@ -592,6 +600,12 @@ def _append_fallback_frame(rendered_frames: list[np.ndarray], render_dir: Path, 
     rendered_frames.append(cv2.cvtColor(black, cv2.COLOR_BGR2RGB))
 
 
+def _append_raw_fallback(raw_frames: list[np.ndarray], shape_hint: tuple[int, ...]):
+    """Append an all-black HxWx3 frame matching the visualization track's shape."""
+    h, w = shape_hint[:2]
+    raw_frames.append(np.zeros((h, w, 3), dtype=np.uint8))
+
+
 def _render_video(
     output_dir: Path,
     frame_data: list[dict],
@@ -607,13 +621,15 @@ def _render_video(
     render_dir.mkdir(exist_ok=True)
 
     rendered_frames = []
+    raw_frames = []
     success_idx = 0
 
     for t, fd in enumerate(frame_data):
         if fd["success"]:
             try:
+                raw = cropped_images[success_idx].astype(np.uint8)
                 rendered = render_frame_visualization(
-                    cropped_images[success_idx].astype(np.uint8),
+                    raw,
                     cell_masks[success_idx],
                     chamber_masks[success_idx],
                     pixel_size,
@@ -632,24 +648,27 @@ def _render_video(
                 frame_path = render_dir / f"frame_{t:03d}.png"
                 cv2.imwrite(str(frame_path), cv2.cvtColor(rendered, cv2.COLOR_RGB2BGR))
                 rendered_frames.append(rendered)
+                raw_frames.append(raw if raw.ndim == 3 else np.stack((raw,) * 3, axis=-1))
             except Exception as e:
                 if verbose:
                     print(f"      Warning: Failed to render frame {t}: {e}")
                 # Fall back to black frame so no frames are missing
                 _append_fallback_frame(rendered_frames, render_dir, t, f"RENDER ERROR: {e}")
+                _append_raw_fallback(raw_frames, rendered_frames[-1].shape)
             success_idx += 1
         else:
             _append_fallback_frame(rendered_frames, render_dir, t, "FAILED")
+            _append_raw_fallback(raw_frames, rendered_frames[-1].shape)
 
-    if rendered_frames:
-        video_path = output_dir / "timelapse.mp4"
+    def _write_mp4(frames: list[np.ndarray], path: Path, label: str):
+        if not frames:
+            return
         try:
-            # Pad all frames to consistent max dimensions
-            max_h = max(f.shape[0] for f in rendered_frames)
-            max_w = max(f.shape[1] for f in rendered_frames)
+            max_h = max(f.shape[0] for f in frames)
+            max_w = max(f.shape[1] for f in frames)
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-            writer = cv2.VideoWriter(str(video_path), fourcc, fps, (max_w, max_h))
-            for frame_rgb in rendered_frames:
+            writer = cv2.VideoWriter(str(path), fourcc, fps, (max_w, max_h))
+            for frame_rgb in frames:
                 h, w = frame_rgb.shape[:2]
                 if h != max_h or w != max_w:
                     padded = np.zeros((max_h, max_w, 3), dtype=np.uint8)
@@ -658,10 +677,13 @@ def _render_video(
                 writer.write(cv2.cvtColor(frame_rgb, cv2.COLOR_RGB2BGR))
             writer.release()
             if verbose:
-                print(f"      Video saved: {video_path.name} ({len(rendered_frames)} frames)")
+                print(f"      Video saved: {path.name} ({len(frames)} frames, {label})")
         except Exception as e:
             if verbose:
-                print(f"      Warning: Failed to create video: {e}")
+                print(f"      Warning: Failed to create {path.name}: {e}")
+
+    _write_mp4(rendered_frames, output_dir / "timelapse.mp4", "segmentation overlay")
+    _write_mp4(raw_frames, output_dir / "timelapse_raw.mp4", "rotated raw")
 
 
 def resegment_stack(
@@ -670,6 +692,8 @@ def resegment_stack(
     pixel_size: float,
     render_stacks: bool = False,
     verbose: bool = False,
+    min_area_um2: float | None = None,
+    max_area_um2: float | None = None,
 ) -> tuple[int, int, int, list[float]]:
     """Re-run segmentation on existing cropped images and chamber masks.
 
@@ -741,6 +765,12 @@ def resegment_stack(
             masks = seg_result.toMasks(height, width, binary_mask=False)
             labeled_mask = masks[0]
             labeled_mask = filter_segmentation_by_mask(labeled_mask, chamber_mask)
+            labeled_mask = filter_segmentation_by_area(
+                labeled_mask,
+                pixel_size=pixel_size,
+                min_area_um2=min_area_um2,
+                max_area_um2=max_area_um2,
+            )
             seg_time = time.perf_counter() - t0
             seg_times.append(seg_time)
 
@@ -912,11 +942,13 @@ def generate_summary(
                 s: np.array([getattr(ft, s) if s != "total" else ft.total for ft in timings_list])
                 for s in step_names
             }
-            cells = [f"{vals[s].mean()*1000:.1f} ± {vals[s].std()*1000:.1f}" for s in step_names]
+            cells = [
+                f"{vals[s].mean() * 1000:.1f} ± {vals[s].std() * 1000:.1f}" for s in step_names
+            ]
             total_wo_seg = vals["total"] - vals["segmentation"]
             fps_w_seg = 1.0 / vals["total"]
             fps_wo_seg = 1.0 / total_wo_seg
-            cells.append(f"{total_wo_seg.mean()*1000:.1f} ± {total_wo_seg.std()*1000:.1f}")
+            cells.append(f"{total_wo_seg.mean() * 1000:.1f} ± {total_wo_seg.std() * 1000:.1f}")
             cells.append(f"{fps_w_seg.mean():.1f} ± {fps_w_seg.std():.1f}")
             cells.append(f"{fps_wo_seg.mean():.1f} ± {fps_wo_seg.std():.1f}")
             return f"| {label} | {n} | " + " | ".join(cells) + " |"
@@ -985,11 +1017,13 @@ def _generate_latex_timing_table(
             s: np.array([getattr(ft, s) if s != "total" else ft.total for ft in timings_list])
             for s in step_names
         }
-        cells = [f"{vals[s].mean()*1000:.1f} $\\pm$ {vals[s].std()*1000:.1f}" for s in step_names]
+        cells = [
+            f"{vals[s].mean() * 1000:.1f} $\\pm$ {vals[s].std() * 1000:.1f}" for s in step_names
+        ]
         total_wo_seg = vals["total"] - vals["segmentation"]
         fps_w_seg = 1.0 / vals["total"]
         fps_wo_seg = 1.0 / total_wo_seg
-        cells.append(f"{total_wo_seg.mean()*1000:.1f} $\\pm$ {total_wo_seg.std()*1000:.1f}")
+        cells.append(f"{total_wo_seg.mean() * 1000:.1f} $\\pm$ {total_wo_seg.std() * 1000:.1f}")
         cells.append(f"{fps_w_seg.mean():.1f} $\\pm$ {fps_w_seg.std():.1f}")
         cells.append(f"{fps_wo_seg.mean():.1f} $\\pm$ {fps_wo_seg.std():.1f}")
         return f"  {label} & {n} & " + " & ".join(cells) + " \\\\"
@@ -1228,6 +1262,25 @@ def main():
         action="store_true",
         help="Regenerate summary and LaTeX table from existing results/timings CSVs without re-processing",
     )
+    parser.add_argument(
+        "--min-area-um2",
+        type=float,
+        default=None,
+        help=(
+            "Drop segmented cells smaller than this area (µm²) before saving masks/videos. "
+            "Useful for stripping speckle artifacts (especially mother-machine stacks). "
+            "Overrides ``min_area_um2`` from config."
+        ),
+    )
+    parser.add_argument(
+        "--max-area-um2",
+        type=float,
+        default=None,
+        help=(
+            "Drop segmented cells larger than this area (µm²) before saving masks/videos. "
+            "Useful for stripping fused-blob artifacts. Overrides ``max_area_um2`` from config."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -1248,6 +1301,12 @@ def main():
     registration_method = config.get("registration_method", "ncc")
     flip = config.get("flip", False)
     allow_truncation = config.get("allow_truncation", False)
+    min_area_um2 = (
+        args.min_area_um2 if args.min_area_um2 is not None else config.get("min_area_um2")
+    )
+    max_area_um2 = (
+        args.max_area_um2 if args.max_area_um2 is not None else config.get("max_area_um2")
+    )
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1347,6 +1406,10 @@ def main():
         print("  Flip: enabled (vertical flip before processing)")
     if allow_truncation:
         print("  Allow truncation: enabled (ROI may extend beyond image bounds)")
+    if min_area_um2 is not None or max_area_um2 is not None:
+        lo = "-inf" if min_area_um2 is None else f"{min_area_um2:g}"
+        hi = "+inf" if max_area_um2 is None else f"{max_area_um2:g}"
+        print(f"  Cell area filter: [{lo}, {hi}] µm² (smaller/larger blobs dropped)")
     print(f"  Output: {output_dir}")
 
     # Initialize pipeline components
@@ -1392,6 +1455,8 @@ def main():
                     pixel_size,
                     render_stacks=args.render_stacks,
                     verbose=args.verbose,
+                    min_area_um2=min_area_um2,
+                    max_area_um2=max_area_um2,
                 )
                 result.n_frames = n_frames
                 result.n_success = n_success
@@ -1446,6 +1511,8 @@ def main():
             device=args.device,
             flip=flip,
             allow_truncation=allow_truncation,
+            min_area_um2=min_area_um2,
+            max_area_um2=max_area_um2,
         )
         results.append(result)
 
