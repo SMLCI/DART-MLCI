@@ -25,8 +25,7 @@ Each chip config file follows this structure:
 {
   "chip_name": "SAK",
   "version": "2.0",
-  "description": "Standard Analysis Kit microfluidic chip",
-  "pixel_size": 0.065789,
+  "description": "Swiss Army Knife microfluidic chip",
 
   "chamber_types": {
     "ChamberTypeName": {
@@ -48,6 +47,11 @@ Each chip config file follows this structure:
 }
 ```
 
+> **Note.** `pixel_size` is **not** part of the chip config. It is a property of
+> the microscope, not the chip, and lives in `folder_config.json` instead. The
+> authoritative list of required fields is the `required` list in
+> [`dart_mlci/chip.py`](../dart_mlci/chip.py).
+
 ### Field Reference
 
 | Field | Type | Required | Description |
@@ -55,7 +59,6 @@ Each chip config file follows this structure:
 | `chip_name` | string | Yes | Human-readable name (e.g., "SAK") |
 | `version` | string | Yes | Config file version |
 | `description` | string | No | Description of the chip design |
-| `pixel_size` | float | Yes | Default pixel size in microns/pixel |
 | `chamber_types` | object | Yes | Map of chamber type name to config |
 | `blueprint_map` | array | No | List of ROI positions |
 
@@ -128,6 +131,48 @@ config = load_chip_config("my_chip.json")
 print(f"Loaded {config.chip_name} with {len(config.chamber_types)} chamber types")
 ```
 
+## Marker Detection: When You Need a New Model
+
+The bundled YOLO weights in `artifacts/models/v26_detect_s_imgsz1280.pt` are
+trained on the **SAK-style cross-and-circle fiducials**. The pipeline assumes
+each chamber has exactly one `cross` and one `circle` marker, matched in pairs.
+
+You can reuse the bundled detector if your chip uses the same fiducial shapes
+(any size/orientation/spacing — the matcher tolerates that). If your chip uses
+different markers, you must:
+
+1. Collect annotated training data (cross/circle bounding boxes in your
+   microscope's images).
+2. Retrain the YOLO model — see Ultralytics' standard training flow
+   (`yolo detect train ...`).
+3. Point `folder_config.json` at the new weights via the `model_path` field.
+
+Retraining is out of scope for this guide, but the API surface
+(`MarkerDetectionModel(weights_path=...)`) is stable.
+
+## Validation Checklist
+
+Before considering a new chip config done, confirm each of these:
+
+- [ ] `ChipStructureLibrary.from_file("my_chip.json")` loads without error.
+- [ ] Every `blueprint_map` entry's `structure_type` matches a key in
+  `chamber_types` (the loader will raise on a mismatch — but lint your map
+  first if it is large).
+- [ ] Polygons are closed (first coordinate equals last) and use the GeoJSON
+  outer-ring convention.
+- [ ] Marker coordinates fall inside, on, or near the polygon — they are
+  drawn on the chip surface, not floating in space.
+- [ ] An end-to-end smoke test passes on one real image:
+  ```bash
+  python scripts/process_image.py \
+      --image one_frame.tif \
+      --chip-config my_chip.json \
+      --chamber-id 0000 \
+      --output /tmp/out/
+  ```
+  Inspect `/tmp/out/cropped.png` and the marker overlay — the ROI should be
+  axis-aligned and tightly cropped.
+
 ## Minimal Example
 
 A toy 2-chamber chip config:
@@ -137,7 +182,6 @@ A toy 2-chamber chip config:
   "chip_name": "MiniChip",
   "version": "2.0",
   "description": "Minimal example chip with 2 chamber types",
-  "pixel_size": 0.065789,
   "chamber_types": {
     "SmallBox": {
       "polygon": {
