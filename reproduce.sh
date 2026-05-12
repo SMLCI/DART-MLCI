@@ -95,10 +95,9 @@ else
     echo "  Unzipping..."
     unzip -q "$ZIP_FILE" -d dart_experiment/
     rm -f "$ZIP_FILE"
-    # The zip contains DART_Experiment/ — rename to match config's input_dir
-    if [ -d "dart_experiment/DART_Experiment" ] && [ ! -d "$DATA_DIR" ]; then
-        mv "dart_experiment/DART_Experiment" "$DATA_DIR"
-        echo "  Renamed DART_Experiment -> DART_Experiment"
+    if [ ! -d "$DATA_DIR" ]; then
+        echo "  ERROR: expected $DATA_DIR after unzip, but it is missing."
+        exit 1
     fi
     echo "  -> done"
 fi
@@ -195,7 +194,7 @@ print('  Wrote patched validation config')
 if run python scripts/validate_map.py \
     --config "$OUTPUT_DIR/validation_config.json" \
     --output-dir "$VALIDATION_DIR" \
-    --verbose; then
+    --verbose --debug; then
     MISSING_VAL=""
     [ ! -f "$VALIDATION_DIR/validation_results.csv" ] && MISSING_VAL="$MISSING_VAL validation_results.csv"
     [ ! -f "$VALIDATION_DIR/error_histogram.png" ] && MISSING_VAL="$MISSING_VAL error_histogram.png"

@@ -1,6 +1,6 @@
 {
   "input_dir": "dart_experiment/DART_Experiment",
-  "output_dir": "dart_experiment/output",
+  "output_dir": "dart_experiment/output_omnipose",
   "pixel_size": 0.092766,
   "chip_config": "artifacts/chips/sak.json",
   "model_path": "artifacts/models/v26_detect_s_imgsz1280.pt",
