@@ -36,9 +36,17 @@ from dart_mlci.constants import DEFAULT_PIXEL_SIZE_UM as DEFAULT_PIXEL_SIZE_UM
 from dart_mlci.constants import DEFAULT_STRUCTURE_LIBRARY_PATH as DEFAULT_STRUCTURE_LIBRARY_PATH
 from dart_mlci.detection import MarkerDetectionModel as MarkerDetectionModel
 from dart_mlci.detection import extract_data as extract_data
+from dart_mlci.experiment import absolutize_image_paths as absolutize_image_paths
+from dart_mlci.experiment import load_tif_frame as load_tif_frame
+from dart_mlci.experiment import (
+    resolve_chamber_type_from_folder_config as resolve_chamber_type_from_folder_config,
+)
+from dart_mlci.experiment import resolve_time_column as resolve_time_column
+from dart_mlci.experiment import select_timelapse_frame as select_timelapse_frame
 from dart_mlci.mask import RoIPolygon as RoIPolygon
 from dart_mlci.mask import SingleRoIStructureLibrary as SingleRoIStructureLibrary
 from dart_mlci.mask import apply_mask as apply_mask
+from dart_mlci.mask import filter_segmentation_by_area as filter_segmentation_by_area
 from dart_mlci.mask import filter_segmentation_by_mask as filter_segmentation_by_mask
 from dart_mlci.masker import RoIMasker as RoIMasker
 from dart_mlci.masker import SingleStructureRoIMasker as SingleStructureRoIMasker
@@ -87,6 +95,7 @@ __all__ = [
     "TimelapseRegistration",
     "TimelapseResult",
     "__version__",
+    "absolutize_image_paths",
     "apply_mask",
     "compute_growth_stats",
     "compute_marker_angles",
@@ -95,9 +104,14 @@ __all__ = [
     "discover_cells_csvs",
     "extract_data",
     "filter_cells_by_area",
+    "filter_segmentation_by_area",
     "filter_segmentation_by_mask",
     "fit_exponential_growth",
     "fit_logistic_growth",
     "load_cells_data",
     "load_chip_config",
+    "load_tif_frame",
+    "resolve_chamber_type_from_folder_config",
+    "resolve_time_column",
+    "select_timelapse_frame",
 ]

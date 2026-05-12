@@ -213,6 +213,58 @@ def filter_segmentation_by_mask(
     return relabeled
 
 
+def filter_segmentation_by_area(
+    labeled_mask: np.ndarray,
+    pixel_size: float,
+    min_area_um2: float | None = None,
+    max_area_um2: float | None = None,
+    relabel: bool = True,
+) -> np.ndarray:
+    """Drop labeled objects whose area falls outside ``[min_area_um2, max_area_um2]``.
+
+    Useful for stripping segmentation artifacts (specks, oversized blobs) before
+    rendering or downstream analysis — particularly noisy mother-machine outputs
+    where the segmenter occasionally fuses neighbouring cells into one large blob.
+
+    Args:
+        labeled_mask: HxW integer instance mask (0=bg, 1..N=cells).
+        pixel_size: µm per pixel; used to convert object pixel counts into µm².
+        min_area_um2: Inclusive lower bound. ``None`` disables the lower check.
+        max_area_um2: Inclusive upper bound. ``None`` disables the upper check.
+        relabel: If True (default), relabel remaining IDs to be contiguous.
+
+    Returns:
+        Filtered instance mask with the same dtype as the input.
+    """
+    if min_area_um2 is None and max_area_um2 is None:
+        return labeled_mask
+    if labeled_mask.max() == 0:
+        return labeled_mask
+
+    area_per_pixel = pixel_size**2
+    filtered = labeled_mask.copy()
+    for label_id in range(1, int(labeled_mask.max()) + 1):
+        obj_pixels = labeled_mask == label_id
+        n_total = int(np.sum(obj_pixels))
+        if n_total == 0:
+            continue
+        area_um2 = n_total * area_per_pixel
+        if (min_area_um2 is not None and area_um2 < min_area_um2) or (
+            max_area_um2 is not None and area_um2 > max_area_um2
+        ):
+            filtered[obj_pixels] = 0
+
+    if not relabel:
+        return filtered
+
+    unique_labels = np.unique(filtered)
+    unique_labels = unique_labels[unique_labels > 0]
+    relabeled = np.zeros_like(filtered)
+    for new_id, old_id in enumerate(unique_labels, 1):
+        relabeled[filtered == old_id] = new_id
+    return relabeled
+
+
 def apply_mask_rotation_free(
     matched_marker_indices: list[tuple[int, int]],
     markers: list[dict],

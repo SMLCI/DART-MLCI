@@ -9,6 +9,7 @@ from dart_mlci.mask import (
     RoIPolygon,
     apply_mask,
     apply_mask_rotation_free,
+    filter_segmentation_by_area,
     filter_segmentation_by_mask,
 )
 
@@ -304,6 +305,64 @@ class TestFilterSegmentationByMask(unittest.TestCase):
         # Object 1 removed but object 2 keeps its label ID
         self.assertEqual(result.max(), 2)
         self.assertTrue(np.all(result[0:5, 0:5] == 0))
+
+
+class TestFilterSegmentationByArea(unittest.TestCase):
+    """Test cases for filter_segmentation_by_area."""
+
+    def _make_labels(self):
+        # Three blobs at 4, 25, and 100 px so we can pick out small/medium/large.
+        labeled = np.zeros((20, 20), dtype=np.uint16)
+        labeled[0:2, 0:2] = 1  # 4 px
+        labeled[5:10, 5:10] = 2  # 25 px
+        labeled[10:20, 10:20] = 3  # 100 px
+        return labeled
+
+    def test_no_bounds_passthrough(self):
+        labeled = self._make_labels()
+        result = filter_segmentation_by_area(labeled, pixel_size=1.0)
+        np.testing.assert_array_equal(result, labeled)
+
+    def test_min_only_drops_small(self):
+        labeled = self._make_labels()
+        # pixel_size=1 µm/px, so areas in µm² == pixel counts
+        result = filter_segmentation_by_area(labeled, pixel_size=1.0, min_area_um2=10)
+        # Blob 1 (4 px) dropped; blobs 2+3 kept and relabeled to 1, 2.
+        self.assertEqual(result.max(), 2)
+        self.assertTrue(np.all(result[0:2, 0:2] == 0))
+        self.assertTrue(np.all(result[5:10, 5:10] == 1))
+        self.assertTrue(np.all(result[10:20, 10:20] == 2))
+
+    def test_max_only_drops_large(self):
+        labeled = self._make_labels()
+        result = filter_segmentation_by_area(labeled, pixel_size=1.0, max_area_um2=50)
+        # Blob 3 (100 px) dropped; blobs 1+2 kept and relabeled.
+        self.assertEqual(result.max(), 2)
+        self.assertTrue(np.all(result[10:20, 10:20] == 0))
+
+    def test_pixel_size_scales_threshold(self):
+        labeled = self._make_labels()
+        # 0.5 µm/px → area_um2 = pixels * 0.25. Blob 2 = 6.25 µm², Blob 3 = 25 µm².
+        result = filter_segmentation_by_area(
+            labeled, pixel_size=0.5, min_area_um2=5, max_area_um2=20
+        )
+        # Blob 1 (1 µm²) dropped, blob 3 (25 µm²) dropped, only blob 2 remains.
+        self.assertEqual(result.max(), 1)
+        self.assertTrue(np.all(result[5:10, 5:10] == 1))
+
+    def test_no_relabel_keeps_ids(self):
+        labeled = self._make_labels()
+        result = filter_segmentation_by_area(
+            labeled, pixel_size=1.0, min_area_um2=10, relabel=False
+        )
+        self.assertEqual(result.max(), 3)
+        self.assertTrue(np.all(result[0:2, 0:2] == 0))
+        self.assertTrue(np.all(result[10:20, 10:20] == 3))
+
+    def test_empty_mask(self):
+        labeled = np.zeros((10, 10), dtype=np.uint16)
+        result = filter_segmentation_by_area(labeled, pixel_size=1.0, min_area_um2=5)
+        np.testing.assert_array_equal(result, labeled)
 
 
 class TestApplyMaskEdgeCases(unittest.TestCase):

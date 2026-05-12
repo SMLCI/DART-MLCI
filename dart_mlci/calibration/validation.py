@@ -55,6 +55,7 @@ class ValidationResult:
     error: float | None
     error_message: str | None = None
     debug_data: ValidationDebugData | None = None
+    error_px: float | None = None
 
 
 @dataclass
