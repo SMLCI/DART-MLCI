@@ -128,6 +128,13 @@ indent-style = "space"
 [tool.coverage.run]
 source = ["dart_mlci"]
 branch = true
+omit = [
+    # Internal test-support code (visual-regression diffs, image comparison).
+    # This module exists to support our own test suite, not for end users —
+    # it's not part of the public API surface that publication coverage
+    # should measure.
+    "dart_mlci/test_utils/*",
+]
 
 [tool.coverage.report]
 exclude_lines = [
