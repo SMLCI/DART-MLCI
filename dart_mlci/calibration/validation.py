@@ -72,6 +72,68 @@ class ValidationSummary:
     n_success: int
     n_failed: int
 
+    def to_csv(self, output_path: Path, pixel_size: float) -> None:
+        """Write per-image validation results to CSV (computes error_px from pixel_size)."""
+        rows = []
+        for r in self.results:
+            error_px = r.error / pixel_size if r.error is not None else None
+            r.error_px = error_px
+            rows.append(
+                {
+                    "roi_id": r.roi_id,
+                    "map_x": r.map_x,
+                    "map_y": r.map_y,
+                    "measured_x": r.measured_x,
+                    "measured_y": r.measured_y,
+                    "error": r.error,
+                    "error_px": error_px,
+                    "success": r.success,
+                    "error_message": r.error_message,
+                }
+            )
+        pd.DataFrame(rows).to_csv(output_path, index=False)
+
+    @staticmethod
+    def from_csv(csv_path: Path) -> ValidationSummary:
+        """Reconstruct a ValidationSummary from a previously saved CSV."""
+        df = pd.read_csv(csv_path)
+        results = []
+        for _, row in df.iterrows():
+            results.append(
+                ValidationResult(
+                    roi_id=str(row["roi_id"]),
+                    success=bool(row["success"]),
+                    map_x=row["map_x"] if pd.notna(row["map_x"]) else None,
+                    map_y=row["map_y"] if pd.notna(row["map_y"]) else None,
+                    measured_x=row["measured_x"] if pd.notna(row["measured_x"]) else None,
+                    measured_y=row["measured_y"] if pd.notna(row["measured_y"]) else None,
+                    error=row["error"] if pd.notna(row["error"]) else None,
+                    error_message=(
+                        row["error_message"] if pd.notna(row["error_message"]) else None
+                    ),
+                    error_px=(
+                        row["error_px"]
+                        if "error_px" in df.columns and pd.notna(row["error_px"])
+                        else None
+                    ),
+                )
+            )
+
+        successful = [r for r in results if r.success and r.error is not None]
+        errors = [r.error for r in successful]
+
+        return ValidationSummary(
+            results=results,
+            mean_error=float(np.mean(errors)) if errors else 0.0,
+            median_error=float(np.median(errors)) if errors else 0.0,
+            std_error=float(np.std(errors)) if errors else 0.0,
+            max_error=float(np.max(errors)) if errors else 0.0,
+            min_error=float(np.min(errors)) if errors else 0.0,
+            p90_error=float(np.percentile(errors, 90)) if errors else 0.0,
+            n_success=len(successful),
+            n_failed=len(results) - len(successful),
+        )
+
 
 def process_validation_image(
     image_path: Path,

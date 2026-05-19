@@ -38,18 +38,10 @@ except ImportError:
 try:
     import pint
     from acia.segm.local import THWCSequenceSource
-    from acia.segm.processor.cellpose_sam import CellposeSAMSegmenter
 
     ACIA_AVAILABLE = True
 except ImportError:
     ACIA_AVAILABLE = False
-
-try:
-    from acia.segm.processor.omnipose import OmniposeSegmenter
-
-    OMNIPOSE_AVAILABLE = True
-except ImportError:
-    OMNIPOSE_AVAILABLE = False
 
 from dart_mlci import (
     ChipStructureLibrary,
@@ -59,6 +51,9 @@ from dart_mlci import (
     PhaseCorrelationRegistration,
     RoIMaskingStep,
     TimelapseRegistration,
+)
+from dart_mlci import (
+    create_segmenter as _create_segmenter,
 )
 from dart_mlci.constants import ARTIFACTS_DIR
 from dart_mlci.mask import filter_segmentation_by_area, filter_segmentation_by_mask
@@ -90,19 +85,11 @@ if ACIA_AVAILABLE:
 
 
 def create_segmenter(name: str):
-    """Create a segmenter instance by name."""
-    if name == "cellpose-sam":
-        if not ACIA_AVAILABLE:
-            print("Error: acia library not available. Install it with: pip install acia")
-            sys.exit(1)
-        return CellposeSAMSegmenter()
-    elif name == "omnipose":
-        if not OMNIPOSE_AVAILABLE:
-            print("Error: omnipose not available. Install it with: pip install cellpose_omni")
-            sys.exit(1)
-        return OmniposeSegmenter()
-    else:
-        print(f"Error: unknown segmenter '{name}'. Choose from: {SEGMENTER_CHOICES}")
+    """CLI-friendly wrapper around dart_mlci.create_segmenter that exits on error."""
+    try:
+        return _create_segmenter(name)
+    except (ImportError, ValueError) as e:
+        print(f"Error: {e}")
         sys.exit(1)
 
 
@@ -128,10 +115,6 @@ def render_frame_visualization(
         pixel_size=pixel_size,
         alpha=alpha,
     )
-
-
-def load_config(config_path: str) -> dict:
-    return load_json_config(config_path, required_keys=["input_dir", "output_dir", "folders"])
 
 
 def collect_files(config: dict, base_dir: Path) -> list[dict]:
@@ -1288,7 +1271,7 @@ def main():
         print(f"Error: config file not found: {args.config}")
         sys.exit(1)
 
-    config = load_config(str(args.config))
+    config = load_json_config(args.config, required_keys=["input_dir", "output_dir", "folders"])
 
     # Resolve paths relative to project root
     base_dir = ARTIFACTS_DIR.parent

@@ -5,7 +5,9 @@ for the calibration pipeline, including per-image processing and the
 full calibration orchestration.
 """
 
+import json
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import numpy as np
 import numpy.typing as npt
@@ -86,6 +88,30 @@ class CalibrationResult:
     calibrated_map: Map
     image_results: list[ImageCalibrationResult]
     z_positions: dict[str, float] = field(default_factory=dict)
+
+    def save_stats(self, stats_path: Path) -> None:
+        """Write calibration statistics (RMSE, residuals, failures) to JSON."""
+        successful_results = [r for r in self.image_results if r.success]
+        residuals = {
+            r.roi_id: float(self.transform_result.residuals[i])
+            for i, r in enumerate(successful_results)
+        }
+        failed_images = [
+            {"roi_id": r.roi_id, "error": r.error_message}
+            for r in self.image_results
+            if not r.success
+        ]
+        stats = {
+            "transform_stats": {
+                "rmse": float(self.transform_result.rmse),
+                "max_error": float(self.transform_result.max_error),
+                "n_calibration_points": len(successful_results),
+                "residuals": residuals,
+            },
+            "failed_images": failed_images,
+        }
+        with open(stats_path, "w") as f:
+            json.dump(stats, f, indent=2)
 
 
 def compute_chamber_center(

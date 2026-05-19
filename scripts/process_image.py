@@ -14,10 +14,8 @@ Example usage:
 import argparse
 import sys
 import time
-from dataclasses import dataclass
 from pathlib import Path
 
-import cv2
 import numpy as np
 
 from dart_mlci import (
@@ -28,8 +26,8 @@ from dart_mlci import (
     RoIMaskingStep,
     create_structure_library,
 )
-from dart_mlci.io import load_image
-from dart_mlci.types import PipelineError
+from dart_mlci.io import load_image, save_image
+from dart_mlci.types import PipelineError, PipelineTimings
 
 # Pipeline step names for error reporting
 STEP_VALIDATION = "VALIDATION"
@@ -41,53 +39,33 @@ STEP_MASKING = "MASKING"
 STEP_SAVING = "SAVING"
 
 
-@dataclass
-class PipelineTimings:
-    """Stores timing information for each pipeline step."""
-
-    load_time: float = 0.0
-    detection_time: float = 0.0
-    matching_time: float = 0.0
-    rotation_time: float = 0.0
-    masking_time: float = 0.0
-    save_time: float = 0.0
-
-    @property
-    def process_time(self) -> float:
-        """Total processing time (detection + matching + rotation + masking)."""
-        return self.detection_time + self.matching_time + self.rotation_time + self.masking_time
-
-    @property
-    def total_time(self) -> float:
-        """Total pipeline time."""
-        return self.load_time + self.process_time + self.save_time
-
-    def to_string(self) -> str:
-        """Format timings as a parseable string."""
-        return (
-            f"total={self.total_time:.3f}s, "
-            f"load={self.load_time:.3f}s, "
-            f"process={self.process_time:.3f}s "
-            f"(detect={self.detection_time:.3f}s, match={self.matching_time:.3f}s, "
-            f"rotate={self.rotation_time:.3f}s, mask={self.masking_time:.3f}s), "
-            f"save={self.save_time:.3f}s"
-        )
-
-
 def print_error(step: str, message: str) -> None:
-    """Print a structured error message to stderr.
-
-    Format: ERROR: <STEP>: <message>
-    """
+    """Print a structured error message to stderr."""
     print(f"ERROR: {step}: {message}", file=sys.stderr)
 
 
-def print_success(timings: PipelineTimings, output_path: Path, mask_path: Path | None) -> None:
-    """Print a structured success message to stdout.
+def _format_timings(timings: PipelineTimings, load_time: float, save_time: float) -> str:
+    process = timings.total
+    total = load_time + process + save_time
+    return (
+        f"total={total:.3f}s, "
+        f"load={load_time:.3f}s, "
+        f"process={process:.3f}s "
+        f"(detect={timings.detection:.3f}s, match={timings.matching:.3f}s, "
+        f"rotate={timings.rotation:.3f}s, mask={timings.masking:.3f}s), "
+        f"save={save_time:.3f}s"
+    )
 
-    Format: SUCCESS: <timing info> | output=<path> [| mask=<path>]
-    """
-    msg = f"SUCCESS: {timings.to_string()} | output={output_path}"
+
+def print_success(
+    timings: PipelineTimings,
+    load_time: float,
+    save_time: float,
+    output_path: Path,
+    mask_path: Path | None,
+) -> None:
+    """Print a structured success message to stdout."""
+    msg = f"SUCCESS: {_format_timings(timings, load_time, save_time)} | output={output_path}"
     if mask_path:
         msg += f" | mask={mask_path}"
     print(msg)
@@ -132,7 +110,7 @@ def process_image(
     try:
         start = time.perf_counter()
         data = detection_step(image)
-        timings.detection_time = time.perf_counter() - start
+        timings.detection = time.perf_counter() - start
 
         markers = data.get("markers", [])
         if not markers:
@@ -146,7 +124,7 @@ def process_image(
     try:
         start = time.perf_counter()
         data = matching_step(data)
-        timings.matching_time = time.perf_counter() - start
+        timings.matching = time.perf_counter() - start
 
         matched_indices = data.get("matched_marker_indices", [])
         if not matched_indices:
@@ -160,7 +138,7 @@ def process_image(
     try:
         start = time.perf_counter()
         data = rotation_step(data)
-        timings.rotation_time = time.perf_counter() - start
+        timings.rotation = time.perf_counter() - start
     except Exception as e:
         raise PipelineError(STEP_ROTATION, str(e)) from e
 
@@ -168,60 +146,11 @@ def process_image(
     try:
         start = time.perf_counter()
         data = masking_step(data)
-        timings.masking_time = time.perf_counter() - start
+        timings.masking = time.perf_counter() - start
     except Exception as e:
         raise PipelineError(STEP_MASKING, str(e)) from e
 
     return data["image"], data["mask"], timings
-
-
-def save_output(
-    cropped_image: np.ndarray,
-    mask: np.ndarray,
-    output_path: Path,
-    save_mask: bool = True,
-) -> Path | None:
-    """Save the cropped image and optionally the mask.
-
-    Args:
-        cropped_image: CxHxW numpy array
-        mask: HxW binary numpy array
-        output_path: Path to save the cropped image
-        save_mask: If True, also save the mask
-
-    Returns:
-        Path to the saved mask, or None if save_mask is False
-    """
-    import tifffile
-
-    # Convert CxHxW to HxWxC for saving
-    if cropped_image.ndim == 3 and cropped_image.shape[0] <= 4:
-        image_hwc = np.moveaxis(cropped_image, 0, -1)
-    else:
-        image_hwc = cropped_image
-
-    suffix = output_path.suffix.lower()
-
-    if suffix in {".tif", ".tiff"}:
-        tifffile.imwrite(str(output_path), image_hwc)
-    else:
-        # For non-TIFF formats, use OpenCV
-        if image_hwc.ndim == 3 and image_hwc.shape[2] == 3:
-            # Convert RGB to BGR for OpenCV
-            image_hwc = cv2.cvtColor(image_hwc, cv2.COLOR_RGB2BGR)
-        cv2.imwrite(str(output_path), image_hwc)
-
-    mask_path = None
-    if save_mask:
-        mask_path = output_path.parent / f"{output_path.stem}_mask{output_path.suffix}"
-        mask_uint8 = mask.astype(np.uint8) * 255
-
-        if suffix in {".tif", ".tiff"}:
-            tifffile.imwrite(str(mask_path), mask_uint8)
-        else:
-            cv2.imwrite(str(mask_path), mask_uint8)
-
-    return mask_path
 
 
 def main():
@@ -320,6 +249,8 @@ Chamber ID patterns:
 
     args = parser.parse_args()
 
+    load_time = 0.0
+    save_time = 0.0
     timings = PipelineTimings()
 
     # Validate input file
@@ -392,14 +323,14 @@ Chamber ID patterns:
     try:
         start = time.perf_counter()
         image = load_image(args.image)
-        timings.load_time = time.perf_counter() - start
+        load_time = time.perf_counter() - start
     except Exception as e:
         print_error(STEP_LOADING, f"Failed to load image '{args.image}': {e}")
         sys.exit(1)
 
     # Process image
     try:
-        cropped_image, mask, process_timings = process_image(
+        cropped_image, mask, timings = process_image(
             image=image,
             roi_polygon=roi_polygon,
             marker_group=marker_group,
@@ -407,11 +338,6 @@ Chamber ID patterns:
             device=args.device,
             verbose=args.verbose,
         )
-        # Copy process timings
-        timings.detection_time = process_timings.detection_time
-        timings.matching_time = process_timings.matching_time
-        timings.rotation_time = process_timings.rotation_time
-        timings.masking_time = process_timings.masking_time
     except PipelineError as e:
         print_error(e.step, e.message)
         sys.exit(1)
@@ -423,19 +349,18 @@ Chamber ID patterns:
     try:
         start = time.perf_counter()
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        mask_path = save_output(
-            cropped_image=cropped_image,
-            mask=mask,
-            output_path=args.output,
-            save_mask=not args.no_mask,
+        mask_path = save_image(
+            cropped_image,
+            args.output,
+            mask=None if args.no_mask else mask,
         )
-        timings.save_time = time.perf_counter() - start
+        save_time = time.perf_counter() - start
     except Exception as e:
         print_error(STEP_SAVING, f"Failed to save output: {e}")
         sys.exit(1)
 
     # Print success message with timings
-    print_success(timings, args.output, mask_path)
+    print_success(timings, load_time, save_time, args.output, mask_path)
 
 
 if __name__ == "__main__":

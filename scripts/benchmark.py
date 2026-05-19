@@ -44,7 +44,12 @@ from dart_mlci import (
     create_structure_library,
 )
 from dart_mlci.io import load_image
-from dart_mlci.script_utils import Timer, load_image_list
+from dart_mlci.script_utils import (
+    Timer,
+    get_peak_gpu_memory_mb,
+    load_image_list,
+    reset_gpu_memory_stats,
+)
 
 # Available chamber types
 CHAMBER_TYPES = [
@@ -57,19 +62,6 @@ CHAMBER_TYPES = [
     "OpenBox-collector-inner",
     "Mothermachine-2x-inner",
 ]
-
-
-def get_peak_gpu_memory_mb() -> float:
-    """Get peak GPU memory usage in MB (returns 0 if CUDA unavailable)."""
-    if TORCH_AVAILABLE and torch.cuda.is_available():
-        return torch.cuda.max_memory_allocated() / 1024 / 1024
-    return 0.0
-
-
-def reset_gpu_memory_stats():
-    """Reset GPU memory tracking statistics."""
-    if TORCH_AVAILABLE and torch.cuda.is_available():
-        torch.cuda.reset_peak_memory_stats()
 
 
 class PipelineBenchmark:

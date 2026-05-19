@@ -57,127 +57,7 @@ from dart_mlci.constants import DEFAULT_MODEL_PATH, DEFAULT_STRUCTURE_LIBRARY_PA
 from dart_mlci.io import load_image
 from dart_mlci.map import AffineTransformResult, Map
 from dart_mlci.mask import RoIPolygon, apply_mask_rotation_free
-
-
-def load_config(path: Path) -> dict:
-    """Load calibration configuration from JSON file.
-
-    Args:
-        path: Path to the JSON config file
-
-    Returns:
-        Configuration dictionary
-    """
-    with open(path) as f:
-        return json.load(f)
-
-
-def validate_config(config: dict, config_path: Path | None = None) -> None:
-    """Validate calibration configuration and raise helpful errors.
-
-    Args:
-        config: Configuration dictionary to validate
-        config_path: Optional path to config file (for error messages)
-
-    Raises:
-        ValueError: If required fields are missing or invalid
-    """
-    source = f" in '{config_path}'" if config_path else ""
-
-    # Check required top-level fields
-    required_fields = ["calibration_images", "pixel_size"]
-    missing_fields = [f for f in required_fields if f not in config]
-    if missing_fields:
-        raise ValueError(
-            f"Missing required field(s){source}: {', '.join(missing_fields)}\n"
-            f"Required fields are:\n"
-            f"  - calibration_images: List of calibration image configurations\n"
-            f"  - pixel_size: Pixel size in microns (e.g., 0.065789)\n"
-            f"  - blueprint_map_path OR chip_config_path: Source for the blueprint map"
-        )
-
-    # Ensure at least one blueprint map source is provided
-    if "blueprint_map_path" not in config and "chip_config_path" not in config:
-        raise ValueError(
-            f"Must provide either 'blueprint_map_path' (CSV) or 'chip_config_path' "
-            f"(chip JSON with blueprint_map){source}"
-        )
-
-    # Validate calibration_images
-    cal_images = config["calibration_images"]
-    if not isinstance(cal_images, list):
-        raise ValueError(
-            f"'calibration_images'{source} must be a list, got {type(cal_images).__name__}"
-        )
-
-    if len(cal_images) < 3:
-        raise ValueError(
-            f"Need at least 3 calibration images for affine transform, "
-            f"got {len(cal_images)}{source}"
-        )
-
-    # Validate each calibration image entry
-    for i, img_config in enumerate(cal_images):
-        prefix = f"calibration_images[{i}]{source}"
-
-        if not isinstance(img_config, dict):
-            raise ValueError(f"{prefix} must be a dictionary, got {type(img_config).__name__}")
-
-        # Check required fields in each image config
-        img_required = ["image_path", "roi_id", "stage_position"]
-        img_missing = [f for f in img_required if f not in img_config]
-        if img_missing:
-            raise ValueError(
-                f"{prefix} is missing required field(s): {', '.join(img_missing)}\n"
-                f"Each calibration image entry must have:\n"
-                f"  - image_path: Path to the calibration image file\n"
-                f"  - roi_id: RoI identifier (e.g., '0050')\n"
-                f"  - stage_position: Dict with 'x', 'y', and optionally 'z' coordinates"
-            )
-
-        # Validate stage_position
-        stage_pos = img_config["stage_position"]
-        if not isinstance(stage_pos, dict):
-            raise ValueError(
-                f"{prefix}.stage_position must be a dictionary with 'x' and 'y' keys, "
-                f"got {type(stage_pos).__name__}"
-            )
-
-        stage_required = ["x", "y"]
-        stage_missing = [f for f in stage_required if f not in stage_pos]
-        if stage_missing:
-            raise ValueError(
-                f"{prefix}.stage_position is missing required field(s): {', '.join(stage_missing)}\n"
-                f"stage_position must have 'x' and 'y' keys (and optionally 'z')"
-            )
-
-        # Check that image file exists
-        image_path = Path(img_config["image_path"])
-        if not image_path.exists():
-            raise ValueError(f"{prefix}.image_path: File not found: {image_path}")
-
-    # Validate pixel_size
-    pixel_size = config["pixel_size"]
-    if not isinstance(pixel_size, int | float) or pixel_size <= 0:
-        raise ValueError(f"'pixel_size'{source} must be a positive number, got {pixel_size}")
-
-    # Validate blueprint_map_path exists (if provided)
-    if "blueprint_map_path" in config:
-        blueprint_path = Path(config["blueprint_map_path"])
-        if not blueprint_path.exists():
-            raise ValueError(f"'blueprint_map_path'{source}: File not found: {blueprint_path}")
-
-    # Validate chip_config_path exists (if provided)
-    if "chip_config_path" in config and config["chip_config_path"] is not None:
-        chip_config_path = Path(config["chip_config_path"])
-        if not chip_config_path.exists():
-            raise ValueError(f"'chip_config_path'{source}: File not found: {chip_config_path}")
-
-    # Validate optional model_path if provided
-    if "model_path" in config and config["model_path"] is not None:
-        model_path = Path(config["model_path"])
-        if not model_path.exists():
-            raise ValueError(f"'model_path'{source}: File not found: {model_path}")
+from dart_mlci.script_utils import load_json_config, validate_calibration_config
 
 
 def crop_calibration_image(
@@ -366,64 +246,6 @@ def run_calibration(
     )
 
     return result, blueprint_map
-
-
-def save_calibrated_map(calibrated_map: Map, z_positions: dict[str, float], output_path: Path):
-    """Save calibrated map to CSV file.
-
-    Args:
-        calibrated_map: The calibrated Map object
-        z_positions: Dictionary mapping roi_id to z position
-        output_path: Path to output CSV file
-    """
-    df = calibrated_map.to_df()
-
-    # Add z column - use average z from calibration points, or 0 if none
-    if z_positions:
-        avg_z = np.mean(list(z_positions.values()))
-        df["z"] = df["roi_id"].map(lambda rid: z_positions.get(rid, avg_z))
-    else:
-        df["z"] = 0.0
-
-    df.to_csv(output_path, index=False)
-
-
-def save_stats(
-    result: CalibrationResult,
-    stats_path: Path,
-):
-    """Save calibration statistics to JSON file.
-
-    Args:
-        result: CalibrationResult with transform stats and image results
-        stats_path: Path to output JSON file
-    """
-    # Build residuals dict
-    successful_results = [r for r in result.image_results if r.success]
-    residuals = {
-        r.roi_id: float(result.transform_result.residuals[i])
-        for i, r in enumerate(successful_results)
-    }
-
-    # Build failed images list
-    failed_images = [
-        {"roi_id": r.roi_id, "error": r.error_message}
-        for r in result.image_results
-        if not r.success
-    ]
-
-    stats = {
-        "transform_stats": {
-            "rmse": float(result.transform_result.rmse),
-            "max_error": float(result.transform_result.max_error),
-            "n_calibration_points": len(successful_results),
-            "residuals": residuals,
-        },
-        "failed_images": failed_images,
-    }
-
-    with open(stats_path, "w") as f:
-        json.dump(stats, f, indent=2)
 
 
 def save_intermediate_outputs(
@@ -649,7 +471,7 @@ def plot_calibration_result(
     fig.suptitle(
         f"Rotation: {rotation_deg:.2f}° | Scale: ({sx:.4f}, {sy:.4f})"
         f" | Translation: ({translation[0]:.1f}, {translation[1]:.1f}) $\\mu m$\n"
-        f"Matrix: [[{A[0,0]:.4f}, {A[0,1]:.4f}], [{A[1,0]:.4f}, {A[1,1]:.4f}]]"
+        f"Matrix: [[{A[0, 0]:.4f}, {A[0, 1]:.4f}], [{A[1, 0]:.4f}, {A[1, 1]:.4f}]]"
         f" | RMSE = {transform_result.rmse:.3f} $\\mu m$,"
         f" Max Error = {transform_result.max_error:.3f} $\\mu m$",
         fontsize=CAL_PLOT_SUPTITLE_FS,
@@ -721,7 +543,7 @@ def plot_image_debug(
     else:
         image_rgb = image
 
-    fig, ax = plt.subplots(figsize=(12, 10))
+    _fig, ax = plt.subplots(figsize=(12, 10))
     ax.imshow(image_rgb)
 
     # Draw markers if available
@@ -930,7 +752,7 @@ def calibrate_map(
         config_path = Path(config)
         if not config_path.exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")
-        config = load_config(config_path)
+        config = load_json_config(config_path)
 
     # Resolve relative image paths against config file directory
     if config_path is not None:
@@ -941,7 +763,7 @@ def calibrate_map(
                 img_config["image_path"] = str(config_dir / img_path)
 
     # Validate configuration
-    validate_config(config, config_path)
+    validate_calibration_config(config, config_path)
 
     # Override device if specified
     if device:
@@ -973,13 +795,13 @@ def calibrate_map(
 
     # Save calibrated map if requested
     if output_path is not None:
-        save_calibrated_map(result.calibrated_map, result.z_positions, output_path)
+        result.calibrated_map.to_csv(output_path, result.z_positions)
         if verbose:
             print(f"Calibrated map saved to: {output_path}")
 
     # Save stats if requested
     if stats_path is not None:
-        save_stats(result, stats_path)
+        result.save_stats(stats_path)
         if verbose:
             print(f"Calibration stats saved to: {stats_path}")
 
@@ -1127,7 +949,7 @@ JSON config format:
             if not config_path.exists():
                 raise FileNotFoundError(f"Config file not found: {config_path}")
             if isinstance(config_input, Path):
-                config_input = load_config(config_path)
+                config_input = load_json_config(config_path)
             if args.chip_config is not None:
                 config_input["chip_config_path"] = str(args.chip_config)
             if args.conf_threshold is not None:

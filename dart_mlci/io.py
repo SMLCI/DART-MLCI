@@ -102,3 +102,54 @@ def load_image(image_path: Path | str) -> np.ndarray:
         image = gray2rgb(image[:, :, 0])
 
     return image
+
+
+def save_image(
+    image: np.ndarray,
+    output_path: Path | str,
+    mask: np.ndarray | None = None,
+) -> Path | None:
+    """Save an image (and optional binary mask) to disk.
+
+    TIFF outputs use ``tifffile``; other suffixes go through OpenCV (3-channel
+    arrays are RGB→BGR converted). ``CxHxW`` arrays with up to 4 channels are
+    transposed to ``HxWxC`` automatically. When ``mask`` is provided it is
+    written next to ``output_path`` as ``<stem>_mask<suffix>``.
+
+    Args:
+        image: Image array (HxWxC, HxW, or CxHxW with channels ≤ 4).
+        output_path: Destination path; suffix selects the writer.
+        mask: Optional binary mask (HxW). Saved as uint8 0/255.
+
+    Returns:
+        Path to the saved mask, or None if no mask was supplied.
+    """
+    import tifffile
+
+    output_path = Path(output_path)
+
+    if image.ndim == 3 and image.shape[0] <= 4:
+        image_hwc = np.moveaxis(image, 0, -1)
+    else:
+        image_hwc = image
+
+    suffix = output_path.suffix.lower()
+    is_tiff = suffix in {".tif", ".tiff"}
+
+    if is_tiff:
+        tifffile.imwrite(str(output_path), image_hwc)
+    else:
+        if image_hwc.ndim == 3 and image_hwc.shape[2] == 3:
+            image_hwc = cv2.cvtColor(image_hwc, cv2.COLOR_RGB2BGR)
+        cv2.imwrite(str(output_path), image_hwc)
+
+    if mask is None:
+        return None
+
+    mask_path = output_path.parent / f"{output_path.stem}_mask{output_path.suffix}"
+    mask_uint8 = mask.astype(np.uint8) * 255
+    if is_tiff:
+        tifffile.imwrite(str(mask_path), mask_uint8)
+    else:
+        cv2.imwrite(str(mask_path), mask_uint8)
+    return mask_path

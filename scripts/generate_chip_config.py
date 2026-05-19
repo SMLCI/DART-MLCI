@@ -16,10 +16,7 @@ import json
 import re
 from pathlib import Path
 
-
-def gen_pattern(start_c: int, array: int) -> str:
-    """Reproduce the gen_pattern function from mask.py."""
-    return "|".join([rf"({c}{array}\d\d)" for c in range(start_c, 8, 2)])
+from dart_mlci.mask import _gen_pattern as gen_pattern
 
 
 def main():

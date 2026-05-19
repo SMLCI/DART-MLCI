@@ -11,7 +11,6 @@ Example usage:
 """
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -21,17 +20,8 @@ import tifffile
 from dart_mlci.chip import ChipStructureLibrary
 from dart_mlci.constants import ARTIFACTS_DIR
 from dart_mlci.detection import MarkerDetectionModel
+from dart_mlci.script_utils import load_json_config
 from dart_mlci.utils import normalize_image
-
-
-def load_config(config_path: str) -> dict:
-    with open(config_path) as f:
-        config = json.load(f)
-    required = ["input_dir", "folders"]
-    missing = [k for k in required if k not in config]
-    if missing:
-        raise ValueError(f"Config missing required keys: {missing}")
-    return config
 
 
 def main():
@@ -52,7 +42,7 @@ def main():
         print(f"Error: config file not found: {args.config}")
         sys.exit(1)
 
-    config = load_config(str(args.config))
+    config = load_json_config(args.config, required_keys=["input_dir", "folders"])
 
     base_dir = ARTIFACTS_DIR.parent
     input_dir = base_dir / config["input_dir"]

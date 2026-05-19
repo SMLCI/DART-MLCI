@@ -146,6 +146,23 @@ class Map:
 
         return df
 
+    def to_csv(self, output_path: Path, z_positions: dict[str, float] | None = None) -> None:
+        """Write the map to a CSV file with roi_id, x, y, z columns.
+
+        Args:
+            output_path: Destination CSV path.
+            z_positions: Optional mapping from roi_id to z coordinate. RoIs not in
+                the mapping receive the mean of the provided z values. If None or
+                empty, z is set to 0.0 for every row.
+        """
+        df = self.to_df()
+        if z_positions:
+            avg_z = float(np.mean(list(z_positions.values())))
+            df["z"] = df["roi_id"].map(lambda rid: z_positions.get(rid, avg_z))
+        else:
+            df["z"] = 0.0
+        df.to_csv(output_path, index=False)
+
     def compute_affine_transform(self, target: "Map") -> AffineTransformResult:
         """Compute an affine transform from this map to the target map.
 

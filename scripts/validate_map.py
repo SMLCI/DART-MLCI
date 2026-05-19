@@ -41,48 +41,7 @@ from dart_mlci.calibration.validation import (
 from dart_mlci.constants import DEFAULT_MODEL_PATH, DEFAULT_STRUCTURE_LIBRARY_PATH
 from dart_mlci.map import Map
 from dart_mlci.mask import SAKRoIStructureLibrary
-from dart_mlci.script_utils import load_json_config
-
-
-def load_config(path: Path) -> dict:
-    """Load validation configuration from JSON file."""
-    return load_json_config(path)
-
-
-def validate_config(config: dict, config_path: Path | None = None) -> None:
-    """Validate configuration and raise helpful errors."""
-    source = f" in '{config_path}'" if config_path else ""
-
-    required_fields = ["calibrated_map_path", "meta_csv_path", "pixel_size"]
-    missing_fields = [f for f in required_fields if f not in config]
-    if missing_fields:
-        raise ValueError(
-            f"Missing required field(s){source}: {', '.join(missing_fields)}\n"
-            f"Required fields are:\n"
-            f"  - calibrated_map_path: Path to calibrated map CSV\n"
-            f"  - meta_csv_path: Path to meta.csv with validation images\n"
-            f"  - pixel_size: Pixel size in microns (e.g., 0.065789)"
-        )
-
-    # Validate paths exist
-    calibrated_map_path = Path(config["calibrated_map_path"])
-    if not calibrated_map_path.exists():
-        raise ValueError(f"'calibrated_map_path'{source}: File not found: {calibrated_map_path}")
-
-    meta_csv_path = Path(config["meta_csv_path"])
-    if not meta_csv_path.exists():
-        raise ValueError(f"'meta_csv_path'{source}: File not found: {meta_csv_path}")
-
-    # Validate pixel_size
-    pixel_size = config["pixel_size"]
-    if not isinstance(pixel_size, int | float) or pixel_size <= 0:
-        raise ValueError(f"'pixel_size'{source} must be a positive number, got {pixel_size}")
-
-    # Validate optional model_path if provided
-    if "model_path" in config and config["model_path"] is not None:
-        model_path = Path(config["model_path"])
-        if not model_path.exists():
-            raise ValueError(f"'model_path'{source}: File not found: {model_path}")
+from dart_mlci.script_utils import load_json_config, validate_validation_config
 
 
 def run_validation_cli(
@@ -431,8 +390,8 @@ def plot_error_histogram_pixels(
 ) -> None:
     """Generate histogram of L2 errors expressed in pixels.
 
-    Reads ``error_px`` from the results (populated by save_validation_results
-    or load_validation_results). Skips if no pixel errors are available.
+    Reads ``error_px`` from the results (populated by ValidationSummary.to_csv
+    or ValidationSummary.from_csv). Skips if no pixel errors are available.
     """
     errors_px = [r.error_px for r in summary.results if r.success and r.error_px is not None]
 
@@ -837,86 +796,6 @@ def plot_validation_debug(
     plt.close()
 
 
-def save_validation_results(
-    summary: ValidationSummary,
-    output_path: Path,
-    pixel_size: float,
-) -> None:
-    """Save validation results to CSV file.
-
-    Args:
-        summary: ValidationSummary with results
-        output_path: Path to output CSV file
-        pixel_size: Pixel size in microns, used to populate the error_px column
-    """
-    rows = []
-    for r in summary.results:
-        error_px = r.error / pixel_size if r.error is not None else None
-        r.error_px = error_px
-        rows.append(
-            {
-                "roi_id": r.roi_id,
-                "map_x": r.map_x,
-                "map_y": r.map_y,
-                "measured_x": r.measured_x,
-                "measured_y": r.measured_y,
-                "error": r.error,
-                "error_px": error_px,
-                "success": r.success,
-                "error_message": r.error_message,
-            }
-        )
-
-    df = pd.DataFrame(rows)
-    df.to_csv(output_path, index=False)
-
-
-def load_validation_results(csv_path: Path) -> ValidationSummary:
-    """Load validation results from a previously saved CSV file.
-
-    Args:
-        csv_path: Path to the validation_results.csv file
-
-    Returns:
-        ValidationSummary reconstructed from the CSV
-    """
-    df = pd.read_csv(csv_path)
-    results = []
-    for _, row in df.iterrows():
-        results.append(
-            ValidationResult(
-                roi_id=str(row["roi_id"]),
-                success=bool(row["success"]),
-                map_x=row["map_x"] if pd.notna(row["map_x"]) else None,
-                map_y=row["map_y"] if pd.notna(row["map_y"]) else None,
-                measured_x=row["measured_x"] if pd.notna(row["measured_x"]) else None,
-                measured_y=row["measured_y"] if pd.notna(row["measured_y"]) else None,
-                error=row["error"] if pd.notna(row["error"]) else None,
-                error_message=row["error_message"] if pd.notna(row["error_message"]) else None,
-                error_px=(
-                    row["error_px"]
-                    if "error_px" in df.columns and pd.notna(row["error_px"])
-                    else None
-                ),
-            )
-        )
-
-    successful = [r for r in results if r.success and r.error is not None]
-    errors = [r.error for r in successful]
-
-    return ValidationSummary(
-        results=results,
-        mean_error=float(np.mean(errors)) if errors else 0.0,
-        median_error=float(np.median(errors)) if errors else 0.0,
-        std_error=float(np.std(errors)) if errors else 0.0,
-        max_error=float(np.max(errors)) if errors else 0.0,
-        min_error=float(np.min(errors)) if errors else 0.0,
-        p90_error=float(np.percentile(errors, 90)) if errors else 0.0,
-        n_success=len(successful),
-        n_failed=len(results) - len(successful),
-    )
-
-
 def validate_map(
     config: dict | Path | str,
     output_dir: Path | str,
@@ -956,10 +835,10 @@ def validate_map(
         config_path = Path(config)
         if not config_path.exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")
-        config = load_config(config_path)
+        config = load_json_config(config_path)
 
     # Validate configuration
-    validate_config(config, config_path)
+    validate_validation_config(config, config_path)
 
     # Override device if specified
     if device:
@@ -1001,7 +880,7 @@ def validate_map(
     # Save validation results CSV (populates error_px on each result)
     pixel_size = config["pixel_size"]
     results_path = output_dir / "validation_results.csv"
-    save_validation_results(summary, results_path, pixel_size)
+    summary.to_csv(results_path, pixel_size)
     if verbose:
         print(f"  Results saved to: {results_path}")
 
@@ -1212,7 +1091,7 @@ JSON config format:
             if not csv_path.exists():
                 raise FileNotFoundError(f"No validation results found at: {csv_path}")
 
-            summary = load_validation_results(csv_path)
+            summary = ValidationSummary.from_csv(csv_path)
             print(f"Loaded {len(summary.results)} results from {csv_path}")
 
             histogram_path = output_dir / "error_histogram.png"
@@ -1234,7 +1113,7 @@ JSON config format:
                 config_path = Path(args.config)
                 if not config_path.exists():
                     raise FileNotFoundError(f"Config file not found: {config_path}")
-                config_input = load_config(config_path)
+                config_input = load_json_config(config_path)
                 if args.conf_threshold is not None:
                     config_input["conf_threshold"] = args.conf_threshold
                 if args.max_angle_deviation is not None:
