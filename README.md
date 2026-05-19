@@ -7,12 +7,17 @@
 [![PyPI](https://img.shields.io/pypi/v/dart-mlci.svg)](https://pypi.org/project/dart-mlci/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-# DART-MLCI
+# DART-MLCI: Aligning Blueprint and Physical Microfluidic Chip for Design-Aware and Real-Time Capable Live-Cell Image Analysis
 
-**Real-time microfluidic chamber image processing.** DART-MLCI takes a raw
-microscopy frame, detects alignment markers, rotates and crops the chamber,
+**Real-time microfluidic RoI image processing.** DART-MLCI takes a raw
+microscopy frame, detects alignment markers, rotates and crops the RoI,
 masks the region of interest, and segments cells — automatically, for any chip
-design described by a single JSON config.
+design described by a single JSON config (fine alignment).
+
+**Time-constant microfluidic chip mapping.** DART-MLCI allows to record several
+RoI positions on the microfluidic chip when its on the microscopy stage and aligns
+the microfluidic blueprint providing all RoI positions for any chip design described
+by a single JSON config (coarse alignment).
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/SMLCI/DART-MLCI/media/docs/assets/pipeline_teaser.gif" alt="DART pipeline: detect → match → rotate → mask → segment" width="640" />
