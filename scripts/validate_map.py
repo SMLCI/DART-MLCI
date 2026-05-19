@@ -521,6 +521,8 @@ def plot_error_map(
     colorbar_tick_fontsize: float = 10,
     font_family: str | None = None,
     dpi: int = 150,
+    invert_xaxis: bool = True,
+    invert_yaxis: bool = True,
 ) -> None:
     """Generate map visualization with crosses colored by error.
 
@@ -601,8 +603,10 @@ def plot_error_map(
         rf"Validation Error Map (N={summary.n_success}, Mean Error={summary.mean_error:.3f} $\mu$m)",
         fontsize=title_fontsize,
     )
-    ax.invert_xaxis()
-    ax.invert_yaxis()
+    if invert_xaxis:
+        ax.invert_xaxis()
+    if invert_yaxis:
+        ax.invert_yaxis()
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
@@ -1162,6 +1166,16 @@ JSON config format:
         default=150,
         help="DPI for PNG output (default: 150)",
     )
+    parser.add_argument(
+        "--no-invert-xaxis",
+        action="store_true",
+        help="Do not invert the error-map x-axis (default: inverted)",
+    )
+    parser.add_argument(
+        "--no-invert-yaxis",
+        action="store_true",
+        help="Do not invert the error-map y-axis (default: inverted)",
+    )
 
     args = parser.parse_args()
 
@@ -1181,6 +1195,8 @@ JSON config format:
         colorbar_fontsize=args.colorbar_fontsize,
         colorbar_tick_fontsize=args.colorbar_tick_fontsize,
         marker_size=args.marker_size,
+        invert_xaxis=not args.no_invert_xaxis,
+        invert_yaxis=not args.no_invert_yaxis,
     )
     hist_kwargs = dict(
         **shared_kwargs,
