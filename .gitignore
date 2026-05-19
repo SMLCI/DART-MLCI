@@ -34,6 +34,12 @@ data/
 yolo_dataset/
 examples_old/
 
+# Demo media for the README lives under docs/assets/. It is NOT tracked on
+# main — generate locally with scripts/make_demo_assets.sh, then push to the
+# orphan `media` branch (see scripts/make_demo_assets.sh for the workflow).
+# The README references it via raw.githubusercontent.com on that branch.
+docs/assets/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

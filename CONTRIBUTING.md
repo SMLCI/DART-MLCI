@@ -4,8 +4,8 @@
 
 ```bash
 # Clone and install in development mode
-git clone https://github.com/JuBiotech/dart.git
-cd dart
+git clone https://github.com/SMLCI/DART-MLCI.git
+cd DART-MLCI
 pip install -e ".[dev]"
 
 # Download model weights and test images

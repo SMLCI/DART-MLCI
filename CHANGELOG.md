@@ -54,5 +54,5 @@ First public release on GitHub and PyPI.
   `bash scripts/download_artifacts.sh` after install to fetch the YOLO marker
   detector and example images from Sciebo.
 
-[Unreleased]: https://github.com/JuBiotech/dart/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/JuBiotech/dart/releases/tag/v0.1.0
+[Unreleased]: https://github.com/SMLCI/DART-MLCI/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/SMLCI/DART-MLCI/releases/tag/v0.1.0

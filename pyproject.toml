@@ -65,11 +65,11 @@ segmentation = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/JuBiotech/dart"
-Repository = "https://github.com/JuBiotech/dart"
-Documentation = "https://github.com/JuBiotech/dart#readme"
-Changelog = "https://github.com/JuBiotech/dart/blob/main/CHANGELOG.md"
-Issues = "https://github.com/JuBiotech/dart/issues"
+Homepage = "https://github.com/SMLCI/DART-MLCI"
+Repository = "https://github.com/SMLCI/DART-MLCI"
+Documentation = "https://github.com/SMLCI/DART-MLCI#readme"
+Changelog = "https://github.com/SMLCI/DART-MLCI/blob/main/CHANGELOG.md"
+Issues = "https://github.com/SMLCI/DART-MLCI/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["dart_mlci"]

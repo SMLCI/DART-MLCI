@@ -24,7 +24,7 @@ except ImportError:
 
 from dart_mlci import DEFAULT_MODEL_PATH, MarkerDetectionModel
 from dart_mlci.chip import ChipStructureLibrary
-from dart_mlci.constants import ARTIFACTS_DIR
+from dart_mlci.constants import ARTIFACTS_DIR, DEFAULT_PIXEL_SIZE_UM
 from dart_mlci.mask import apply_mask, filter_segmentation_by_mask
 from dart_mlci.match import match_markers
 from dart_mlci.rotation import compute_marker_group_angles, rotate_image_and_markers
@@ -141,7 +141,7 @@ def _save_still(frame, stills_dir, index, name, args, *, source_shape=None):
     if stills_dir is None:
         return
     bar_um = getattr(args, "scalebar_um", 0.0) or 0.0
-    pixel_size = getattr(args, "pixel_size", None) or 0.065789
+    pixel_size = getattr(args, "pixel_size", None) or DEFAULT_PIXEL_SIZE_UM
     if bar_um > 0 and source_shape is not None:
         frame = _add_scalebar_cv(frame.copy(), source_shape, pixel_size, bar_um)
     img = _crop_black_borders(frame) if args.crop_black_borders else frame
@@ -153,6 +153,36 @@ def _write_video(writer, frame, n):
     if writer is None:
         return
     write_frames(writer, frame, n)
+
+
+def _hatch_excluded(
+    image: np.ndarray,
+    excluded: np.ndarray,
+    *,
+    period: int = 12,
+    thickness: int = 2,
+    line_alpha: float = 0.8,
+    fill_color: tuple[int, int, int] = (128, 128, 128),
+    fill_alpha: float = 0.7,
+) -> np.ndarray:
+    """Mark *excluded* pixels with a translucent gray fill plus black hatching.
+
+    The gray tint shows the extent of the removed region; the diagonal black
+    lines on top make it unambiguous as excluded content (so it cannot be
+    confused with grayscale microfluidic structures).
+    """
+    if not excluded.any():
+        return image
+    out = image.astype(np.float32, copy=True)
+    fill = np.array(fill_color, dtype=np.float32)
+    out[excluded] = (1.0 - fill_alpha) * out[excluded] + fill_alpha * fill
+    h, w = excluded.shape
+    yy, xx = np.indices((h, w))
+    stripes = ((xx + yy) % period) < thickness
+    hatch = excluded & stripes
+    if hatch.any():
+        out[hatch] *= 1.0 - line_alpha
+    return out.astype(np.uint8)
 
 
 def generate_pipeline_video(
@@ -318,10 +348,7 @@ def generate_pipeline_video(
             rotated_result,
             return_uncropped=True,
         )
-        masked_overlay = rotated_image_hwc.copy()
-        masked_overlay[uncropped_mask] = (
-            0.3 * masked_overlay[uncropped_mask] + 0.7 * np.array([128, 128, 128])
-        ).astype(np.uint8)
+        masked_overlay = _hatch_excluded(rotated_image_hwc.copy(), uncropped_mask)
 
         frame, scale, offset = prepare_frame(masked_overlay)
         frame = _maybe_title(frame, "Masking: ROI Mask Applied", args)
@@ -366,9 +393,7 @@ def generate_pipeline_video(
                 rotated_result,
                 return_uncropped=True,
             )
-            masked_overlay[temp_mask] = (
-                0.3 * masked_overlay[temp_mask] + 0.7 * np.array([128, 128, 128])
-            ).astype(np.uint8)
+            masked_overlay = _hatch_excluded(masked_overlay, temp_mask)
 
         num_zoom_frames = int(2 * FPS)
         zoom_frames = animate_zoom_to_roi(masked_overlay, roi_bounds, num_zoom_frames)
@@ -406,10 +431,7 @@ def generate_pipeline_video(
             rotated_result,
         )
         cropped_hwc = np.moveaxis(cropped_image, 0, -1)
-        masked_display = cropped_hwc.copy()
-        masked_display[cropped_mask] = (
-            0.3 * masked_display[cropped_mask] + 0.7 * np.array([128, 128, 128])
-        ).astype(np.uint8)
+        masked_display = _hatch_excluded(cropped_hwc.copy(), cropped_mask)
 
         frame, scale, offset = prepare_frame(masked_display)
         frame = _maybe_title(frame, "Masking: Final Cropped Result", args)
@@ -444,19 +466,23 @@ def generate_pipeline_video(
             labeled_mask = segmentation_result.toMasks(h, w, binary_mask=False)[0]
 
             # --- Substep 5a: Raw Instance Segmentation ---
-            # Build color LUT from raw mask so surviving cells keep
-            # the same colors after filtering in substep 5b.
+            # Build a saturated HSV palette so cell colors never look gray —
+            # otherwise they would blend into the gray-hatched mask overlay.
             rng = np.random.default_rng(42)
             n_ids = int(labeled_mask.max()) + 1
-            color_lut = rng.integers(0, 256, size=(n_ids, 3), dtype=np.uint8)
+            hsv = np.zeros((n_ids, 1, 3), dtype=np.uint8)
+            hsv[..., 0] = rng.integers(0, 180, size=(n_ids, 1))
+            hsv[..., 1] = rng.integers(200, 256, size=(n_ids, 1))
+            hsv[..., 2] = rng.integers(200, 256, size=(n_ids, 1))
+            color_lut = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB).reshape(n_ids, 3)
             color_lut[0] = (0, 0, 0)
 
             colored_cells = colorize_instance_mask(labeled_mask, color_lut=color_lut)
             output = cropped_rgb.copy().astype(np.float32)
             cell_area = labeled_mask > 0
             output[cell_area] = 0.5 * colored_cells[cell_area] + 0.5 * output[cell_area]
-            output[cropped_mask] = 0.3 * output[cropped_mask] + 0.7 * np.array([128, 128, 128])
-            display_bgr = cv2.cvtColor(output.astype(np.uint8), cv2.COLOR_RGB2BGR)
+            output = _hatch_excluded(output.astype(np.uint8), cropped_mask)
+            display_bgr = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
 
             frame, scale, offset = prepare_frame(display_bgr)
             frame = _maybe_title(frame, "Segmentation: Raw Instance Segmentation", args)
@@ -477,8 +503,8 @@ def generate_pipeline_video(
             output = cropped_rgb.copy().astype(np.float32)
             cell_area = filtered_mask > 0
             output[cell_area] = 0.5 * colored_filtered[cell_area] + 0.5 * output[cell_area]
-            output[cropped_mask] = 0.3 * output[cropped_mask] + 0.7 * np.array([128, 128, 128])
-            display_bgr = cv2.cvtColor(output.astype(np.uint8), cv2.COLOR_RGB2BGR)
+            output = _hatch_excluded(output.astype(np.uint8), cropped_mask)
+            display_bgr = cv2.cvtColor(output, cv2.COLOR_RGB2BGR)
 
             frame, scale, offset = prepare_frame(display_bgr)
             frame = _maybe_title(frame, "Segmentation: Structure-Aware Filtering", args)
@@ -533,6 +559,12 @@ def main():
         help="Crop all-black letterbox borders from saved stills "
         "(auto-enabled when --no-titles and --no-progress-bar are both set)",
     )
+    parser.add_argument(
+        "--pixel-size",
+        type=float,
+        default=DEFAULT_PIXEL_SIZE_UM,
+        help="Pixel size in microns per pixel (camera attribute, default: %(default)s)",
+    )
     args = parser.parse_args()
 
     # Auto-enable border cropping when both overlays are suppressed (publication-clean stills)
@@ -548,7 +580,7 @@ def main():
         args.stills_dir.mkdir(parents=True, exist_ok=True)
 
     chip_config_path = ARTIFACTS_DIR / "chips" / "sak.json"
-    lib = ChipStructureLibrary.from_file(chip_config_path)
+    lib = ChipStructureLibrary.from_file(chip_config_path, pixel_size=args.pixel_size)
 
     print("Loading marker detection model...")
     model = MarkerDetectionModel(DEFAULT_MODEL_PATH)
