@@ -214,18 +214,18 @@ container deployment.
 
 Pipeline walkthrough videos for each of the seven SAK chamber types. Click a
 thumbnail to download the full-resolution MP4 from the
-[v0.1.0 release](https://github.com/SMLCI/DART-MLCI/releases/tag/v0.1.0).
+[latest release](https://github.com/SMLCI/DART-MLCI/releases/latest).
 
 | Chamber Type | Preview |
 |---|---|
-| Normal Box | [![NormaleBox-inner](https://raw.githubusercontent.com/SMLCI/DART-MLCI/media/docs/assets/thumbnails/NormaleBox-inner.png)](https://github.com/SMLCI/DART-MLCI/releases/download/v0.1.0/NormaleBox-inner.mp4) |
-| Normal Box + Pillar | [![NormaleBox-pillar-inner](https://raw.githubusercontent.com/SMLCI/DART-MLCI/media/docs/assets/thumbnails/NormaleBox-pillar-inner.png)](https://github.com/SMLCI/DART-MLCI/releases/download/v0.1.0/NormaleBox-pillar-inner.mp4) |
-| Big Box | [![BigBox-inner](https://raw.githubusercontent.com/SMLCI/DART-MLCI/media/docs/assets/thumbnails/BigBox-inner.png)](https://github.com/SMLCI/DART-MLCI/releases/download/v0.1.0/BigBox-inner.mp4) |
-| Big Box + Pillar | [![BigBox-pillar-inner](https://raw.githubusercontent.com/SMLCI/DART-MLCI/media/docs/assets/thumbnails/BigBox-pillar-inner.png)](https://github.com/SMLCI/DART-MLCI/releases/download/v0.1.0/BigBox-pillar-inner.mp4) |
-| Open Box | [![OpenBox-inner](https://raw.githubusercontent.com/SMLCI/DART-MLCI/media/docs/assets/thumbnails/OpenBox-inner.png)](https://github.com/SMLCI/DART-MLCI/releases/download/v0.1.0/OpenBox-inner.mp4) |
-| Open Box + Collector | [![OpenBox-collector-inner](https://raw.githubusercontent.com/SMLCI/DART-MLCI/media/docs/assets/thumbnails/OpenBox-collector-inner.png)](https://github.com/SMLCI/DART-MLCI/releases/download/v0.1.0/OpenBox-collector-inner.mp4) |
-| Mothermachine | [![Mothermachine-inner](https://raw.githubusercontent.com/SMLCI/DART-MLCI/media/docs/assets/thumbnails/Mothermachine-inner.png)](https://github.com/SMLCI/DART-MLCI/releases/download/v0.1.0/Mothermachine-inner.mp4) |
-| Mothermachine 2x | [![Mothermachine-2x-inner](https://raw.githubusercontent.com/SMLCI/DART-MLCI/media/docs/assets/thumbnails/Mothermachine-2x-inner.png)](https://github.com/SMLCI/DART-MLCI/releases/download/v0.1.0/Mothermachine-2x-inner.mp4) |
+| Normal Box | [![NormaleBox-inner](https://raw.githubusercontent.com/SMLCI/DART-MLCI/media/docs/assets/thumbnails/NormaleBox-inner.png)](https://github.com/SMLCI/DART-MLCI/releases/latest/download/NormaleBox-inner.mp4) |
+| Normal Box + Pillar | [![NormaleBox-pillar-inner](https://raw.githubusercontent.com/SMLCI/DART-MLCI/media/docs/assets/thumbnails/NormaleBox-pillar-inner.png)](https://github.com/SMLCI/DART-MLCI/releases/latest/download/NormaleBox-pillar-inner.mp4) |
+| Big Box | [![BigBox-inner](https://raw.githubusercontent.com/SMLCI/DART-MLCI/media/docs/assets/thumbnails/BigBox-inner.png)](https://github.com/SMLCI/DART-MLCI/releases/latest/download/BigBox-inner.mp4) |
+| Big Box + Pillar | [![BigBox-pillar-inner](https://raw.githubusercontent.com/SMLCI/DART-MLCI/media/docs/assets/thumbnails/BigBox-pillar-inner.png)](https://github.com/SMLCI/DART-MLCI/releases/latest/download/BigBox-pillar-inner.mp4) |
+| Open Box | [![OpenBox-inner](https://raw.githubusercontent.com/SMLCI/DART-MLCI/media/docs/assets/thumbnails/OpenBox-inner.png)](https://github.com/SMLCI/DART-MLCI/releases/latest/download/OpenBox-inner.mp4) |
+| Open Box + Collector | [![OpenBox-collector-inner](https://raw.githubusercontent.com/SMLCI/DART-MLCI/media/docs/assets/thumbnails/OpenBox-collector-inner.png)](https://github.com/SMLCI/DART-MLCI/releases/latest/download/OpenBox-collector-inner.mp4) |
+| Mothermachine | [![Mothermachine-inner](https://raw.githubusercontent.com/SMLCI/DART-MLCI/media/docs/assets/thumbnails/Mothermachine-inner.png)](https://github.com/SMLCI/DART-MLCI/releases/latest/download/Mothermachine-inner.mp4) |
+| Mothermachine 2x | [![Mothermachine-2x-inner](https://raw.githubusercontent.com/SMLCI/DART-MLCI/media/docs/assets/thumbnails/Mothermachine-2x-inner.png)](https://github.com/SMLCI/DART-MLCI/releases/latest/download/Mothermachine-2x-inner.mp4) |
 
 Generate fresh demo videos for your own chip with
 `python scripts/generate_sak_videos.py` (writes to
