@@ -7,8 +7,14 @@ on:
   workflow_dispatch:
 
 jobs:
+  test:
+    name: Run CI test suite
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
   build:
     name: Build sdist + wheel
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
