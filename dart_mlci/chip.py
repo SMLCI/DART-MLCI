@@ -6,7 +6,7 @@ blueprint_map.csv, and hardcoded values in mask.py.
 
 Example usage:
     >>> from dart_mlci.chip import ChipStructureLibrary
-    >>> lib = ChipStructureLibrary.from_file("artifacts/chips/sak.json")
+    >>> lib = ChipStructureLibrary.from_file("artifacts/chips/sak.json", pixel_size=0.065789)
     >>> structure_name, polygon, markers = lib("0050")
 """
 
@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 from shapely.geometry import shape
 
-from .constants import DEFAULT_PIXEL_SIZE_UM, DEFAULT_STRUCTURE_LIBRARY_PATH
+from .constants import DEFAULT_STRUCTURE_LIBRARY_PATH
 from .map import Map
 from .mask import RoIPolygon
 
@@ -45,7 +45,6 @@ class ChipConfig:
         chip_name: Human-readable chip name (e.g., "SAK")
         version: Config file version string
         description: Optional description of the chip
-        pixel_size: Default pixel size in microns per pixel
         chamber_types: Mapping of chamber type name to its configuration
         blueprint_map: List of dicts with roi_id, x, y positions
     """
@@ -53,24 +52,23 @@ class ChipConfig:
     chip_name: str
     version: str
     description: str
-    pixel_size: float
     chamber_types: dict[str, ChamberTypeConfig]
     blueprint_map: list[dict] = field(default_factory=list)
 
 
 def create_structure_library(
+    pixel_size: float,
     chip_config_path: Path | str | None = None,
     structure_library_path: Path | str | None = None,
-    pixel_size: float = DEFAULT_PIXEL_SIZE_UM,
 ) -> ChipStructureLibrary:
     """Create a structure library, preferring chip config over legacy format.
 
     Args:
+        pixel_size: Pixel size in microns per pixel (camera attribute, required).
         chip_config_path: Path to unified chip config JSON file. If provided,
             takes precedence over structure_library_path.
         structure_library_path: Path to legacy chamber structure JSON file.
             If neither path is provided, defaults to the legacy structure library.
-        pixel_size: Pixel size in microns per pixel.
 
     Returns:
         ChipStructureLibrary (from chip config) or SAKRoIStructureLibrary (legacy).
@@ -122,7 +120,7 @@ def load_chip_config(path: Path | str) -> ChipConfig:
         data = json.load(f)
 
     # Validate required top-level fields
-    required = ["chip_name", "version", "pixel_size", "chamber_types"]
+    required = ["chip_name", "version", "chamber_types"]
     missing = [k for k in required if k not in data]
     if missing:
         raise ValueError(f"Chip config missing required fields: {', '.join(missing)}")
@@ -175,7 +173,6 @@ def load_chip_config(path: Path | str) -> ChipConfig:
         chip_name=data["chip_name"],
         version=data["version"],
         description=data.get("description", ""),
-        pixel_size=data["pixel_size"],
         chamber_types=chamber_types,
         blueprint_map=blueprint_map,
     )
@@ -194,16 +191,15 @@ class ChipStructureLibrary:
         marker_group_configs: Dict of chamber name to marker positions in pixels
     """
 
-    def __init__(self, chip_config: ChipConfig, pixel_size: float | None = None):
+    def __init__(self, chip_config: ChipConfig, pixel_size: float):
         """Initialize from a ChipConfig.
 
         Args:
             chip_config: Loaded chip configuration
-            pixel_size: Override pixel size (microns/pixel). If None, uses
-                        the value from chip_config.
+            pixel_size: Pixel size in microns per pixel (camera attribute, required).
         """
         self.chip_config = chip_config
-        self.pixel_size = pixel_size if pixel_size is not None else chip_config.pixel_size
+        self.pixel_size = pixel_size
         self.source_path: Path | None = None
 
         # Build polygon library: convert GeoJSON to scaled RoIPolygon objects
@@ -235,12 +231,12 @@ class ChipStructureLibrary:
         }
 
     @classmethod
-    def from_file(cls, path: Path | str, pixel_size: float | None = None) -> ChipStructureLibrary:
+    def from_file(cls, path: Path | str, pixel_size: float) -> ChipStructureLibrary:
         """Load a ChipStructureLibrary from a chip config JSON file.
 
         Args:
             path: Path to the chip config JSON file
-            pixel_size: Override pixel size. If None, uses the config's value.
+            pixel_size: Pixel size in microns per pixel (camera attribute, required).
 
         Returns:
             ChipStructureLibrary instance

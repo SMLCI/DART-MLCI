@@ -8,20 +8,26 @@ from dart_mlci.constants import DEFAULT_CHIP_CONFIG_PATH, DEFAULT_STRUCTURE_LIBR
 
 class TestCreateStructureLibrary:
     def test_with_chip_config(self):
-        lib = create_structure_library(chip_config_path=DEFAULT_CHIP_CONFIG_PATH)
+        lib = create_structure_library(
+            pixel_size=0.065789, chip_config_path=DEFAULT_CHIP_CONFIG_PATH
+        )
         assert isinstance(lib, ChipStructureLibrary)
 
     def test_with_legacy_path_emits_deprecation(self):
         with pytest.warns(DeprecationWarning, match="legacy"):
-            create_structure_library(structure_library_path=DEFAULT_STRUCTURE_LIBRARY_PATH)
+            create_structure_library(
+                pixel_size=0.065789,
+                structure_library_path=DEFAULT_STRUCTURE_LIBRARY_PATH,
+            )
 
     def test_with_no_args_uses_default_legacy(self):
         with pytest.warns(DeprecationWarning):
-            lib = create_structure_library()
+            lib = create_structure_library(pixel_size=0.065789)
         assert hasattr(lib, "polygon_library")
 
     def test_chip_config_takes_precedence(self):
         lib = create_structure_library(
+            pixel_size=0.065789,
             chip_config_path=DEFAULT_CHIP_CONFIG_PATH,
             structure_library_path=DEFAULT_STRUCTURE_LIBRARY_PATH,
         )

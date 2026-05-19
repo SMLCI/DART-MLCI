@@ -30,7 +30,6 @@ class TestLoadChipConfig(unittest.TestCase):
 
         self.assertEqual(config.chip_name, "SAK")
         self.assertEqual(config.version, "2.0")
-        self.assertEqual(config.pixel_size, 0.065789)
         self.assertEqual(len(config.chamber_types), 8)
         self.assertEqual(len(config.blueprint_map), 1164)
 
@@ -83,7 +82,6 @@ class TestLoadChipConfig(unittest.TestCase):
         config_data = {
             "chip_name": "test",
             "version": "2.0",
-            "pixel_size": 0.065789,
             "chamber_types": {
                 "Box": {
                     "polygon": {
@@ -110,7 +108,6 @@ class TestLoadChipConfig(unittest.TestCase):
         config_data = {
             "chip_name": "test",
             "version": "2.0",
-            "pixel_size": 0.065789,
             "chamber_types": {
                 "Box": {
                     "polygon": {
@@ -149,7 +146,7 @@ class TestChipStructureLibrary(unittest.TestCase):
 
     def test_from_file(self):
         """Test from_file classmethod."""
-        lib = ChipStructureLibrary.from_file(SAK_CONFIG_PATH)
+        lib = ChipStructureLibrary.from_file(SAK_CONFIG_PATH, pixel_size=0.065789)
         self.assertIsInstance(lib, ChipStructureLibrary)
         self.assertEqual(lib.pixel_size, 0.065789)
 
@@ -303,7 +300,7 @@ class TestBlueprintMap(unittest.TestCase):
 
     def test_get_blueprint_map(self):
         """Test get_blueprint_map returns a valid Map."""
-        lib = ChipStructureLibrary.from_file(SAK_CONFIG_PATH)
+        lib = ChipStructureLibrary.from_file(SAK_CONFIG_PATH, pixel_size=0.065789)
         blueprint_map = lib.get_blueprint_map()
 
         self.assertIsInstance(blueprint_map, Map)
@@ -311,7 +308,7 @@ class TestBlueprintMap(unittest.TestCase):
 
     def test_blueprint_map_matches_csv(self):
         """Test that blueprint map from chip config matches the CSV."""
-        lib = ChipStructureLibrary.from_file(SAK_CONFIG_PATH)
+        lib = ChipStructureLibrary.from_file(SAK_CONFIG_PATH, pixel_size=0.065789)
         new_map = lib.get_blueprint_map()
         old_map = Map.from_csv(BLUEPRINT_MAP_PATH)
 
@@ -342,11 +339,10 @@ class TestBlueprintMap(unittest.TestCase):
             chip_name="test",
             version="1.0",
             description="",
-            pixel_size=0.065789,
             chamber_types={},
             blueprint_map=[],
         )
-        lib = ChipStructureLibrary(config)
+        lib = ChipStructureLibrary(config, pixel_size=0.065789)
         with self.assertRaises(ValueError):
             lib.get_blueprint_map()
 
