@@ -417,5 +417,3 @@ jobs:
 
 - **Interactive API Docs**: http://localhost:8000/docs
 - **Health Check**: http://localhost:8000/health
-- **Migration Guide**: `docs/API_BASE64_MIGRATION.md`
-- **Quick Start**: `docs/API_QUICK_START.md`

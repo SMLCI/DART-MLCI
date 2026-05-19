@@ -6,9 +6,20 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-05-12
+## [0.2.0] - 2026-05-19
 
 First public release on GitHub and PyPI.
+
+### Refactor
+
+- Promoted reusable helpers out of `scripts/` and into the core package:
+  `dart_mlci.io.save_image`, `dart_mlci.map.Map.to_csv`,
+  `dart_mlci.calibration.core.CalibrationResult.save_stats`,
+  `dart_mlci.calibration.validation.ValidationSummary.to_csv` / `from_csv`,
+  and `dart_mlci.script_utils.validate_calibration_config` /
+  `validate_validation_config` / `get_peak_gpu_memory_mb` /
+  `reset_gpu_memory_stats`. CLI scripts are now thin wrappers around the
+  public API.
 
 ### Features
 
@@ -54,5 +65,5 @@ First public release on GitHub and PyPI.
   `bash scripts/download_artifacts.sh` after install to fetch the YOLO marker
   detector and example images from Sciebo.
 
-[Unreleased]: https://github.com/SMLCI/DART-MLCI/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/SMLCI/DART-MLCI/releases/tag/v0.1.0
+[Unreleased]: https://github.com/SMLCI/DART-MLCI/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/SMLCI/DART-MLCI/releases/tag/v0.2.0

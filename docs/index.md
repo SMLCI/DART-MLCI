@@ -64,6 +64,7 @@ The `ChipStructureLibrary` class (`chip.py`) loads these configs and provides lo
 
 ## Guides
 
-- [API Quick Start](API_QUICK_START.md) — REST API usage examples
 - [Docker Guide](DOCKER_GUIDE.md) — Container deployment
-- [API Migration](API_BASE64_MIGRATION.md) — Base64 encoding notes
+
+For REST API usage, run the server (see README) and visit
+`http://localhost:8000/docs` for interactive Swagger documentation.

@@ -1,8 +1,4 @@
-<!-- GitLab CI (internal) -->
-![GitLab pipeline](https://jugit.fz-juelich.de/emsig/dmc-masking/badges/main/pipeline.svg)
-![GitLab coverage](https://jugit.fz-juelich.de/emsig/dmc-masking/badges/main/coverage.svg)
-<!-- GitHub CI (public) -->
-![GitHub CI](https://github.com/SMLCI/DART-MLCI/actions/workflows/ci.yml/badge.svg)
+[![CI](https://github.com/SMLCI/DART-MLCI/actions/workflows/ci.yml/badge.svg)](https://github.com/SMLCI/DART-MLCI/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/SMLCI/DART-MLCI/branch/main/graph/badge.svg)](https://codecov.io/gh/SMLCI/DART-MLCI)
 [![PyPI](https://img.shields.io/pypi/v/dart-mlci.svg)](https://pypi.org/project/dart-mlci/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -210,8 +206,9 @@ print(resp.json()["chamber_type"])
 
 Or via Docker: `docker-compose up --build`.
 
-See [`docs/API_QUICK_START.md`](docs/API_QUICK_START.md) for the full API
-reference and [`docs/DOCKER_GUIDE.md`](docs/DOCKER_GUIDE.md) for deployment.
+Visit `http://localhost:8000/docs` for interactive Swagger documentation of
+every endpoint. See [`docs/DOCKER_GUIDE.md`](docs/DOCKER_GUIDE.md) for
+container deployment.
 
 ## Demo Gallery
 
