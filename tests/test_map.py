@@ -1,8 +1,11 @@
-"""Test cases for Map.compute_affine_transform method."""
+"""Test cases for the Map / RoIPosition classes and related helpers."""
 
+import logging
 import unittest
 
 import numpy as np
+import pandas as pd
+import pytest
 
 from dart_mlci.map import AffineTransformResult, Map, RoIPosition
 
@@ -305,6 +308,79 @@ class TestComputeAffineTransform(unittest.TestCase):
         self.assertGreater(result.max_error, 0.0)
         # At least one residual should be nonzero
         self.assertTrue(np.any(result.residuals > 0))
+
+
+def _make_map(entries):
+    return Map([RoIPosition(rid, np.array(pos, dtype=float)) for rid, pos in entries])
+
+
+class TestRoIPosition:
+    def test_invalid_shape_raises(self):
+        with pytest.raises(ValueError, match="Invalid dimensions"):
+            RoIPosition("0001", np.array([[1.0, 2.0], [3.0, 4.0]]))
+
+    def test_subtraction_returns_delta(self):
+        a = RoIPosition("0001", np.array([1.0, 2.0]))
+        b = RoIPosition("0002", np.array([4.0, 6.0]))
+        np.testing.assert_allclose(b - a, [3.0, 4.0])
+
+    def test_subtraction_dim_mismatch_raises(self):
+        a = RoIPosition("0001", np.array([1.0, 2.0]))
+        b = RoIPosition("0002", np.array([1.0, 2.0, 3.0]))
+        with pytest.raises(ValueError, match="different position dimensions"):
+            _ = a - b
+
+    def test_repr_contains_id(self):
+        r = RoIPosition("0050", np.array([1.0, 2.0]))
+        assert "0050" in repr(r)
+
+
+class TestMapBasics:
+    def test_empty_logs_warning(self, caplog):
+        with caplog.at_level(logging.WARNING):
+            Map([])
+        assert any("empty map" in r.message.lower() for r in caplog.records)
+
+    def test_getitem(self):
+        m = _make_map([("0001", [1.0, 2.0])])
+        assert m["0001"].id == "0001"
+
+    def test_distance(self):
+        m = _make_map([("0001", [0.0, 0.0]), ("0002", [3.0, 4.0])])
+        assert m.distance("0001", "0002") == pytest.approx(5.0)
+
+    def test_rel_movement_with_string_ids(self):
+        m = _make_map([("0001", [1.0, 2.0]), ("0002", [4.0, 6.0])])
+        np.testing.assert_allclose(m.rel_movement_from_to("0001", "0002"), [3.0, 4.0])
+
+    def test_rel_movement_with_array_from(self):
+        m = _make_map([("0002", [4.0, 6.0])])
+        out = m.rel_movement_from_to(np.array([1.0, 2.0]), "0002")
+        np.testing.assert_allclose(out, [3.0, 4.0])
+
+
+class TestMapToCsv:
+    def test_round_trip_without_z(self, tmp_path):
+        m = _make_map([("0001", [1.5, 2.5]), ("0002", [3.0, 4.0])])
+        out = tmp_path / "map.csv"
+        m.to_csv(out)
+        df = pd.read_csv(out)
+        assert set(df.columns) == {"roi_id", "x", "y", "z"}
+        assert (df["z"] == 0.0).all()
+        m2 = Map.from_csv(out)
+        assert set(m2.roi_positions.keys()) == {"0001", "0002"}
+        np.testing.assert_allclose(m2.roi_positions["0001"].position, [1.5, 2.5])
+
+    def test_with_z_positions_uses_mean_for_missing(self, tmp_path):
+        m = _make_map([("0001", [0.0, 0.0]), ("0002", [1.0, 1.0]), ("0003", [2.0, 2.0])])
+        out = tmp_path / "map.csv"
+        m.to_csv(out, z_positions={"0001": 10.0, "0002": 20.0})
+        df = pd.read_csv(out).set_index("roi_id")
+        df.index = [f"{i:04d}" for i in df.index]
+        assert df.loc["0001", "z"] == 10.0
+        assert df.loc["0002", "z"] == 20.0
+        # 0003 was missing → mean of provided z's
+        assert df.loc["0003", "z"] == pytest.approx(15.0)
 
 
 if __name__ == "__main__":

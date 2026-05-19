@@ -1,5 +1,6 @@
 """Tests for the calibration core module."""
 
+import json
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -17,6 +18,8 @@ from dart_mlci.calibration import (
     process_calibration_image,
     run_calibration,
 )
+from dart_mlci.calibration.core import CalibrationResult
+from dart_mlci.map import AffineTransformResult, Map, RoIPosition
 from dart_mlci.mask import RoIPolygon
 
 MODEL_PATH = Path("artifacts/models/v26_detect_s_imgsz1280.pt")
@@ -509,6 +512,58 @@ class TestRunCalibration(unittest.TestCase):
         self.assertIsNotNone(result.calibrated_map)
         self.assertIsNotNone(result.measured_map)
         self.assertGreater(len(result.measured_map.roi_positions), 0)
+
+
+def _make_map(entries):
+    return Map([RoIPosition(rid, np.array(pos, dtype=float)) for rid, pos in entries])
+
+
+class TestCalibrationResultSaveStats:
+    """CalibrationResult.save_stats serializes residuals + failures to JSON."""
+
+    def test_writes_expected_keys(self, tmp_path):
+        successful = [
+            ImageCalibrationResult(
+                roi_id="0001",
+                success=True,
+                microscope_position=np.array([0.0, 0.0]),
+                z_position=0.0,
+            ),
+            ImageCalibrationResult(
+                roi_id="0002",
+                success=True,
+                microscope_position=np.array([1.0, 1.0]),
+                z_position=0.0,
+            ),
+        ]
+        failed = ImageCalibrationResult(
+            roi_id="0003",
+            success=False,
+            microscope_position=None,
+            z_position=None,
+            error_message="bad image",
+        )
+        transform = AffineTransformResult(
+            transform=lambda x: x,
+            residuals=np.array([0.1, 0.2]),
+            rmse=0.158,
+            max_error=0.2,
+        )
+        result = CalibrationResult(
+            measured_map=_make_map([("0001", [0, 0]), ("0002", [1, 1])]),
+            transform_result=transform,
+            calibrated_map=_make_map([("0001", [0, 0])]),
+            image_results=[*successful, failed],
+        )
+        out = tmp_path / "stats.json"
+        result.save_stats(out)
+        data = json.loads(out.read_text())
+        assert set(data) == {"transform_stats", "failed_images"}
+        ts = data["transform_stats"]
+        assert set(ts) == {"rmse", "max_error", "n_calibration_points", "residuals"}
+        assert ts["n_calibration_points"] == 2
+        assert set(ts["residuals"]) == {"0001", "0002"}
+        assert data["failed_images"] == [{"roi_id": "0003", "error": "bad image"}]
 
 
 if __name__ == "__main__":

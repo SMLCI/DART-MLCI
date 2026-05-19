@@ -3,8 +3,9 @@
 import unittest
 
 import numpy as np
+import pytest
 
-from dart_mlci.utils import homogenize_image_size
+from dart_mlci.utils import center_of_mask_mass, homogenize_image_size, to_hwc_numpy
 
 
 class TestUtils(unittest.TestCase):
@@ -37,6 +38,45 @@ class TestUtils(unittest.TestCase):
             _ = homogenize_image_size(test_sequence)
 
         print("Inhomogeneous number of channels" in e.exception.args[0])
+
+
+class TestToHwcNumpy:
+    def test_chw_is_transposed(self):
+        chw = np.zeros((3, 8, 16), dtype=np.uint8)
+        chw[0] = 5
+        out = to_hwc_numpy(chw)
+        assert out.shape == (8, 16, 3)
+        assert (out[..., 0] == 5).all()
+
+    def test_hwc_is_passed_through(self):
+        hwc = np.zeros((8, 16, 3), dtype=np.uint8)
+        out = to_hwc_numpy(hwc)
+        assert out.shape == (8, 16, 3)
+        assert out is hwc or np.shares_memory(out, hwc)
+
+    def test_2d_is_passed_through(self):
+        gray = np.zeros((8, 16), dtype=np.uint8)
+        out = to_hwc_numpy(gray)
+        assert out.shape == (8, 16)
+
+    def test_torch_tensor_converted(self):
+        try:
+            import torch
+        except ImportError:
+            pytest.skip("torch not installed")
+        t = torch.zeros((3, 8, 16), dtype=torch.uint8)
+        out = to_hwc_numpy(t)
+        assert isinstance(out, np.ndarray)
+        assert out.shape == (8, 16, 3)
+
+
+class TestCenterOfMaskMass:
+    def test_centered_blob(self):
+        mask = np.zeros((20, 20), dtype=bool)
+        mask[8:12, 8:12] = True
+        x, y = center_of_mask_mass(mask)
+        assert 8 <= x <= 11
+        assert 8 <= y <= 11
 
 
 if __name__ == "__main__":

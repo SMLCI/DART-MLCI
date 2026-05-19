@@ -4,9 +4,10 @@ import json
 import unittest
 from pathlib import Path
 
+import cv2
 import numpy as np
 
-from dart_mlci.io import load_image, load_roi_structures
+from dart_mlci.io import load_image, load_roi_structures, save_image
 
 
 class TestLoadImage(unittest.TestCase):
@@ -224,6 +225,71 @@ class TestLoadImageSynthetic(unittest.TestCase):
         with self.assertRaises(ValueError):
             load_image(tmp)
         tmp.unlink()
+
+
+class TestLoadImageSingleChannelPath(unittest.TestCase):
+    """Exercises the HxWx1 → RGB promotion branch of load_image."""
+
+    def test_single_channel_hwc_becomes_rgb(self):
+        import tempfile
+
+        img_hw1 = np.zeros((20, 20, 1), dtype=np.uint8)
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as fp:
+            tmp = Path(fp.name)
+        cv2.imwrite(str(tmp), img_hw1)
+        try:
+            loaded = load_image(tmp)
+            self.assertEqual(loaded.ndim, 3)
+            self.assertEqual(loaded.shape[2], 3)
+        finally:
+            tmp.unlink()
+
+
+class TestSaveImage:
+    """save_image: TIFF/OpenCV format selection, BGR conversion, optional mask sidecar."""
+
+    def _img_hwc(self):
+        rng = np.random.default_rng(0)
+        return rng.integers(0, 255, size=(16, 16, 3), dtype=np.uint8)
+
+    def test_png_round_trip(self, tmp_path):
+        img = self._img_hwc()
+        out = tmp_path / "out.png"
+        mask_path = save_image(img, out)
+        assert mask_path is None
+        assert out.exists()
+        loaded = load_image(out)
+        # PNG via OpenCV preserves values for uint8; channel order matches.
+        assert loaded.shape == img.shape
+
+    def test_tiff_with_mask(self, tmp_path):
+        import tifffile
+
+        img = self._img_hwc()
+        mask = np.zeros((16, 16), dtype=bool)
+        mask[4:12, 4:12] = True
+        out = tmp_path / "out.tif"
+        mask_path = save_image(img, out, mask=mask)
+        assert mask_path is not None
+        assert mask_path.exists()
+        assert mask_path.name == "out_mask.tif"
+
+        m = tifffile.imread(str(mask_path))
+        assert m.shape == (16, 16)
+        assert m.dtype == np.uint8
+        assert m[5, 5] == 255
+        assert m[0, 0] == 0
+
+    def test_chw_input_transposed(self, tmp_path):
+        import tifffile
+
+        img_chw = np.zeros((3, 16, 16), dtype=np.uint8)
+        img_chw[0] = 100  # red channel
+        out = tmp_path / "out.tif"
+        save_image(img_chw, out)
+        loaded = tifffile.imread(str(out))
+        assert loaded.shape == (16, 16, 3)
+        assert loaded[0, 0, 0] == 100
 
 
 if __name__ == "__main__":
