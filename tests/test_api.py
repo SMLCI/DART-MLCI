@@ -889,3 +889,97 @@ class TestBase64Utilities:
         unique_vals = np.unique(arr)
         # Should be binary (0 or 255)
         assert all(v in [0, 255] for v in unique_vals)
+
+
+# === Error-path coverage that doesn't depend on artifact fixtures ===
+
+
+def _synthetic_png_b64(h=64, w=64):
+    arr = np.full((h, w, 3), 128, dtype=np.uint8)
+    img = Image.fromarray(arr, mode="RGB")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode("utf-8")
+
+
+class TestProcessImagePreviewErrorPaths:
+    """Exercise the HTML error-rendering branch of /process-image-preview."""
+
+    def test_blank_image_returns_html_error_page(self, client):
+        """A blank synthetic image has no markers → error HTML."""
+        response = client.post(
+            "/process-image-preview",
+            json={"image": _synthetic_png_b64(), "roi_id": "0000"},
+        )
+        # Either 422 (pipeline failure rendered as HTML) or 200 if the request
+        # was malformed enough to short-circuit elsewhere — both go through
+        # HTMLResponse paths we want to exercise.
+        assert "text/html" in response.headers.get("content-type", "")
+        html = response.text
+        assert "<!DOCTYPE html>" in html
+        if response.status_code == 422:
+            assert "Error" in html or "error" in html
+
+
+class TestSegmentBadInputs:
+    """Exercise the early decode-failure branches of /segment."""
+
+    def test_garbage_mask_returns_decode_error(self, client):
+        """Valid image, garbage mask → success=False with mask decode error."""
+        # Note: base64.b64decode tolerates many garbage strings, so we use
+        # one that decodes to non-image bytes — mask decoding still fails.
+        response = client.post(
+            "/segment",
+            json={
+                "image": _synthetic_png_b64(),
+                "mask": base64.b64encode(b"not an image").decode("utf-8"),
+            },
+        )
+        # If the segmenter isn't loaded, segmenter-missing wins over the
+        # mask decode failure (segmenter check runs first). Accept either
+        # error message — both are valid error paths.
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is False
+        assert data["error_message"]
+
+
+class TestCalibrateBadInputs:
+    """Exercise validation-error branches of /calibrate."""
+
+    def test_invalid_pixel_size_returns_422(self, client):
+        """Negative pixel_size should be rejected by Pydantic validation."""
+        response = client.post(
+            "/calibrate",
+            json={
+                "chip_name": "SAK",
+                "calibration_images": [
+                    {
+                        "image": _synthetic_png_b64(),
+                        "roi_id": f"{i:04d}",
+                        "stage_position": {"x": float(i), "y": float(i), "z": 0.0},
+                    }
+                    for i in range(3)
+                ],
+                "pixel_size": -1.0,
+            },
+        )
+        # Either 422 from Pydantic or 200 with success=False — both are error
+        # paths we want to exercise.
+        assert response.status_code in (200, 422)
+        if response.status_code == 200:
+            assert response.json()["success"] is False
+
+    def test_empty_calibration_images_returns_error(self, client):
+        """Empty calibration_images list → either validation error or success=False."""
+        response = client.post(
+            "/calibrate",
+            json={
+                "chip_name": "SAK",
+                "calibration_images": [],
+                "pixel_size": 0.065789,
+            },
+        )
+        assert response.status_code in (200, 422)
+        if response.status_code == 200:
+            assert response.json()["success"] is False

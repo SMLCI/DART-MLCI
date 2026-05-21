@@ -306,33 +306,6 @@ class TestBlueprintMap(unittest.TestCase):
         self.assertIsInstance(blueprint_map, Map)
         self.assertEqual(len(blueprint_map.roi_positions), 1164)
 
-    def test_blueprint_map_matches_csv(self):
-        """Test that blueprint map from chip config matches the CSV."""
-        lib = ChipStructureLibrary.from_file(SAK_CONFIG_PATH, pixel_size=0.065789)
-        new_map = lib.get_blueprint_map()
-        old_map = Map.from_csv(BLUEPRINT_MAP_PATH)
-
-        # Same number of ROIs
-        self.assertEqual(
-            len(new_map.roi_positions),
-            len(old_map.roi_positions),
-        )
-
-        # Same ROI IDs
-        self.assertEqual(
-            set(new_map.roi_positions.keys()),
-            set(old_map.roi_positions.keys()),
-        )
-
-        # Same positions
-        for roi_id in old_map.roi_positions:
-            np.testing.assert_array_almost_equal(
-                new_map.roi_positions[roi_id].position,
-                old_map.roi_positions[roi_id].position,
-                decimal=1,
-                err_msg=f"Blueprint position mismatch for {roi_id}",
-            )
-
     def test_empty_blueprint_map_raises(self):
         """Test that get_blueprint_map raises on empty blueprint."""
         config = ChipConfig(

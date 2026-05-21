@@ -34,8 +34,11 @@ set -euo pipefail
 VIDEOS_DIR="${VIDEOS_DIR:-scripts/output/sak_videos}"
 ASSETS_DIR="${ASSETS_DIR:-docs/assets}"
 THUMBS_DIR="$ASSETS_DIR/thumbnails"
-TEASER_SOURCE="$VIDEOS_DIR/OpenBox-collector-inner.mp4"
-TEASER_OUT="$ASSETS_DIR/pipeline_teaser.gif"
+TEASER_SOURCE="${TEASER_SOURCE:-$VIDEOS_DIR/OpenBox-collector-inner.mp4}"
+TEASER_OUT="${TEASER_OUT:-$ASSETS_DIR/pipeline_teaser.gif}"
+# Set TEASER_ONLY=1 to skip the per-chamber thumbnail loop (e.g. when only
+# refreshing the hero GIF from a custom source).
+TEASER_ONLY="${TEASER_ONLY:-0}"
 
 FFMPEG="${FFMPEG:-}"
 if [ -z "$FFMPEG" ]; then
@@ -53,12 +56,18 @@ if [ -z "$FFMPEG" ]; then
     fi
 fi
 
-if [ ! -d "$VIDEOS_DIR" ]; then
+# $VIDEOS_DIR is only required for the per-chamber thumbnail loop. In
+# TEASER_ONLY mode the user supplies an explicit TEASER_SOURCE outside the
+# loop's directory, so don't enforce it.
+if [ "$TEASER_ONLY" != "1" ] && [ ! -d "$VIDEOS_DIR" ]; then
     echo "ERROR: $VIDEOS_DIR does not exist. Run generate_sak_videos.py first." >&2
     exit 1
 fi
 
-mkdir -p "$ASSETS_DIR" "$THUMBS_DIR"
+mkdir -p "$ASSETS_DIR"
+if [ "$TEASER_ONLY" != "1" ]; then
+    mkdir -p "$THUMBS_DIR"
+fi
 
 # --- Hero teaser GIF (~2-3 MB, 720px wide, 12 fps, palette-optimized) -------
 if [ ! -f "$TEASER_SOURCE" ]; then
@@ -85,6 +94,13 @@ trap 'rm -f "$PALETTE_TMP"' EXIT
     -filter_complex "[0:v]fps=6,scale=560:-1:flags=lanczos[v];[v][1:v]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle" \
     "$TEASER_OUT"
 echo "  size: $(du -h "$TEASER_OUT" | cut -f1)"
+
+if [ "$TEASER_ONLY" = "1" ]; then
+    echo
+    echo "TEASER_ONLY=1 — skipping per-chamber thumbnails."
+    echo "Done. Generated: $TEASER_OUT"
+    exit 0
+fi
 
 # --- Per-chamber thumbnails (frame from the masking step at ~t=10.5s) -------
 # This timestamp falls inside "Masking: ROI Mask Applied" where the full

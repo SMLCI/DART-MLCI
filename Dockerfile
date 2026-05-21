@@ -8,6 +8,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# Pin torch to a CUDA 12.1 build so it works on hosts with NVIDIA driver
+# >= 12.2 (newer cu12x wheels pulled in by ultralytics require driver >= 12.4
+# and silently fall back to CPU otherwise). Must be installed BEFORE the
+# package so the resolver treats torch as already satisfied.
+RUN pip install --no-cache-dir \
+      --index-url https://download.pytorch.org/whl/cu121 \
+      torch==2.5.1+cu121 torchvision==0.20.1+cu121
+
 # Copy package files
 COPY pyproject.toml .
 COPY README.md .
