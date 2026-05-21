@@ -33,6 +33,7 @@ data/
 *.mp4
 yolo_dataset/
 examples_old/
+_api_test_requests/
 
 # Demo media for the README lives under docs/assets/. It is NOT tracked on
 # main — generate locally with scripts/make_demo_assets.sh, then push to the
