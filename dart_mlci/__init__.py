@@ -37,6 +37,9 @@ from dart_mlci.constants import DEFAULT_MARKER_TOLERANCE_PX as DEFAULT_MARKER_TO
 from dart_mlci.constants import DEFAULT_MODEL_PATH as DEFAULT_MODEL_PATH
 from dart_mlci.constants import DEFAULT_PIXEL_SIZE_UM as DEFAULT_PIXEL_SIZE_UM
 from dart_mlci.constants import DEFAULT_STRUCTURE_LIBRARY_PATH as DEFAULT_STRUCTURE_LIBRARY_PATH
+from dart_mlci.constants import ensure_default_chip_config as ensure_default_chip_config
+from dart_mlci.constants import ensure_default_model as ensure_default_model
+from dart_mlci.constants import ensure_default_structure_library as ensure_default_structure_library
 from dart_mlci.detection import MarkerDetectionModel as MarkerDetectionModel
 from dart_mlci.detection import extract_data as extract_data
 from dart_mlci.experiment import absolutize_image_paths as absolutize_image_paths
@@ -106,6 +109,9 @@ __all__ = [
     "create_structure_library",
     "discover_cells_csvs",
     "ensure_artifact",
+    "ensure_default_chip_config",
+    "ensure_default_model",
+    "ensure_default_structure_library",
     "extract_data",
     "filter_cells_by_area",
     "filter_segmentation_by_area",

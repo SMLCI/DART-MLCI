@@ -19,7 +19,7 @@ from pathlib import Path
 import numpy as np
 from shapely.geometry import shape
 
-from .artifacts import ensure_artifact
+from .constants import ensure_default_structure_library
 from .map import Map
 from .mask import RoIPolygon
 
@@ -82,7 +82,7 @@ def create_structure_library(
     from .mask import SAKRoIStructureLibrary
 
     if structure_library_path is None:
-        structure_library_path = ensure_artifact("chamber_structure.json")
+        structure_library_path = ensure_default_structure_library()
 
     warnings.warn(
         "Using legacy SAKRoIStructureLibrary. "

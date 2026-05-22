@@ -32,13 +32,13 @@ from shapely import affinity
 from tqdm import tqdm
 
 from dart_mlci import MarkerDetectionStep
-from dart_mlci.artifacts import ensure_artifact
 from dart_mlci.calibration.validation import (
     ValidationDebugData,
     ValidationResult,
     ValidationSummary,
     process_validation_image,
 )
+from dart_mlci.constants import ensure_default_model, ensure_default_structure_library
 from dart_mlci.map import Map
 from dart_mlci.mask import SAKRoIStructureLibrary
 from dart_mlci.script_utils import load_json_config, validate_validation_config
@@ -72,14 +72,14 @@ def run_validation_cli(
 
     # Set default model path if not specified
     if model_path is None:
-        model_path = ensure_artifact("models/v26_detect_s_imgsz1280.pt")
+        model_path = ensure_default_model()
     else:
         model_path = Path(model_path)
 
     # Set default structure library path
     structure_library_path = config.get("structure_library_path")
     if structure_library_path is None:
-        structure_library_path = ensure_artifact("chamber_structure.json")
+        structure_library_path = ensure_default_structure_library()
     else:
         structure_library_path = Path(structure_library_path)
 

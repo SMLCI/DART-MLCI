@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 from ultralytics import YOLO
 
-from dart_mlci.artifacts import ensure_artifact
+from dart_mlci.constants import ensure_default_model
 from dart_mlci.utils import center_of_mask_mass
 
 
@@ -74,7 +74,7 @@ class MarkerDetectionModel:
             device: Device to run on (e.g., 'cuda:0', 'cuda:1', 'cpu'). None for auto.
         """
         if model_path is None:
-            model_path = ensure_artifact("models/v26_detect_s_imgsz1280.pt")
+            model_path = ensure_default_model()
         self.model = YOLO(model_path, verbose=verbose)
         self.label_mapping = label_mapping
         self.device = device

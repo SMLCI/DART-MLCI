@@ -6,10 +6,13 @@ import cv2
 import numpy as np
 import tifffile
 
-import dart_mlci
+from dart_mlci.artifacts import ensure_artifact, get_artifacts_dir
 
-# Artifact directory paths
-ARTIFACTS_DIR = Path(dart_mlci.__file__).parent.parent / "artifacts"
+# Artifact directory paths — resolved through the auto-download cache so the
+# tests work both from a source checkout (repo's `artifacts/` dir) and on a
+# fresh CI runner (per-user cache, populated lazily on first ensure_artifact
+# call).
+ARTIFACTS_DIR = get_artifacts_dir()
 SAK_DIR = ARTIFACTS_DIR / "images" / "sak"
 IMAGE_STACK_PATH = ARTIFACTS_DIR / "images" / "image_stack.tif"
 
@@ -29,8 +32,8 @@ def load_sak_sequence(max_frames: int | None = None) -> tuple[list[np.ndarray], 
             - frames: List of numpy arrays in HWC format (uint8 or uint16)
             - frame_numbers: List of actual frame numbers [0, 1, 3, 4, ...]
     """
-    if not SAK_DIR.exists():
-        raise FileNotFoundError(f"SAK directory not found: {SAK_DIR}")
+    # Trigger the bundle download (one-time, then cached) so SAK_DIR exists.
+    ensure_artifact("images/sak/0000.png")
 
     # Available frame numbers (0002 is missing)
     available_frames = [0, 1, 3, 4, 5, 6, 7, 8, 9, 10]
@@ -96,8 +99,7 @@ def load_image_stack(
     Returns:
         List of numpy arrays in HWC format (uint16 or uint8)
     """
-    if not IMAGE_STACK_PATH.exists():
-        raise FileNotFoundError(f"Image stack not found: {IMAGE_STACK_PATH}")
+    ensure_artifact("images/image_stack.tif")
 
     # Load with tifffile for efficient multi-page TIFF reading
     with tifffile.TiffFile(IMAGE_STACK_PATH) as tif:

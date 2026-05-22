@@ -29,8 +29,12 @@ from dart_mlci.api.models import (
     SegmentResponse,
 )
 from dart_mlci.api.settings import get_settings, resolve_path
-from dart_mlci.artifacts import ensure_artifact
 from dart_mlci.chip import ChipStructureLibrary
+from dart_mlci.constants import (
+    ensure_default_chip_config,
+    ensure_default_model,
+    ensure_default_structure_library,
+)
 from dart_mlci.mask import SAKRoIStructureLibrary
 
 logger = logging.getLogger(__name__)
@@ -48,7 +52,7 @@ async def lifespan(app: FastAPI):
     model_path = resolve_path(settings.model_path)
     if not model_path.exists():
         try:
-            model_path = ensure_artifact("models/v26_detect_s_imgsz1280.pt")
+            model_path = ensure_default_model()
         except Exception as exc:
             logger.warning("Could not obtain detection model: %s", exc)
             model_path = None
@@ -65,7 +69,7 @@ async def lifespan(app: FastAPI):
         app.state.model_loaded = False
 
     # Build chip registry from chip_configs_dir; fall back to bundled chips/
-    # via ensure_artifact when the configured dir is missing.
+    # via the default-chip helper when the configured dir is missing.
     app.state.chip_registry: dict[str, ChipStructureLibrary] = {}
 
     configs_dir: Path | None = None
@@ -75,9 +79,9 @@ async def lifespan(app: FastAPI):
             configs_dir = None
     if configs_dir is None:
         try:
-            # ensure_artifact returns a file path, so resolve sak.json then
-            # use its parent dir to scan for any sibling chip configs.
-            sak_json = ensure_artifact("chips/sak.json")
+            # Resolve the default chip JSON then use its parent dir to scan
+            # for any sibling chip configs.
+            sak_json = ensure_default_chip_config()
             configs_dir = sak_json.parent
         except Exception as exc:
             logger.warning("Could not obtain chip configs: %s", exc)
@@ -113,7 +117,7 @@ async def lifespan(app: FastAPI):
         structure_library_path = resolve_path(settings.structure_library_path)
         if not structure_library_path.exists():
             try:
-                structure_library_path = ensure_artifact("chamber_structure.json")
+                structure_library_path = ensure_default_structure_library()
             except Exception:
                 structure_library_path = None
         if structure_library_path is not None and structure_library_path.exists():
