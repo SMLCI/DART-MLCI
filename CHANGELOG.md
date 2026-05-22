@@ -6,6 +6,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+[Unreleased]: https://github.com/SMLCI/DART-MLCI/compare/v0.2.2...HEAD
+
+## [0.2.2] - 2026-05-22
+
 ### Added
 
 - **Lazy artifact downloading.** YOLO weights, sample images, and default
@@ -33,6 +37,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `tests/test_readme_snippets.py` now extracts ```python` blocks tagged
   `# snippet: <name>` directly from `README.md` and `exec()`s them, so
   the README and tests cannot drift.
+
+[0.2.2]: https://github.com/SMLCI/DART-MLCI/releases/tag/v0.2.2
 
 ## [0.2.1] - 2026-05-21
 
@@ -93,5 +99,4 @@ First public release on GitHub and PyPI.
   `bash scripts/download_artifacts.sh` after install to fetch the YOLO marker
   detector and example images from Sciebo.
 
-[Unreleased]: https://github.com/SMLCI/DART-MLCI/compare/v0.2.1...HEAD
 [0.2.1]: https://github.com/SMLCI/DART-MLCI/releases/tag/v0.2.1
