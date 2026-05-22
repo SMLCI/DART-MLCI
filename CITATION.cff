@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-title: "DART-MLCI: Real-time Microfluidic Chamber Image Processing"
+title: "DART: Aligning Blueprint and Physical Microfluidic Chip for Design-Aware and Real-Time Capable Live-Cell Image Analysis"
 message: "If you use this software, please cite it as below."
 type: software
 authors:
@@ -7,7 +7,7 @@ authors:
     family-names: Seiffarth
     affiliation: Forschungszentrum Jülich GmbH
     email: j.seiffarth@fz-juelich.de
-version: 0.2.0
-date-released: 2026-05-19
+version: 0.2.2
+date-released: 2026-05-22
 license: MIT
 repository-code: https://github.com/SMLCI/DART-MLCI

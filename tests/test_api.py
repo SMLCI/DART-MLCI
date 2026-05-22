@@ -125,10 +125,6 @@ class TestAvailableChipsEndpoint:
         assert isinstance(data, list)
         assert all(isinstance(name, str) for name in data)
 
-    @pytest.mark.skipif(
-        not (Path("artifacts/chips").exists()),
-        reason="Chips directory not found",
-    )
     def test_available_chips_includes_sak(self, monkeypatch):
         """Should include 'sak' when chip configs dir is configured."""
         from dart_mlci.api.main import app
@@ -166,10 +162,6 @@ class TestChamberTypesEndpoint:
             data = response.json()
             assert isinstance(data, list)
 
-    @pytest.mark.skipif(
-        not (Path("artifacts/chamber_structure.json").exists()),
-        reason="Chamber structure file not found",
-    )
     def test_chamber_types_include_sak_types(self, client):
         """Should include known SAK chamber types."""
         response = client.get("/chamber-types")
@@ -235,10 +227,6 @@ class TestProcessImageEndpoint:
             assert data["success"] is False
             assert "error_message" in data
 
-    @pytest.mark.skipif(
-        not (Path("artifacts/models/v26_detect_s_imgsz1280.pt").exists()),
-        reason="Model file not found",
-    )
     def test_process_image_with_base64(self, client, test_image_base64, viz_dir):
         """Test processing image from base64 input with visualization."""
         # Send JSON request
@@ -320,10 +308,6 @@ class TestProcessImagePreviewEndpoint:
         assert response.status_code in [200, 422]
         assert "text/html" in response.headers.get("content-type", "")
 
-    @pytest.mark.skipif(
-        not (Path("artifacts/models/v26_detect_s_imgsz1280.pt").exists()),
-        reason="Model file not found",
-    )
     def test_preview_returns_html_with_images(self, client, test_image_base64):
         """Successful preview should return HTML with embedded base64 images."""
         response = client.post(
@@ -389,14 +373,6 @@ class TestCalibrateEndpoint:
         # Pydantic validation should fail (min_length=3)
         assert response.status_code == 422
 
-    @pytest.mark.skipif(
-        not (
-            Path("artifacts/images/calibration_sample").exists()
-            and Path("artifacts/models/v26_detect_s_imgsz1280.pt").exists()
-            and Path("artifacts/chips").exists()
-        ),
-        reason="Calibration sample, model, or chips not found",
-    )
     def test_calibrate_with_base64_images(self, monkeypatch, calibration_images_base64, viz_dir):
         """Test calibration with base64 images and visualize results."""
         from dart_mlci.api.main import app
@@ -487,13 +463,6 @@ class TestCalibrateEndpoint:
         response = client.post("/calibrate", json=request_body)
         assert response.status_code == 422  # Validation error
 
-    @pytest.mark.skipif(
-        not (
-            Path("artifacts/chips").exists()
-            and Path("artifacts/models/v26_detect_s_imgsz1280.pt").exists()
-        ),
-        reason="Chips directory or model not found",
-    )
     def test_calibrate_failed_returns_per_image_errors(self, monkeypatch):
         """Failed calibration should return per-image error messages."""
         from dart_mlci.api.main import app
@@ -572,13 +541,6 @@ class TestValidateEndpoint:
 class TestIntegration:
     """Integration tests that require full environment setup."""
 
-    @pytest.mark.skipif(
-        not (
-            Path("artifacts/models/v26_detect_s_imgsz1280.pt").exists()
-            and Path("artifacts/chips").exists()
-        ),
-        reason="Artifacts not found",
-    )
     def test_full_process_image_workflow(self, monkeypatch, test_image_base64):
         """Test complete image processing workflow."""
         from dart_mlci.api.main import app
@@ -779,13 +741,6 @@ class TestSegmentEndpoint:
             get_settings.cache_clear()
 
     @pytest.mark.skipif(not ACIA_AVAILABLE, reason="acia not installed")
-    @pytest.mark.skipif(
-        not (
-            Path("artifacts/models/v26_detect_s_imgsz1280.pt").exists()
-            and Path("artifacts/chips").exists()
-        ),
-        reason="Model file or chips directory not found",
-    )
     def test_segment_roundtrip_with_process_image(self, monkeypatch, test_image_base64):
         """Integration test: full pipeline /process-image -> /segment."""
         from dart_mlci.api.main import app

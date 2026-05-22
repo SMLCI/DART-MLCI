@@ -38,11 +38,11 @@ except ImportError:
     ACIA_AVAILABLE = False
 
 from dart_mlci import (
-    DEFAULT_MODEL_PATH,
     ChamberPipelineCache,
     MarkerDetectionStep,
     create_structure_library,
 )
+from dart_mlci.constants import ensure_default_model
 from dart_mlci.io import load_image
 from dart_mlci.script_utils import (
     Timer,
@@ -451,7 +451,7 @@ CSV format (chamber_type is a structure name string):
 
     # Set default model path
     if args.model_path is None:
-        args.model_path = DEFAULT_MODEL_PATH
+        args.model_path = ensure_default_model()
 
     if not args.model_path.exists():
         raise FileNotFoundError(f"Model path not found: {args.model_path}")

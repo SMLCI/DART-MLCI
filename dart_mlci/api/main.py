@@ -1,6 +1,8 @@
 """FastAPI application for DMC Masking calibration and image processing."""
 
+import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -28,7 +30,14 @@ from dart_mlci.api.models import (
 )
 from dart_mlci.api.settings import get_settings, resolve_path
 from dart_mlci.chip import ChipStructureLibrary
+from dart_mlci.constants import (
+    ensure_default_chip_config,
+    ensure_default_model,
+    ensure_default_structure_library,
+)
 from dart_mlci.mask import SAKRoIStructureLibrary
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -36,9 +45,19 @@ async def lifespan(app: FastAPI):
     """Initialize resources on startup."""
     settings = get_settings()
 
-    # Load marker detection model
+    # Load marker detection model. Configured path wins; otherwise fall back
+    # to the auto-downloading artifact cache. Downloads happen on first use
+    # (one-time, then cached); the API stays up even if the network is gone
+    # — endpoints that need the model just report model_loaded=false.
     model_path = resolve_path(settings.model_path)
-    if model_path.exists():
+    if not model_path.exists():
+        try:
+            model_path = ensure_default_model()
+        except Exception as exc:
+            logger.warning("Could not obtain detection model: %s", exc)
+            model_path = None
+
+    if model_path is not None:
         app.state.detection_step = MarkerDetectionStep(
             model_path=str(model_path),
             device=settings.device,
@@ -49,22 +68,36 @@ async def lifespan(app: FastAPI):
         app.state.detection_step = None
         app.state.model_loaded = False
 
-    # Build chip registry from chip_configs_dir
+    # Build chip registry from chip_configs_dir; fall back to bundled chips/
+    # via the default-chip helper when the configured dir is missing.
     app.state.chip_registry: dict[str, ChipStructureLibrary] = {}
 
+    configs_dir: Path | None = None
     if settings.chip_configs_dir:
         configs_dir = resolve_path(settings.chip_configs_dir)
-        if configs_dir.is_dir():
-            for json_file in sorted(configs_dir.glob("*.json")):
-                try:
-                    lib = ChipStructureLibrary.from_file(
-                        json_file,
-                        pixel_size=settings.default_pixel_size,
-                    )
-                    chip_key = json_file.stem.lower()
-                    app.state.chip_registry[chip_key] = lib
-                except Exception:
-                    pass  # skip malformed configs
+        if not configs_dir.is_dir():
+            configs_dir = None
+    if configs_dir is None:
+        try:
+            # Resolve the default chip JSON then use its parent dir to scan
+            # for any sibling chip configs.
+            sak_json = ensure_default_chip_config()
+            configs_dir = sak_json.parent
+        except Exception as exc:
+            logger.warning("Could not obtain chip configs: %s", exc)
+            configs_dir = None
+
+    if configs_dir is not None and configs_dir.is_dir():
+        for json_file in sorted(configs_dir.glob("*.json")):
+            try:
+                lib = ChipStructureLibrary.from_file(
+                    json_file,
+                    pixel_size=settings.default_pixel_size,
+                )
+                chip_key = json_file.stem.lower()
+                app.state.chip_registry[chip_key] = lib
+            except Exception:
+                pass  # skip malformed configs
 
     # Load structure library: prefer chip config, then registry default, then legacy
     app.state.structure_library = None
@@ -82,7 +115,12 @@ async def lifespan(app: FastAPI):
 
     if app.state.structure_library is None:
         structure_library_path = resolve_path(settings.structure_library_path)
-        if structure_library_path.exists():
+        if not structure_library_path.exists():
+            try:
+                structure_library_path = ensure_default_structure_library()
+            except Exception:
+                structure_library_path = None
+        if structure_library_path is not None and structure_library_path.exists():
             import warnings
 
             with warnings.catch_warnings():

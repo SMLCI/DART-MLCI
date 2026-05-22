@@ -12,7 +12,7 @@ from importlib.metadata import PackageNotFoundError, version
 try:
     __version__ = version("dart-mlci")
 except PackageNotFoundError:
-    __version__ = "0.2.1"
+    __version__ = "0.2.2"
 
 # Constants
 # Analysis
@@ -24,6 +24,9 @@ from dart_mlci.analysis import filter_cells_by_area as filter_cells_by_area
 from dart_mlci.analysis import fit_exponential_growth as fit_exponential_growth
 from dart_mlci.analysis import fit_logistic_growth as fit_logistic_growth
 from dart_mlci.analysis import load_cells_data as load_cells_data
+from dart_mlci.artifacts import ensure_artifact as ensure_artifact
+from dart_mlci.artifacts import get_artifacts_dir as get_artifacts_dir
+from dart_mlci.artifacts import sample_path as sample_path
 from dart_mlci.chip import ChipConfig as ChipConfig
 from dart_mlci.chip import ChipStructureLibrary as ChipStructureLibrary
 from dart_mlci.chip import create_structure_library as create_structure_library
@@ -34,6 +37,9 @@ from dart_mlci.constants import DEFAULT_MARKER_TOLERANCE_PX as DEFAULT_MARKER_TO
 from dart_mlci.constants import DEFAULT_MODEL_PATH as DEFAULT_MODEL_PATH
 from dart_mlci.constants import DEFAULT_PIXEL_SIZE_UM as DEFAULT_PIXEL_SIZE_UM
 from dart_mlci.constants import DEFAULT_STRUCTURE_LIBRARY_PATH as DEFAULT_STRUCTURE_LIBRARY_PATH
+from dart_mlci.constants import ensure_default_chip_config as ensure_default_chip_config
+from dart_mlci.constants import ensure_default_model as ensure_default_model
+from dart_mlci.constants import ensure_default_structure_library as ensure_default_structure_library
 from dart_mlci.detection import MarkerDetectionModel as MarkerDetectionModel
 from dart_mlci.detection import extract_data as extract_data
 from dart_mlci.experiment import absolutize_image_paths as absolutize_image_paths
@@ -102,16 +108,22 @@ __all__ = [
     "create_segmenter",
     "create_structure_library",
     "discover_cells_csvs",
+    "ensure_artifact",
+    "ensure_default_chip_config",
+    "ensure_default_model",
+    "ensure_default_structure_library",
     "extract_data",
     "filter_cells_by_area",
     "filter_segmentation_by_area",
     "filter_segmentation_by_mask",
     "fit_exponential_growth",
     "fit_logistic_growth",
+    "get_artifacts_dir",
     "load_cells_data",
     "load_chip_config",
     "load_tif_frame",
     "resolve_chamber_type_from_folder_config",
     "resolve_time_column",
+    "sample_path",
     "select_timelapse_frame",
 ]

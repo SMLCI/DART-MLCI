@@ -36,10 +36,13 @@ pip install dart-mlci
 git clone https://github.com/SMLCI/DART-MLCI.git
 cd DART-MLCI
 pip install ".[dev]"        # core + dev extras
-
-# Download YOLO marker-detection weights (not bundled in PyPI package)
-bash scripts/download_artifacts.sh
 ```
+
+YOLO marker-detection weights and the bundled sample images (~40 MB) are
+**not** shipped in the wheel. They download automatically on first use to
+`~/.cache/dart-mlci/` (Linux/macOS) or `%LOCALAPPDATA%\dart-mlci\` (Windows).
+You can override the location with `DART_ARTIFACTS_DIR=...`. No manual
+download step is required.
 
 Optional extras: `pip install "dart-mlci[api]"` for the FastAPI service,
 `pip install "dart-mlci[segmentation]"` to pull in Cellpose-SAM / Omnipose.
@@ -49,13 +52,14 @@ Optional extras: `pip install "dart-mlci[api]"` for the FastAPI service,
 Run the marker detector on a bundled sample image:
 
 ```python
+# snippet: marker-detection
 import cv2
-from dart_mlci import MarkerDetectionModel, ChipStructureLibrary
+from dart_mlci import ChipStructureLibrary, MarkerDetectionModel, sample_path
 
-lib = ChipStructureLibrary.from_file("artifacts/chips/sak.json", pixel_size=0.065789)
+lib = ChipStructureLibrary.from_file(sample_path("chips/sak.json"), pixel_size=0.065789)
 model = MarkerDetectionModel()
 
-image = cv2.imread("artifacts/images/sak/0007.png")
+image = cv2.imread(str(sample_path("images/sak/0007.png")))
 markers = model.predict_markers(image)
 print(f"Detected {len(markers)} markers")  # e.g. "Detected 4 markers"
 ```
@@ -65,16 +69,21 @@ polygon and the expected pixel-space positions of its cross/circle markers
 (`mgp`):
 
 ```python
+# snippet: full-pipeline
 import cv2
 from dart_mlci import (
     ChipStructureLibrary,
-    MarkerDetectionStep, MarkerMatchingStep, ImageRotationStep, RoIMaskingStep,
+    ImageRotationStep,
+    MarkerDetectionStep,
+    MarkerMatchingStep,
+    RoIMaskingStep,
+    sample_path,
 )
 
-lib = ChipStructureLibrary.from_file("artifacts/chips/sak.json", pixel_size=0.065789)
+lib = ChipStructureLibrary.from_file(sample_path("chips/sak.json"), pixel_size=0.065789)
 _, polygon, mgp = lib("0000")  # any NormaleBox-inner ROI matches 0007.png
 
-image  = cv2.imread("artifacts/images/sak/0007.png")
+image  = cv2.imread(str(sample_path("images/sak/0007.png")))
 detect = MarkerDetectionStep()
 match  = MarkerMatchingStep(marker_group_pixel=mgp)
 rotate = ImageRotationStep()
@@ -106,8 +115,6 @@ my_data/
   "input_dir": "my_data",
   "output_dir": "my_output",
   "pixel_size": 0.0928,
-  "chip_config": "artifacts/chips/sak.json",
-  "model_path": "artifacts/models/v26_detect_s_imgsz1280.pt",
   "segmenter": "cellpose-sam",
   "folders": {
     "my_chamber": "NormaleBox-inner"
@@ -115,10 +122,20 @@ my_data/
 }
 ```
 
-Set `pixel_size` to your microscope's µm/px. Pick the `chamber_types` key from
-your chip JSON (run `python -c "from dart_mlci import ChipStructureLibrary;
-print(ChipStructureLibrary.from_file('artifacts/chips/sak.json').chamber_types.keys())"`
-to list them).
+Omit `chip_config` / `model_path` to use the auto-downloaded defaults (the
+SAK chip JSON and the bundled YOLO weights). Override either field with an
+absolute path if you have a custom chip.
+
+Set `pixel_size` to your microscope's µm/px. To list the chamber types
+available in your chip JSON:
+
+```python
+# snippet: list-chamber-types
+from dart_mlci import ChipStructureLibrary, sample_path
+
+lib = ChipStructureLibrary.from_file(sample_path("chips/sak.json"), pixel_size=0.065789)
+print(list(lib.polygon_library))
+```
 
 ### 3. Run
 
@@ -213,10 +230,11 @@ container deployment.
 ## Adapting to a New Chip Design
 
 The pipeline is chip-agnostic: it only needs one JSON describing chamber
-polygons, marker positions, and a blueprint map. Start from `artifacts/chips/sak.json` as a
-template, then follow [`docs/CHIP_CONFIG.md`](docs/CHIP_CONFIG.md) for the full
-schema, polygon conventions, marker-detection trade-offs (reuse the bundled
-YOLO weights vs. retrain on new fiducials), and a validation checklist.
+polygons, marker positions, and a blueprint map. Start from the bundled SAK
+config as a template (`sample_path("chips/sak.json")` resolves it on demand),
+then follow [`docs/CHIP_CONFIG.md`](docs/CHIP_CONFIG.md) for the full schema,
+polygon conventions, marker-detection trade-offs (reuse the bundled YOLO
+weights vs. retrain on new fiducials), and a validation checklist.
 
 ## License
 
@@ -228,8 +246,8 @@ If you use DART-MLCI in your research, please cite:
 
 ```bibtex
 @software{dart-mlci,
-  author  = {Seiffarth, Johannes},
-  title   = {DART-MLCI: Real-time microfluidic chamber image processing},
+  author  = {Seiffarth, Johannes and Pesch, Matthias and Scholtes, Lukas and Kohlheyer, Dietrich and Scharr, Hanno and N{\"o}h, Katharina},
+  title   = {DART: Aligning Blueprint and Physical Microfluidic Chip for Design-Aware and Real-Time Capable Live-Cell Image Analysis},
   year    = {2026},
   url     = {https://github.com/SMLCI/DART-MLCI}
 }

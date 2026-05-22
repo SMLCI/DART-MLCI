@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-from dart_mlci.constants import DEFAULT_MARKER_TOLERANCE_PX, DEFAULT_MODEL_PATH
+from dart_mlci.constants import DEFAULT_MARKER_TOLERANCE_PX, ensure_default_model
 from dart_mlci.detection import MarkerDetectionModel
 from dart_mlci.mask import apply_mask
 from dart_mlci.match import match_markers
@@ -35,7 +35,7 @@ class MarkerDetectionStep:
             conf_threshold: Minimum confidence for detected markers (default: 0.5).
         """
         if model_path is None:
-            model_path = DEFAULT_MODEL_PATH
+            model_path = ensure_default_model()
         self.mdm = MarkerDetectionModel(model_path, device=device, verbose=verbose)
         self.conf_threshold = conf_threshold
         self.use_gpu_tensor = use_gpu_tensor

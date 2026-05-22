@@ -19,13 +19,13 @@ from pathlib import Path
 import numpy as np
 
 from dart_mlci import (
-    DEFAULT_MODEL_PATH,
     ImageRotationStep,
     MarkerDetectionStep,
     MarkerMatchingStep,
     RoIMaskingStep,
     create_structure_library,
 )
+from dart_mlci.constants import ensure_default_model
 from dart_mlci.io import load_image, save_image
 from dart_mlci.types import PipelineError, PipelineTimings
 
@@ -260,7 +260,7 @@ Chamber ID patterns:
 
     # Set default model path
     if args.model_path is None:
-        args.model_path = DEFAULT_MODEL_PATH
+        args.model_path = ensure_default_model()
 
     if not args.model_path.exists():
         print_error(STEP_VALIDATION, f"Model not found: {args.model_path}")

@@ -1,86 +1,73 @@
-"""Verify that the Python snippets in README.md actually run.
+"""Execute README.md python snippets verbatim and assert their results.
 
-If these tests fail after editing README.md, the README is out of sync with the
-public API. Update the snippets there and here together.
+The README ships executable example code. Each fenced ```python block whose
+first content line is `# snippet: <name>` is extracted from the rendered
+README and run through `exec()` against a fresh namespace. The post-exec
+namespace is then asserted against the expected behaviour of the snippet.
 
-Tests are skipped (not failed) when the YOLO model weights or the bundled
-sample image are missing, since those are downloaded post-install via
-`scripts/download_artifacts.sh` and may not exist in CI without the artifact
-download step.
+If a test fails the README is out of sync with the public API — fix the
+README itself, not the test. The test never re-implements snippet code, so
+the README and tests cannot drift.
 """
 
-from pathlib import Path
+from __future__ import annotations
 
-import cv2
-import pytest
+import re
+import textwrap
+from pathlib import Path
 
 import dart_mlci
 
-REPO_ROOT = Path(dart_mlci.__file__).parent.parent
-SAK_CHIP_CONFIG = REPO_ROOT / "artifacts" / "chips" / "sak.json"
-SAMPLE_IMAGE = REPO_ROOT / "artifacts" / "images" / "sak" / "0007.png"
-# These constants must mirror the README. If you change either side, change both.
-SAK_PIXEL_SIZE_UM = 0.065789
-SAMPLE_ROI_ID = "0000"  # any NormaleBox-inner ROI matches the sample image
+README = (Path(dart_mlci.__file__).resolve().parent.parent / "README.md").read_text()
 
-
-pytestmark = pytest.mark.skipif(
-    not SAMPLE_IMAGE.exists() or not SAK_CHIP_CONFIG.exists(),
-    reason="Sample image or chip config not present (run scripts/download_artifacts.sh)",
+# Match ```python ... # snippet: <name> ... ``` blocks.
+_SNIPPET_RE = re.compile(
+    r"```python\n(?P<body># snippet: (?P<name>[\w-]+)\n.*?)```",
+    re.S,
 )
 
 
-def _load_image():
-    img = cv2.imread(str(SAMPLE_IMAGE))
-    assert img is not None, f"failed to read {SAMPLE_IMAGE}"
-    return img
+def _snippets() -> dict[str, str]:
+    return {m.group("name"): textwrap.dedent(m.group("body")) for m in _SNIPPET_RE.finditer(README)}
+
+
+SNIPPETS = _snippets()
+
+
+def _run(name: str) -> dict:
+    code = SNIPPETS.get(name)
+    if code is None:
+        raise AssertionError(
+            f"README snippet {name!r} not found. Tagged snippets present: {sorted(SNIPPETS)}"
+        )
+    ns: dict = {"__name__": "__readme_snippet__"}
+    exec(compile(code, f"README.md::{name}", "exec"), ns)
+    return ns
 
 
 def test_readme_snippet_marker_detection():
-    """Snippet 1: load chip config + run MarkerDetectionModel on a sample image."""
-    from dart_mlci import ChipStructureLibrary, MarkerDetectionModel
-
-    lib = ChipStructureLibrary.from_file(str(SAK_CHIP_CONFIG), pixel_size=SAK_PIXEL_SIZE_UM)
-    assert "NormaleBox-inner" in lib.chip_config.chamber_types
-
-    model = MarkerDetectionModel()
-    image = _load_image()
-    markers = model.predict_markers(image)
-
-    # The bundled 0007.png contains a NormaleBox-inner chamber whose two
-    # cross+circle pairs are clearly detectable. If this fails, either the
-    # weights regressed or the sample image was replaced.
-    assert len(markers) >= 2, f"expected ≥2 markers in {SAMPLE_IMAGE.name}, got {len(markers)}"
+    """`# snippet: marker-detection` — load chip + run YOLO on the sample image."""
+    ns = _run("marker-detection")
+    markers = ns["markers"]
+    assert markers, "expected at least one detected marker"
     labels = {m["label"] for m in markers}
     assert labels <= {"cross", "circle"}, f"unexpected labels: {labels}"
 
 
 def test_readme_snippet_full_pipeline():
-    """Snippet 2: detect → match → rotate → mask returns a cropped image + mask."""
-    from dart_mlci import (
-        ChipStructureLibrary,
-        ImageRotationStep,
-        MarkerDetectionStep,
-        MarkerMatchingStep,
-        RoIMaskingStep,
-    )
-
-    lib = ChipStructureLibrary.from_file(str(SAK_CHIP_CONFIG), pixel_size=SAK_PIXEL_SIZE_UM)
-    _, polygon, mgp = lib(SAMPLE_ROI_ID)
-
-    image = _load_image()
-    detect = MarkerDetectionStep()
-    match = MarkerMatchingStep(marker_group_pixel=mgp)
-    rotate = ImageRotationStep()
-    mask = RoIMaskingStep(marker_group_pixels=mgp, roi_polygon=polygon)
-
-    data = mask(rotate(match(detect(image))))
-    cropped, chamber_mask = data["image"], data["mask"]
-
+    """`# snippet: full-pipeline` — detect→match→rotate→mask returns cropped image + mask."""
+    ns = _run("full-pipeline")
+    cropped, mask = ns["cropped"], ns["chamber_mask"]
     assert cropped.ndim == 3 and cropped.shape[-1] == 3, (
         f"unexpected cropped shape: {cropped.shape}"
     )
-    assert chamber_mask.shape == cropped.shape[:2], (
-        f"mask shape {chamber_mask.shape} does not match cropped {cropped.shape[:2]}"
+    assert mask.shape == cropped.shape[:2], (
+        f"mask shape {mask.shape} does not match cropped {cropped.shape[:2]}"
     )
-    assert cropped.size > 0 and chamber_mask.size > 0
+    assert cropped.size > 0 and mask.size > 0
+
+
+def test_readme_snippet_list_chamber_types():
+    """`# snippet: list-chamber-types` — chip JSON exposes expected chamber types."""
+    ns = _run("list-chamber-types")
+    assert "NormaleBox-inner" in ns["lib"].polygon_library

@@ -38,7 +38,7 @@ from dart_mlci.calibration.validation import (
     ValidationSummary,
     process_validation_image,
 )
-from dart_mlci.constants import DEFAULT_MODEL_PATH, DEFAULT_STRUCTURE_LIBRARY_PATH
+from dart_mlci.constants import ensure_default_model, ensure_default_structure_library
 from dart_mlci.map import Map
 from dart_mlci.mask import SAKRoIStructureLibrary
 from dart_mlci.script_utils import load_json_config, validate_validation_config
@@ -72,14 +72,14 @@ def run_validation_cli(
 
     # Set default model path if not specified
     if model_path is None:
-        model_path = DEFAULT_MODEL_PATH
+        model_path = ensure_default_model()
     else:
         model_path = Path(model_path)
 
     # Set default structure library path
     structure_library_path = config.get("structure_library_path")
     if structure_library_path is None:
-        structure_library_path = DEFAULT_STRUCTURE_LIBRARY_PATH
+        structure_library_path = ensure_default_structure_library()
     else:
         structure_library_path = Path(structure_library_path)
 
