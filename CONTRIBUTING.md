@@ -7,10 +7,11 @@
 git clone https://github.com/SMLCI/DART-MLCI.git
 cd DART-MLCI
 pip install -e ".[dev]"
-
-# Download model weights and test images
-bash scripts/download_artifacts.sh
 ```
+
+Model weights and sample images (~40 MB) download automatically on first use
+(to `<repo>/artifacts/` since you're working from a checkout). No manual
+download step is required.
 
 ## Running Tests
 

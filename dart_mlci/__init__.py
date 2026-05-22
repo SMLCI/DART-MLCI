@@ -24,6 +24,9 @@ from dart_mlci.analysis import filter_cells_by_area as filter_cells_by_area
 from dart_mlci.analysis import fit_exponential_growth as fit_exponential_growth
 from dart_mlci.analysis import fit_logistic_growth as fit_logistic_growth
 from dart_mlci.analysis import load_cells_data as load_cells_data
+from dart_mlci.artifacts import ensure_artifact as ensure_artifact
+from dart_mlci.artifacts import get_artifacts_dir as get_artifacts_dir
+from dart_mlci.artifacts import sample_path as sample_path
 from dart_mlci.chip import ChipConfig as ChipConfig
 from dart_mlci.chip import ChipStructureLibrary as ChipStructureLibrary
 from dart_mlci.chip import create_structure_library as create_structure_library
@@ -102,16 +105,19 @@ __all__ = [
     "create_segmenter",
     "create_structure_library",
     "discover_cells_csvs",
+    "ensure_artifact",
     "extract_data",
     "filter_cells_by_area",
     "filter_segmentation_by_area",
     "filter_segmentation_by_mask",
     "fit_exponential_growth",
     "fit_logistic_growth",
+    "get_artifacts_dir",
     "load_cells_data",
     "load_chip_config",
     "load_tif_frame",
     "resolve_chamber_type_from_folder_config",
     "resolve_time_column",
+    "sample_path",
     "select_timelapse_frame",
 ]

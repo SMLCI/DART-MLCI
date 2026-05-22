@@ -6,7 +6,35 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-## [0.2.0] - 2026-05-19
+### Added
+
+- **Lazy artifact downloading.** YOLO weights, sample images, and default
+  chip configs now download automatically the first time any code path
+  needs them. The download lands in a per-user cache
+  (`~/.cache/dart-mlci/` on Linux/macOS,
+  `%LOCALAPPDATA%\dart-mlci\` on Windows) and is cached forever after.
+  `pip install dart-mlci` is now a complete install — no separate
+  download step. Override the location with `DART_ARTIFACTS_DIR`.
+- New `dart_mlci.sample_path(name)` / `dart_mlci.ensure_artifact(name)`
+  helpers for README-style snippets. Example:
+  `cv2.imread(str(sample_path("images/sak/0007.png")))`.
+
+### Removed
+
+- `scripts/download_artifacts.sh` — no longer needed; downloads happen
+  on demand.
+- `tests/test_download_artifacts.py` — replaced by the unit-tested
+  `dart_mlci.artifacts` module (`tests/test_artifacts.py`).
+
+### Changed
+
+- README quick-start snippets resolve sample data through `sample_path()`
+  so they work for pip-only users without a repo clone.
+- `tests/test_readme_snippets.py` now extracts ```python` blocks tagged
+  `# snippet: <name>` directly from `README.md` and `exec()`s them, so
+  the README and tests cannot drift.
+
+## [0.2.1] - 2026-05-21
 
 First public release on GitHub and PyPI.
 
@@ -65,5 +93,5 @@ First public release on GitHub and PyPI.
   `bash scripts/download_artifacts.sh` after install to fetch the YOLO marker
   detector and example images from Sciebo.
 
-[Unreleased]: https://github.com/SMLCI/DART-MLCI/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/SMLCI/DART-MLCI/releases/tag/v0.2.0
+[Unreleased]: https://github.com/SMLCI/DART-MLCI/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/SMLCI/DART-MLCI/releases/tag/v0.2.1

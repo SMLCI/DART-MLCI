@@ -42,6 +42,7 @@ from matplotlib.patches import Polygon as MplPolygon
 from shapely import affinity
 
 from dart_mlci import MarkerDetectionStep, create_structure_library
+from dart_mlci.artifacts import ensure_artifact
 from dart_mlci.calibration import (
     CalibrationResult,
     ImageCalibrationResult,
@@ -53,7 +54,6 @@ from dart_mlci.calibration import (
 from dart_mlci.calibration import (
     run_calibration as _run_calibration,
 )
-from dart_mlci.constants import DEFAULT_MODEL_PATH, DEFAULT_STRUCTURE_LIBRARY_PATH
 from dart_mlci.io import load_image
 from dart_mlci.map import AffineTransformResult, Map
 from dart_mlci.mask import RoIPolygon, apply_mask_rotation_free
@@ -160,7 +160,7 @@ def run_calibration(
 
     # Set default model path if not specified
     if model_path is None:
-        model_path = DEFAULT_MODEL_PATH
+        model_path = ensure_artifact("models/v26_detect_s_imgsz1280.pt")
     else:
         model_path = Path(model_path)
 
@@ -168,7 +168,7 @@ def run_calibration(
     chip_config_path = config.get("chip_config_path")
     structure_library_path = config.get("structure_library_path")
     if chip_config_path is None and structure_library_path is None:
-        structure_library_path = DEFAULT_STRUCTURE_LIBRARY_PATH
+        structure_library_path = ensure_artifact("chamber_structure.json")
     elif structure_library_path is not None:
         structure_library_path = Path(structure_library_path)
 

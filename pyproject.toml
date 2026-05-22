@@ -41,6 +41,7 @@ dependencies = [
     "matplotlib",
     "seaborn",
     "pillow",
+    "platformdirs>=3",
 ]
 
 [project.optional-dependencies]
@@ -75,15 +76,15 @@ Issues = "https://github.com/SMLCI/DART-MLCI/issues"
 packages = ["dart_mlci"]
 
 [tool.hatch.build.targets.sdist]
-# Model weights (artifacts/models/*.pt) are intentionally excluded — they are
-# ~40MB combined and would bloat the PyPI package. Users run
-# `scripts/download_artifacts.sh` once after install to fetch them.
+# Model weights (artifacts/models/*.pt) and sample images
+# (artifacts/images/) are intentionally excluded — they are ~40 MB combined
+# and would bloat the PyPI package. They are downloaded on demand the first
+# time any code path needs them (see dart_mlci.artifacts.ensure_artifact).
 include = [
     "dart_mlci/",
     "tests/",
     "artifacts/chamber_structure.json",
     "artifacts/chips/",
-    "scripts/download_artifacts.sh",
     "README.md",
     "LICENSE",
     "CHANGELOG.md",

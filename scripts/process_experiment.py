@@ -42,7 +42,7 @@ from dart_mlci import (
     create_structure_library,
     resolve_time_column,
 )
-from dart_mlci.constants import DEFAULT_MODEL_PATH, DEFAULT_STRUCTURE_LIBRARY_PATH
+from dart_mlci.artifacts import ensure_artifact
 from dart_mlci.io import load_image
 from dart_mlci.visualization import plot_markers_on_image
 
@@ -1464,10 +1464,10 @@ Output structure:
 
     # Set default paths
     if args.model_path is None:
-        args.model_path = DEFAULT_MODEL_PATH
+        args.model_path = ensure_artifact("models/v26_detect_s_imgsz1280.pt")
 
     if args.structure_library is None:
-        args.structure_library = DEFAULT_STRUCTURE_LIBRARY_PATH
+        args.structure_library = ensure_artifact("chamber_structure.json")
 
     # Validate paths
     if not args.model_path.exists():

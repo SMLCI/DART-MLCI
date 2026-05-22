@@ -101,6 +101,14 @@ The following environment variables can be configured:
 | `DART_PIXEL_SIZE` | `0.065789` | Default pixel size in microns |
 | `DART_DEVICE` | Auto-detected | Device to use (`cpu` or `cuda:0`) |
 
+> **Note on missing artifacts.** When the `DART_MODEL_PATH` /
+> `DART_STRUCTURE_LIBRARY_PATH` / `DART_CHIP_CONFIGS_DIR` paths don't exist
+> inside the container, the API falls back to lazy download via
+> `dart_mlci.artifacts.ensure_artifact()`. Files land under
+> `~/.cache/dart-mlci/` inside the container by default, or wherever
+> `DART_ARTIFACTS_DIR` points. The container therefore works even when the
+> host has no `artifacts/` directory to mount.
+
 ### Multi-Chip Support
 
 Place chip config JSON files in the `DART_CHIP_CONFIGS_DIR` directory. Each file's
@@ -284,13 +292,15 @@ docker logs dart-api
 ### Model Not Loading
 
 ```bash
-# Verify model file exists in container
-docker exec dart-api ls -lh /app/artifacts/models/
+# Verify model file exists in container (either copied in at build time,
+# or auto-downloaded to the cache on first request)
+docker exec dart-api ls -lh /app/artifacts/models/ /root/.cache/dart-mlci/models/ 2>&1
 
 # Check environment variables
 docker exec dart-api env | grep DART_
 
-# Test health endpoint
+# Test health endpoint — model_loaded:true once the first request triggered
+# the lazy download.
 curl http://localhost:8000/health
 ```
 

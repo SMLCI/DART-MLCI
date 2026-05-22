@@ -11,7 +11,7 @@ from pathlib import Path
 
 import numpy as np
 
-from dart_mlci.constants import DEFAULT_MODEL_PATH
+from dart_mlci.artifacts import ensure_artifact
 from dart_mlci.detection import MarkerDetectionModel
 from dart_mlci.mask import RoIPolygon, apply_mask
 from dart_mlci.match import match_markers
@@ -50,7 +50,7 @@ class RoIMasker:
             stacklevel=2,
         )
         if model_path is None:
-            model_path = DEFAULT_MODEL_PATH
+            model_path = ensure_artifact("models/v26_detect_s_imgsz1280.pt")
 
         self.model_path = model_path
         self.roi_polygon = roi_polygon
@@ -203,9 +203,9 @@ class SingleStructureRoIMasker:
         )
 
         if structure_library is None:
-            structure_library = Path(__file__).parent.parent / "artifacts/chamber_structure.json"
+            structure_library = ensure_artifact("chamber_structure.json")
         if model_path is None:
-            model_path = DEFAULT_MODEL_PATH
+            model_path = ensure_artifact("models/v26_detect_s_imgsz1280.pt")
 
         self.rm = RoIMasker(model_path=model_path, roi_polygon=None, marker_group_pixel=None)
 

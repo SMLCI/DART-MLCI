@@ -5,10 +5,10 @@ The chip configuration system provides a single JSON file per chip design that s
 ## Quick Start
 
 ```python
-from dart_mlci.chip import ChipStructureLibrary
+from dart_mlci import ChipStructureLibrary, sample_path
 
-# Load from chip config file
-lib = ChipStructureLibrary.from_file("artifacts/chips/sak.json")
+# Load from chip config file (auto-downloads on first call)
+lib = ChipStructureLibrary.from_file(sample_path("chips/sak.json"), pixel_size=0.065789)
 
 # Look up chamber info for an ROI
 structure_name, roi_polygon, marker_group = lib("0050")
@@ -133,7 +133,9 @@ print(f"Loaded {config.chip_name} with {len(config.chamber_types)} chamber types
 
 ## Marker Detection: When You Need a New Model
 
-The bundled YOLO weights in `artifacts/models/v26_detect_s_imgsz1280.pt` are
+The bundled YOLO weights (`models/v26_detect_s_imgsz1280.pt`, auto-downloaded
+on first use — resolve the path with
+`dart_mlci.ensure_artifact("models/v26_detect_s_imgsz1280.pt")`) are
 trained on the **SAK-style cross-and-circle fiducials**. The pipeline assumes
 each chamber has exactly one `cross` and one `circle` marker, matched in pairs.
 
@@ -216,9 +218,9 @@ A toy 2-chamber chip config:
 ### Python API
 
 ```python
-from dart_mlci.chip import ChipStructureLibrary
+from dart_mlci import ChipStructureLibrary, sample_path
 
-lib = ChipStructureLibrary.from_file("artifacts/chips/sak.json")
+lib = ChipStructureLibrary.from_file(sample_path("chips/sak.json"), pixel_size=0.065789)
 
 # Look up by ROI ID
 name, polygon, markers = lib("0050")
@@ -232,32 +234,34 @@ blueprint = lib.get_blueprint_map()
 ### CLI Scripts
 
 ```bash
-# Process an image with chip config
+# Process an image with chip config (omit --chip-config to use the
+# auto-downloaded bundled SAK config)
 python scripts/process_image.py \
     --image my_image.tif \
-    --chamber-id 0050 \
-    --chip-config artifacts/chips/sak.json
+    --chamber-id 0050
 
-# Calibrate with chip config
+# Calibrate (also defaults to bundled chip if --chip-config omitted)
 python scripts/calibrate_map.py \
     --config calibration.json \
-    --chip-config artifacts/chips/sak.json \
     --output calibrated_map.csv
 ```
 
 ### REST API
 
-Set the environment variable:
+Default behaviour: the API loads the bundled SAK chip from the cache on
+startup (downloading once if missing). Override with an absolute path if you
+want to ship a custom chip:
+
 ```bash
-export DART_CHIP_CONFIG_PATH=artifacts/chips/sak.json
+export DART_CHIP_CONFIG_PATH=/path/to/my_chip.json
 ```
 
-Or pass in the request body:
+Or pass it in the request body:
 ```json
 {
   "image": "<base64>",
   "roi_id": "0050",
-  "chip_config_path": "artifacts/chips/sak.json"
+  "chip_config_path": "/path/to/my_chip.json"
 }
 ```
 

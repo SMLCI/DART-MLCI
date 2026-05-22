@@ -17,14 +17,18 @@ and **how to segment**. A minimal config looks like:
   "input_dir": "data/experiment",
   "output_dir": "data/output",
   "pixel_size": 0.092766,
-  "chip_config": "artifacts/chips/sak.json",
-  "model_path": "artifacts/models/v26_detect_s_imgsz1280.pt",
   "segmenter": "cellpose-sam",
   "folders": {
     "MyChamberFolder": "NormaleBox-inner"
   }
 }
 ```
+
+Omit `chip_config` / `model_path` to use the auto-downloaded defaults
+(`chips/sak.json` and the bundled YOLO weights — both fetched on first use to
+the per-user cache; see [`../README.md#installation`](../README.md#installation)).
+Specify either field with an absolute path to point at a custom chip JSON or
+your own model weights.
 
 ### Field Reference
 
@@ -33,8 +37,8 @@ and **how to segment**. A minimal config looks like:
 | `input_dir` | string | Yes | Path to the experiment directory containing chamber-type subfolders. |
 | `output_dir` | string | Yes | Where per-stack results, summary, and timings are written. |
 | `pixel_size` | float | Yes | Microscope pixel size in µm/px. This is a property of your microscope, not your chip. |
-| `chip_config` | string | Yes | Path to the chip JSON (see [CHIP_CONFIG.md](CHIP_CONFIG.md)). |
-| `model_path` | string | Yes | Path to YOLO marker-detection weights. |
+| `chip_config` | string | No | Path to the chip JSON (see [CHIP_CONFIG.md](CHIP_CONFIG.md)). Defaults to the auto-downloaded `chips/sak.json`. |
+| `model_path` | string | No | Path to YOLO marker-detection weights. Defaults to the auto-downloaded `models/v26_detect_s_imgsz1280.pt`. |
 | `folders` | object | Yes | Map of subfolder name (under `input_dir`) → chamber-type key (from the chip config's `chamber_types`). |
 | `flip` | bool | No | Vertically flip frames before processing (microscope-orientation dependent). Default `false`. |
 | `allow_truncation` | bool | No | Allow cropped ROIs that extend past the image boundary. Default `false`. |
