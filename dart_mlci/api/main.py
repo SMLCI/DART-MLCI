@@ -21,6 +21,7 @@ from dart_mlci.api.models import (
     CalibrateResponse,
     CalibrationStatistics,
     ChamberType,
+    DetectedMarker,
     HealthResponse,
     ImageResultInfo,
     ProcessImageRequest,
@@ -691,6 +692,25 @@ async def segment(request: SegmentRequest) -> SegmentResponse:
     )
 
 
+def _markers_and_matches(
+    debug_data,
+) -> tuple[list[DetectedMarker] | None, list[list[int]] | None]:
+    """Convert ImageDebugData marker/match info into JSON-serializable response fields."""
+    if debug_data is None:
+        return None, None
+    markers = [
+        DetectedMarker(
+            x=float(m["bbox_center"][0]),
+            y=float(m["bbox_center"][1]),
+            label=str(m["label"]),
+            conf=float(m.get("conf", 0.0)),
+        )
+        for m in (debug_data.markers or [])
+    ] or None
+    matched_indices = [list(pair) for pair in (debug_data.matched_indices or [])] or None
+    return markers, matched_indices
+
+
 @app.post("/calibrate", response_model=CalibrateResponse)
 async def calibrate_map_endpoint(request: CalibrateRequest) -> CalibrateResponse:
     """
@@ -770,6 +790,7 @@ async def calibrate_map_endpoint(request: CalibrateRequest) -> CalibrateResponse
             structure_library=chip_lib,
             blueprint_map=blueprint_map,
             pixel_size=request.pixel_size,
+            collect_debug=True,
         )
     except (CalibrationError, ValueError) as e:
         # Extract per-image results from CalibrationError
@@ -780,12 +801,15 @@ async def calibrate_map_endpoint(request: CalibrateRequest) -> CalibrateResponse
                 pos = None
                 if img_result.microscope_position is not None:
                     pos = img_result.microscope_position.tolist()
+                markers, matched_indices = _markers_and_matches(img_result.debug_data)
                 error_image_results.append(
                     ImageResultInfo(
                         roi_id=img_result.roi_id,
                         success=img_result.success,
                         error_message=img_result.error_message,
                         microscope_position=pos,
+                        markers=markers,
+                        matched_indices=matched_indices,
                     )
                 )
         return CalibrateResponse(
@@ -818,12 +842,15 @@ async def calibrate_map_endpoint(request: CalibrateRequest) -> CalibrateResponse
         pos = None
         if img_result.microscope_position is not None:
             pos = img_result.microscope_position.tolist()
+        markers, matched_indices = _markers_and_matches(img_result.debug_data)
         image_results.append(
             ImageResultInfo(
                 roi_id=img_result.roi_id,
                 success=img_result.success,
                 error_message=img_result.error_message,
                 microscope_position=pos,
+                markers=markers,
+                matched_indices=matched_indices,
             )
         )
 

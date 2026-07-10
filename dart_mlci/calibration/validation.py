@@ -21,7 +21,11 @@ from dart_mlci.mask import RoIPolygon
 from dart_mlci.pipeline import MarkerDetectionStep, MarkerMatchingStep
 from dart_mlci.rotation import compute_marker_group_angles
 
-from .core import compute_chamber_center, filter_matched_pairs_by_bounds
+from .core import (
+    compute_chamber_center,
+    compute_microscope_position,
+    filter_matched_pairs_by_bounds,
+)
 
 
 @dataclass
@@ -296,20 +300,23 @@ def process_validation_image(
         chamber_center_pixels = compute_chamber_center(
             markers, matched_indices, marker_group_pixels, roi_polygon, rotation_angle
         )
+        image_shape = image.shape[:2]
+        im_height, im_width = image_shape
+        image_center_pixels = np.array([im_width / 2, im_height / 2])
 
         if collect_debug:
             debug_data.chamber_center_pixels = chamber_center_pixels
             expected_offset_microns = expected_position - np.array(
                 [stage_position["x"], stage_position["y"]]
             )
-            debug_data.expected_center_pixels = expected_offset_microns / pixel_size
+            debug_data.expected_center_pixels = (
+                image_center_pixels + expected_offset_microns / pixel_size
+            )
 
-        # 7. Convert to microns
-        chamber_center_microns = chamber_center_pixels * pixel_size
-
-        # 8. Compute measured microscope position
-        measured_x = stage_position["x"] + chamber_center_microns[0]
-        measured_y = stage_position["y"] + chamber_center_microns[1]
+        # 7-8. Compute measured microscope position
+        (measured_x, measured_y), _z = compute_microscope_position(
+            chamber_center_pixels, stage_position, pixel_size, image_shape
+        )
 
         # 9. Compute L2 error
         error = float(

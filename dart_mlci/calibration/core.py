@@ -253,27 +253,41 @@ def compute_microscope_position(
     chamber_center_pixels: npt.NDArray[np.float64],
     stage_position: dict[str, float],
     pixel_size: float,
+    image_shape: tuple[int, int],
 ) -> tuple[npt.NDArray[np.float64], float | None]:
     """Compute microscope position from chamber center and stage position.
 
-    The microscope position is computed by:
-    1. Converting chamber center from pixels to microns
-    2. Adding the stage position (which is the top-left of the image)
+    ``stage_position`` is the stage coordinate at the center of the field of
+    view: calibration (and validation) images are captured with the chamber
+    already positioned near the center of the FoV, so the chamber center is
+    only a small correction away from ``stage_position``. The microscope
+    position is computed by:
+    1. Computing the chamber center's pixel offset from the image center
+    2. Converting that offset from pixels to microns
+    3. Adding it to the stage position
+
+    This makes the returned position directly usable as a move target: moving
+    the stage there recenters the chamber in the FoV, the same way it was
+    (approximately) centered when the calibration image was captured.
 
     Args:
         chamber_center_pixels: Chamber center in pixel coordinates
         stage_position: Stage position dict with x, y, and optionally z
         pixel_size: Pixel size in microns
+        image_shape: (height, width) of the image the chamber center was
+            detected in
 
     Returns:
         Tuple of (microscope_position_xy, z_position) where:
         - microscope_position_xy is (x, y) in microns
         - z_position is z coordinate or None if not provided
     """
-    chamber_center_microns = chamber_center_pixels * pixel_size
+    im_height, im_width = image_shape
+    image_center_pixels = np.array([im_width / 2, im_height / 2])
+    offset_microns = (chamber_center_pixels - image_center_pixels) * pixel_size
 
-    microscope_x = stage_position["x"] + chamber_center_microns[0]
-    microscope_y = stage_position["y"] + chamber_center_microns[1]
+    microscope_x = stage_position["x"] + offset_microns[0]
+    microscope_y = stage_position["y"] + offset_microns[1]
     z_position = stage_position.get("z")
 
     return np.array([microscope_x, microscope_y]), z_position
@@ -437,28 +451,29 @@ def process_calibration_image(
         )
 
         # 8. Convert to microns and compute microscope position
-        chamber_center_microns = chamber_center_pixels * pixel_size
-        microscope_x = stage_position["x"] + chamber_center_microns[0]
-        microscope_y = stage_position["y"] + chamber_center_microns[1]
-        z_position = stage_position.get("z", 0.0)
-
-        microscope_position = np.array([microscope_x, microscope_y])
+        microscope_position, z_position = compute_microscope_position(
+            chamber_center_pixels, stage_position, pixel_size, image.shape[:2]
+        )
 
         if verbose:
+            z_str = "None" if z_position is None else f"{z_position:.2f}"
             print(
                 f"    - Chamber center (px): "
                 f"({chamber_center_pixels[0]:.1f}, {chamber_center_pixels[1]:.1f})"
             )
             print(
                 f"    - Stage position: "
-                f"({stage_position['x']:.2f}, {stage_position['y']:.2f}, {z_position:.2f})"
+                f"({stage_position['x']:.2f}, {stage_position['y']:.2f}, {z_str})"
             )
-            print(f"    - Microscope position: ({microscope_x:.2f}, {microscope_y:.2f})")
+            print(
+                f"    - Microscope position: "
+                f"({microscope_position[0]:.2f}, {microscope_position[1]:.2f})"
+            )
             print("    - Status: SUCCESS")
 
         if debug_data:
             debug_data.chamber_center_pixels = chamber_center_pixels
-            debug_data.chamber_center_microns = np.array([microscope_x, microscope_y])
+            debug_data.chamber_center_microns = microscope_position
             debug_data.pixel_size = pixel_size
 
         return ImageCalibrationResult(

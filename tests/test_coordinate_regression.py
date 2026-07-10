@@ -124,29 +124,34 @@ class TestComputeChamberCenterRegression(unittest.TestCase):
 
     def test_microscope_position_calculation(self):
         """
-        Verify microscope position = stage_position + chamber_center_microns
+        Verify microscope position = stage_position + offset-from-image-center
 
-        Code reference: calibrate_map.py:507-508
-        microscope_x = stage_position["x"] + chamber_center_microns[0]
-        microscope_y = stage_position["y"] + chamber_center_microns[1]
+        stage_position is the stage coordinate of the image CENTER (the
+        chamber is positioned near the FoV center when the calibration image
+        is captured), so what's added is the chamber center's pixel offset
+        from the image center, not from the top-left corner.
+
+        Code reference: dart_mlci/calibration/core.py:compute_microscope_position
         """
-        # Stage position
+        # Stage position (at the center of the field of view)
         stage_pos = {"x": 6802.4, "y": -4272.9}
 
-        # Chamber center in pixels
+        # Chamber center in pixels, and the image it was detected in
         chamber_center_pixels = np.array([500.0, 300.0])
+        image_shape = (600, 800)  # height, width -> center = (400, 300)
         pixel_size = 0.065789
 
-        # Convert to microns
-        chamber_center_microns = chamber_center_pixels * pixel_size
+        # Offset from image center, converted to microns
+        image_center_pixels = np.array([image_shape[1] / 2, image_shape[0] / 2])
+        offset_microns = (chamber_center_pixels - image_center_pixels) * pixel_size
 
         # Compute microscope position (both X and Y use addition)
-        microscope_x = stage_pos["x"] + chamber_center_microns[0]
-        microscope_y = stage_pos["y"] + chamber_center_microns[1]
+        microscope_x = stage_pos["x"] + offset_microns[0]
+        microscope_y = stage_pos["y"] + offset_microns[1]
 
         # Verify the formula
-        expected_x = 6802.4 + (500.0 * 0.065789)  # = 6802.4 + 32.89 = 6835.29
-        expected_y = -4272.9 + (300.0 * 0.065789)  # = -4272.9 + 19.74 = -4253.16
+        expected_x = 6802.4 + (100.0 * 0.065789)  # = 6802.4 + 6.5789 = 6808.9789
+        expected_y = -4272.9 + (0.0 * 0.065789)  # = -4272.9 + 0.0 = -4272.9
 
         self.assertAlmostEqual(microscope_x, expected_x, places=2)
         self.assertAlmostEqual(microscope_y, expected_y, places=2)

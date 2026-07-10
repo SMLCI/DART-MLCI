@@ -424,6 +424,22 @@ class TestCalibrateEndpoint:
                     assert "calibrated_map" in data
                     assert "statistics" in data
 
+                    # Raw pixel-coordinate marker detections should be included so
+                    # clients can visualize detections on top of the source images.
+                    assert data["image_results"]
+                    for img_result in data["image_results"]:
+                        if not img_result["success"]:
+                            continue
+                        assert img_result["markers"]
+                        for marker in img_result["markers"]:
+                            assert marker["label"] in ("cross", "circle")
+                            assert isinstance(marker["x"], float)
+                            assert isinstance(marker["y"], float)
+                            assert 0.0 <= marker["conf"] <= 1.0
+                        assert img_result["matched_indices"]
+                        for pair in img_result["matched_indices"]:
+                            assert len(pair) == 2
+
                     # Save calibrated map as JSON
                     json_path = viz_dir / "calibrated_map.json"
                     json_path.write_text(json.dumps(data["calibrated_map"], indent=2))
@@ -505,6 +521,11 @@ class TestCalibrateEndpoint:
                     assert img_result["success"] is False
                     assert img_result["error_message"] is not None
                     assert len(img_result["error_message"]) > 0
+                    # Noise images yield too few/unmatched markers to calibrate, but any
+                    # spurious detections still surface here for visual debugging; matching
+                    # never succeeds so matched_indices stays unset.
+                    assert img_result["markers"] is None or isinstance(img_result["markers"], list)
+                    assert img_result["matched_indices"] is None
         finally:
             get_settings.cache_clear()
 
