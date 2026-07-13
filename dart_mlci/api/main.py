@@ -189,6 +189,8 @@ async def health_check() -> HealthResponse:
         device=getattr(app.state, "device", "cpu"),
         segmenter_loaded=getattr(app.state, "segmenter", None) is not None,
         segmenter=getattr(app.state, "segmenter_type", None),
+        git_commit_sha=settings.git_commit_sha,
+        git_commit_message=settings.git_commit_message,
     )
 
 
@@ -711,6 +713,17 @@ def _markers_and_matches(
     return markers, matched_indices
 
 
+def _calibrate_response(**kwargs) -> CalibrateResponse:
+    """Build a CalibrateResponse, stamping it with the running commit so callers
+    can confirm which software version produced a given calibrated map."""
+    settings = get_settings()
+    return CalibrateResponse(
+        git_commit_sha=settings.git_commit_sha,
+        git_commit_message=settings.git_commit_message,
+        **kwargs,
+    )
+
+
 @app.post("/calibrate", response_model=CalibrateResponse)
 async def calibrate_map_endpoint(request: CalibrateRequest) -> CalibrateResponse:
     """
@@ -731,7 +744,7 @@ async def calibrate_map_endpoint(request: CalibrateRequest) -> CalibrateResponse
     # Validate number of images (Pydantic should already enforce min_length=3)
     n_images = len(request.calibration_images)
     if n_images < 3:
-        return CalibrateResponse(
+        return _calibrate_response(
             success=False,
             error_message=f"At least 3 calibration images required, got {n_images}",
         )
@@ -745,7 +758,7 @@ async def calibrate_map_endpoint(request: CalibrateRequest) -> CalibrateResponse
         try:
             images.append(base64_to_array(img_data.image))
         except Exception as e:
-            return CalibrateResponse(
+            return _calibrate_response(
                 success=False,
                 error_message=f"Failed to decode calibration image {i}: {e}",
             )
@@ -763,7 +776,7 @@ async def calibrate_map_endpoint(request: CalibrateRequest) -> CalibrateResponse
     chip_key = request.chip_name.lower()
     if chip_key not in registry:
         available = sorted(registry.keys())
-        return CalibrateResponse(
+        return _calibrate_response(
             success=False,
             error_message=f"Unknown chip '{request.chip_name}'. Available: {available}",
         )
@@ -775,7 +788,7 @@ async def calibrate_map_endpoint(request: CalibrateRequest) -> CalibrateResponse
     # Get detection step
     detection_step = getattr(app.state, "detection_step", None)
     if detection_step is None:
-        return CalibrateResponse(
+        return _calibrate_response(
             success=False,
             error_message="Model not loaded - check DART_MODEL_PATH configuration",
         )
@@ -812,13 +825,13 @@ async def calibrate_map_endpoint(request: CalibrateRequest) -> CalibrateResponse
                         matched_indices=matched_indices,
                     )
                 )
-        return CalibrateResponse(
+        return _calibrate_response(
             success=False,
             error_message=f"Calibration failed: {e}",
             image_results=error_image_results if error_image_results else None,
         )
     except Exception as e:
-        return CalibrateResponse(
+        return _calibrate_response(
             success=False,
             error_message=f"Calibration failed: {e}",
         )
@@ -862,7 +875,7 @@ async def calibrate_map_endpoint(request: CalibrateRequest) -> CalibrateResponse
         residuals=result.transform_result.residuals.tolist(),
     )
 
-    return CalibrateResponse(
+    return _calibrate_response(
         success=True,
         calibrated_map=calibrated_map,
         statistics=statistics,

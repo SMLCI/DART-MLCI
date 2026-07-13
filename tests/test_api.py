@@ -112,6 +112,55 @@ class TestHealthEndpoint:
         assert isinstance(data["device"], str)
         assert data["status"] in ("healthy", "unhealthy")
 
+    def test_health_reports_git_commit_from_env(self, monkeypatch):
+        """Health response should surface GIT_COMMIT_SHA/MESSAGE baked in at build time."""
+        from dart_mlci.api.main import app
+        from dart_mlci.api.settings import get_settings
+
+        get_settings.cache_clear()
+        monkeypatch.setenv("GIT_COMMIT_SHA", "abc1234")
+        monkeypatch.setenv("GIT_COMMIT_MESSAGE", "fix: use image-center convention")
+        try:
+            with TestClient(app) as test_client:
+                response = test_client.get("/health")
+                data = response.json()
+                assert data["git_commit_sha"] == "abc1234"
+                assert data["git_commit_message"] == "fix: use image-center convention"
+        finally:
+            get_settings.cache_clear()
+
+    def test_health_git_commit_falls_back_to_live_git(self, monkeypatch):
+        """Without GIT_COMMIT_SHA/MESSAGE or a baked-in file (e.g. local dev), the
+        commit should be auto-detected from the local .git checkout."""
+        import subprocess
+
+        from dart_mlci.api.main import app
+        from dart_mlci.api.settings import get_settings
+
+        expected_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+        get_settings.cache_clear()
+        monkeypatch.delenv("GIT_COMMIT_SHA", raising=False)
+        monkeypatch.delenv("GIT_COMMIT_MESSAGE", raising=False)
+        try:
+            with TestClient(app) as test_client:
+                response = test_client.get("/health")
+                data = response.json()
+                assert data["git_commit_sha"] == expected_sha
+                assert data["git_commit_message"]
+        finally:
+            get_settings.cache_clear()
+
+    def test_run_git_returns_none_when_git_unavailable(self):
+        """_run_git should fail closed (None) rather than raise, e.g. if git isn't
+        installed or the cwd isn't a repo (the case inside the production image)."""
+        from dart_mlci.api.settings import _run_git
+
+        assert _run_git("this-is-not-a-git-command") is None
+        assert _run_git("rev-parse", "--verify", "not-a-real-ref") is None
+
 
 # === Available Chips Endpoint Tests ===
 
@@ -516,6 +565,11 @@ class TestCalibrateEndpoint:
                 assert "image_results" in data
                 assert data["image_results"] is not None
                 assert len(data["image_results"]) == 3
+
+                # Even a failed calibration should be stamped with the running
+                # commit so callers can tell which software version produced it.
+                assert "git_commit_sha" in data
+                assert "git_commit_message" in data
 
                 for img_result in data["image_results"]:
                     assert img_result["success"] is False

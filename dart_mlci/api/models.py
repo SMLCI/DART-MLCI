@@ -92,6 +92,12 @@ class CalibrateResponse(BaseModel):
         default_factory=list, description="Per-image processing results"
     )
     error_message: str | None = None
+    git_commit_sha: str | None = Field(
+        default=None, description="Git commit SHA the running image was built from"
+    )
+    git_commit_message: str | None = Field(
+        default=None, description="Git commit subject line the running image was built from"
+    )
 
 
 class ProcessImageResponse(BaseModel):
@@ -117,6 +123,12 @@ class HealthResponse(BaseModel):
     device: str = Field(description="e.g., 'cuda:0' or 'cpu'")
     segmenter_loaded: bool = False
     segmenter: str | None = None
+    git_commit_sha: str | None = Field(
+        default=None, description="Git commit SHA the running image was built from"
+    )
+    git_commit_message: str | None = Field(
+        default=None, description="Git commit subject line the running image was built from"
+    )
 
 
 class ChamberType(BaseModel):
