@@ -320,7 +320,9 @@ async def _process_image_from_array(
 
     # Step 2: Matching
     try:
-        matching_step = MarkerMatchingStep(marker_group_pixel=marker_group_configs, tolerance=60)
+        matching_step = MarkerMatchingStep(
+            marker_group_pixel=marker_group_configs, pixel_size=pixel_size
+        )
         data = matching_step(data)
         matched_indices = data.get("matched_marker_indices", [])
         if len(matched_indices) == 0:

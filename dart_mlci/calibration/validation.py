@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
+from dart_mlci.constants import DEFAULT_MAX_ANGLE_DEVIATION_DEG
 from dart_mlci.io import load_image
 from dart_mlci.map import Map
 from dart_mlci.mask import RoIPolygon
@@ -150,7 +151,7 @@ def process_validation_image(
     verbose: bool = False,
     collect_debug: bool = False,
     conf_threshold: float = 0.5,
-    max_angle_deviation: float = 5.0,
+    max_angle_deviation: float = DEFAULT_MAX_ANGLE_DEVIATION_DEG,
 ) -> ValidationResult:
     """Process a single validation image and compute error against expected position.
 
@@ -180,7 +181,7 @@ def process_validation_image(
             print(f"    - Chamber type: {structure_name}")
 
         # 2. Create matching step for this chamber type
-        matching_step = MarkerMatchingStep(marker_group_pixels, tolerance=60)
+        matching_step = MarkerMatchingStep(marker_group_pixels, pixel_size=pixel_size)
 
         # 3. Load and process image
         image = load_image(image_path)
@@ -368,7 +369,7 @@ def run_validation(
     max_images: int | None = None,
     collect_debug: bool = False,
     conf_threshold: float = 0.5,
-    max_angle_deviation: float = 5.0,
+    max_angle_deviation: float = DEFAULT_MAX_ANGLE_DEVIATION_DEG,
 ) -> ValidationSummary:
     """Run the full validation pipeline.
 

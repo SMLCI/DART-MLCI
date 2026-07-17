@@ -11,7 +11,14 @@ from pathlib import Path
 
 import numpy as np
 
-from dart_mlci.constants import ensure_default_model, ensure_default_structure_library
+from dart_mlci.constants import (
+    DEFAULT_MARKER_TOLERANCE_UM,
+    DEFAULT_MAX_ANGLE_DEVIATION_DEG,
+    DEFAULT_PIXEL_SIZE_UM,
+    ensure_default_model,
+    ensure_default_structure_library,
+    marker_tolerance_px,
+)
 from dart_mlci.detection import MarkerDetectionModel
 from dart_mlci.mask import RoIPolygon, apply_mask
 from dart_mlci.match import match_markers
@@ -33,7 +40,9 @@ class RoIMasker:
         model_path: Path | None = None,
         roi_polygon: RoIPolygon | None = None,
         marker_group_pixel: dict[str, np.ndarray] | None = None,
-        max_angle_deviation: float = 5.0,
+        pixel_size: float = DEFAULT_PIXEL_SIZE_UM,
+        tolerance_um: float = DEFAULT_MARKER_TOLERANCE_UM,
+        max_angle_deviation: float = DEFAULT_MAX_ANGLE_DEVIATION_DEG,
     ):
         """Create new masking instance.
 
@@ -41,6 +50,8 @@ class RoIMasker:
             model_path: Path to the YOLO model weights. If None, uses DEFAULT_MODEL_PATH.
             roi_polygon: Polygon information for the RoI shape.
             marker_group_pixel: Marker placement relative to the RoI shape in pixel coordinates.
+            pixel_size: Size of one pixel in microns. Used to convert tolerance_um to pixels.
+            tolerance_um: Marker matching tolerance in microns.
         """
         warnings.warn(
             "RoIMasker is deprecated. Use the step-based pipeline "
@@ -56,6 +67,9 @@ class RoIMasker:
         self.roi_polygon = roi_polygon
         self.marker_group_pixel = marker_group_pixel
 
+        self.pixel_size = pixel_size
+        self.tolerance_um = tolerance_um
+        self.tolerance = marker_tolerance_px(pixel_size, tolerance_um)
         self.max_angle_deviation = max_angle_deviation
         self.detection_model = MarkerDetectionModel(self.model_path)
 
@@ -103,7 +117,7 @@ class RoIMasker:
             # 2. match markers
 
             matched_marker_indices = match_markers(
-                markers, marker_group=marker_group_pixel, tolerance=60
+                markers, marker_group=marker_group_pixel, tolerance=self.tolerance
             )
 
             # 3. compute angle
@@ -154,17 +168,27 @@ class RoIMasker:
         return np.stack(result_images, axis=0), np.stack(result_masks, axis=0)
 
 
-def compute_marker_angles(markers, marker_group_pixel):
+def compute_marker_angles(
+    markers,
+    marker_group_pixel,
+    pixel_size: float = DEFAULT_PIXEL_SIZE_UM,
+    tolerance_um: float = DEFAULT_MARKER_TOLERANCE_UM,
+):
     """Compute the mean rotation angle from detected markers.
 
     Args:
         markers: List of detected marker dicts.
         marker_group_pixel: Expected marker positions in pixel coordinates.
+        pixel_size: Size of one pixel in microns. Used to convert tolerance_um to pixels.
+        tolerance_um: Marker matching tolerance in microns.
 
     Returns:
         float: Mean rotation angle in degrees.
     """
-    matched_marker_indices = match_markers(markers, marker_group=marker_group_pixel, tolerance=60)
+    tolerance = marker_tolerance_px(pixel_size, tolerance_um)
+    matched_marker_indices = match_markers(
+        markers, marker_group=marker_group_pixel, tolerance=tolerance
+    )
 
     angles = compute_marker_group_angles(markers, matched_marker_indices, marker_group_pixel)
     mean_angle = np.mean(angles)
@@ -184,7 +208,7 @@ class SingleStructureRoIMasker:
         model_path: Path | None = None,
         structure_library: Path | None = None,
         structure_name="OpenBox-inner",
-        pixel_size: float = 0.065789,
+        pixel_size: float = DEFAULT_PIXEL_SIZE_UM,
     ):
         """Initialize a single-structure masker.
 
@@ -207,7 +231,12 @@ class SingleStructureRoIMasker:
         if model_path is None:
             model_path = ensure_default_model()
 
-        self.rm = RoIMasker(model_path=model_path, roi_polygon=None, marker_group_pixel=None)
+        self.rm = RoIMasker(
+            model_path=model_path,
+            roi_polygon=None,
+            marker_group_pixel=None,
+            pixel_size=pixel_size,
+        )
 
         self.structure_library = SingleRoIStructureLibrary(
             lookup_path=structure_library,

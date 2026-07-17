@@ -25,7 +25,7 @@ from dart_mlci import (
     RoIMaskingStep,
     create_structure_library,
 )
-from dart_mlci.constants import ensure_default_model
+from dart_mlci.constants import DEFAULT_PIXEL_SIZE_UM, ensure_default_model
 from dart_mlci.io import load_image, save_image
 from dart_mlci.types import PipelineError, PipelineTimings
 
@@ -78,6 +78,7 @@ def process_image(
     model_path: Path,
     device: str | None = None,
     verbose: bool = False,
+    pixel_size: float = DEFAULT_PIXEL_SIZE_UM,
 ) -> tuple[np.ndarray, np.ndarray, PipelineTimings]:
     """Run the full masking pipeline on an image.
 
@@ -88,6 +89,8 @@ def process_image(
         model_path: Path to YOLO model
         device: Device to run on (e.g., 'cuda:0', 'cpu'). None for auto.
         verbose: If True, show YOLO inference output
+        pixel_size: Size of one pixel in microns. Used to convert the marker
+            matching tolerance from microns to pixels.
 
     Returns:
         Tuple of (cropped_image, mask, timings) where:
@@ -102,7 +105,7 @@ def process_image(
 
     # Initialize pipeline steps
     detection_step = MarkerDetectionStep(model_path, device=device, verbose=verbose)
-    matching_step = MarkerMatchingStep(marker_group, tolerance=60)
+    matching_step = MarkerMatchingStep(marker_group, pixel_size=pixel_size)
     rotation_step = ImageRotationStep()
     masking_step = RoIMaskingStep(marker_group, roi_polygon)
 
@@ -337,6 +340,7 @@ Chamber ID patterns:
             model_path=args.model_path,
             device=args.device,
             verbose=args.verbose,
+            pixel_size=args.pixel_size,
         )
     except PipelineError as e:
         print_error(e.step, e.message)

@@ -7,8 +7,33 @@ from dart_mlci.artifacts import ensure_artifact, get_artifacts_dir
 DEFAULT_PIXEL_SIZE_UM: float = 0.065789
 """Default pixel size in microns per pixel."""
 
-DEFAULT_MARKER_TOLERANCE_PX: int = 60
-"""Default tolerance in pixels for marker matching."""
+DEFAULT_MARKER_TOLERANCE_UM: float = 4.0
+"""Default tolerance in microns for marker matching.
+
+Expressed in physical units (rather than pixels) so it stays valid across
+cameras with different pixel sizes. Convert to pixels via
+``dart_mlci.calibration.coordinates.PixelToMicronTransform(pixel_size).inverse(...)``
+at the point of use.
+"""
+
+DEFAULT_MAX_ANGLE_DEVIATION_DEG: float = 5.0
+"""Default maximum allowed rotation-angle range across matched marker pairs, in degrees."""
+
+
+def marker_tolerance_px(
+    pixel_size: float, tolerance_um: float = DEFAULT_MARKER_TOLERANCE_UM
+) -> float:
+    """Convert a marker-matching tolerance from microns to pixels.
+
+    Args:
+        pixel_size: Size of one pixel in microns (camera-dependent).
+        tolerance_um: Tolerance in microns. Defaults to DEFAULT_MARKER_TOLERANCE_UM.
+
+    Returns:
+        Tolerance in pixels.
+    """
+    return tolerance_um / pixel_size
+
 
 ARTIFACTS_DIR: Path = get_artifacts_dir()
 """Root directory for bundled artifact files (models, configs, etc.).

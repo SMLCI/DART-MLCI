@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import numpy.typing as npt
 
+from dart_mlci.constants import DEFAULT_MAX_ANGLE_DEVIATION_DEG
 from dart_mlci.map import AffineTransformResult, Map, RoIPosition
 from dart_mlci.mask import RoIPolygon
 
@@ -303,7 +304,7 @@ def process_calibration_image(
     verbose: bool = False,
     collect_debug: bool = False,
     conf_threshold: float = 0.5,
-    max_angle_deviation: float = 5.0,
+    max_angle_deviation: float = DEFAULT_MAX_ANGLE_DEVIATION_DEG,
 ) -> ImageCalibrationResult:
     """Process a single calibration image from a numpy array.
 
@@ -343,7 +344,7 @@ def process_calibration_image(
             debug_data.image = image
 
         # 2. Create matching step for this chamber type
-        matching_step = MarkerMatchingStep(marker_group_pixels, tolerance=60)
+        matching_step = MarkerMatchingStep(marker_group_pixels, pixel_size=pixel_size)
 
         # 3. Detect markers
         detection_result = detection_step(image)
@@ -515,7 +516,7 @@ def run_calibration(
     verbose: bool = False,
     collect_debug: bool = False,
     conf_threshold: float = 0.5,
-    max_angle_deviation: float = 5.0,
+    max_angle_deviation: float = DEFAULT_MAX_ANGLE_DEVIATION_DEG,
 ) -> CalibrationResult:
     """Run the full calibration pipeline on in-memory images.
 
