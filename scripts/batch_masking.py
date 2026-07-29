@@ -113,7 +113,9 @@ class BatchMaskingRunner:
         self.detection_step = MarkerDetectionStep(model_path, device=device, verbose=verbose)
 
         # Cache for chamber-specific pipeline components
-        self._pipeline_cache = ChamberPipelineCache(self.structure_library)
+        self._pipeline_cache = ChamberPipelineCache(
+            self.structure_library, pixel_size=self.pixel_size
+        )
 
         # Initialize segmenter if enabled
         self.segmenter = None

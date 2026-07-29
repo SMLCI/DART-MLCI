@@ -143,3 +143,19 @@ exclude_lines = [
     "if TYPE_CHECKING:",
     "raise NotImplementedError",
 ]
+
+[tool.bumpversion]
+current_version = "0.2.2"
+commit = false
+tag = false
+allow_dirty = false
+
+[[tool.bumpversion.files]]
+filename = "pyproject.toml"
+search = '\nversion = "{current_version}"'
+replace = '\nversion = "{new_version}"'
+
+[[tool.bumpversion.files]]
+filename = "dart_mlci/__init__.py"
+search = '__version__ = "{current_version}"'
+replace = '__version__ = "{new_version}"'

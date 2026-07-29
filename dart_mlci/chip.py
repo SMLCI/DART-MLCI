@@ -178,6 +178,24 @@ def load_chip_config(path: Path | str) -> ChipConfig:
     )
 
 
+def chamber_area_um2(chip_config: ChipConfig, structure_type: str) -> float:
+    """Return a chamber type's nominal footprint area in square microns.
+
+    Computed directly from the chamber type's GeoJSON polygon (defined in
+    microns), so no pixel size is needed.
+
+    Args:
+        chip_config: Loaded chip configuration.
+        structure_type: Chamber type name (key into ``chip_config.chamber_types``).
+
+    Raises:
+        KeyError: If ``structure_type`` isn't a known chamber type.
+    """
+    if structure_type not in chip_config.chamber_types:
+        raise KeyError(f"Unknown chamber type '{structure_type}'")
+    return shape(chip_config.chamber_types[structure_type].polygon).area
+
+
 class ChipStructureLibrary:
     """Structure library for any chip design, loaded from a unified config.
 

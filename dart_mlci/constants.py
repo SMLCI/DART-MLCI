@@ -7,8 +7,33 @@ from dart_mlci.artifacts import ensure_artifact, get_artifacts_dir
 DEFAULT_PIXEL_SIZE_UM: float = 0.065789
 """Default pixel size in microns per pixel."""
 
-DEFAULT_MARKER_TOLERANCE_PX: int = 60
-"""Default tolerance in pixels for marker matching."""
+DEFAULT_MARKER_TOLERANCE_UM: float = 4.0
+"""Default tolerance in microns for marker matching.
+
+Expressed in physical units (rather than pixels) so it stays valid across
+cameras with different pixel sizes. Convert to pixels via
+``dart_mlci.calibration.coordinates.PixelToMicronTransform(pixel_size).inverse(...)``
+at the point of use.
+"""
+
+DEFAULT_MAX_ANGLE_DEVIATION_DEG: float = 5.0
+"""Default maximum allowed rotation-angle range across matched marker pairs, in degrees."""
+
+
+def marker_tolerance_px(
+    pixel_size: float, tolerance_um: float = DEFAULT_MARKER_TOLERANCE_UM
+) -> float:
+    """Convert a marker-matching tolerance from microns to pixels.
+
+    Args:
+        pixel_size: Size of one pixel in microns (camera-dependent).
+        tolerance_um: Tolerance in microns. Defaults to DEFAULT_MARKER_TOLERANCE_UM.
+
+    Returns:
+        Tolerance in pixels.
+    """
+    return tolerance_um / pixel_size
+
 
 ARTIFACTS_DIR: Path = get_artifacts_dir()
 """Root directory for bundled artifact files (models, configs, etc.).
@@ -37,6 +62,27 @@ DEFAULT_CHIP_CONFIG_PATH: Path = ARTIFACTS_DIR / DEFAULT_CHIP_CONFIG_RELPATH
 
 DEFAULT_STRUCTURE_LIBRARY_PATH: Path = ARTIFACTS_DIR / DEFAULT_STRUCTURE_LIBRARY_RELPATH
 """Default path to the legacy chamber structure JSON file (deprecated)."""
+
+
+# Canonical display order/numbering (1-8) for SAK chip chamber types, shared
+# across scripts (timing tables, growth-rate summaries). Matches the "SAK RoI
+# dimensions" reference table: (1) NormaleBox-inner 60x60, (2) BigBox-inner
+# 60x100, (3) OpenBox-inner 60x80, (4) Mothermachine-inner 15x1x80,
+# (5) NormaleBox-pillar-inner 60x60, (6) BigBox-pillar-inner 60x100,
+# (7) OpenBox-collector-inner 60x80, (8) Mothermachine-2x-inner 7x2x80 [um^2].
+CHAMBER_TYPE_ORDER: list[str] = [
+    "NormaleBox-inner",
+    "BigBox-inner",
+    "OpenBox-inner",
+    "Mothermachine-inner",
+    "NormaleBox-pillar-inner",
+    "BigBox-pillar-inner",
+    "OpenBox-collector-inner",
+    "Mothermachine-2x-inner",
+]
+CHAMBER_TYPE_NUMBERS: dict[str, int] = dict(
+    zip(CHAMBER_TYPE_ORDER, range(1, len(CHAMBER_TYPE_ORDER) + 1), strict=False)
+)
 
 
 def ensure_default_model() -> Path:

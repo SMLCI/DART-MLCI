@@ -244,18 +244,28 @@ class TestComputeMicroscopePosition(unittest.TestCase):
     """Tests for compute_microscope_position function."""
 
     def test_basic_computation(self):
-        """Test basic microscope position computation."""
+        """Test basic microscope position computation.
+
+        stage_position is the stage coordinate of the image center (the
+        chamber is positioned near the FoV center when the image is
+        captured), so the chamber center's pixel offset from the image
+        center (not from the top-left corner) is what gets added.
+        """
         chamber_center_pixels = np.array([500.0, 300.0])
         stage_position = {"x": 6802.4, "y": -4272.9, "z": 2942.5}
         pixel_size = 0.065789
+        image_shape = (600, 800)  # height, width -> center = (400, 300)
 
-        pos_xy, z = compute_microscope_position(chamber_center_pixels, stage_position, pixel_size)
+        pos_xy, z = compute_microscope_position(
+            chamber_center_pixels, stage_position, pixel_size, image_shape
+        )
 
         # Expected:
-        # center_microns = (500 * 0.065789, 300 * 0.065789) = (32.89, 19.74)
-        # pos = (6802.4 + 32.89, -4272.9 + 19.74) = (6835.29, -4253.16)
-        expected_x = 6802.4 + 500.0 * 0.065789
-        expected_y = -4272.9 + 300.0 * 0.065789
+        # offset_px = (500 - 400, 300 - 300) = (100, 0)
+        # offset_microns = (100 * 0.065789, 0 * 0.065789) = (6.5789, 0.0)
+        # pos = (6802.4 + 6.5789, -4272.9 + 0.0) = (6808.9789, -4272.9)
+        expected_x = 6802.4 + 100.0 * 0.065789
+        expected_y = -4272.9 + 0.0 * 0.065789
 
         self.assertAlmostEqual(pos_xy[0], expected_x, places=2)
         self.assertAlmostEqual(pos_xy[1], expected_y, places=2)
@@ -266,10 +276,28 @@ class TestComputeMicroscopePosition(unittest.TestCase):
         chamber_center_pixels = np.array([100.0, 100.0])
         stage_position = {"x": 0.0, "y": 0.0}  # No z
         pixel_size = 1.0
+        image_shape = (200, 200)
 
-        _pos_xy, z = compute_microscope_position(chamber_center_pixels, stage_position, pixel_size)
+        _pos_xy, z = compute_microscope_position(
+            chamber_center_pixels, stage_position, pixel_size, image_shape
+        )
 
         self.assertIsNone(z)
+
+    def test_chamber_at_image_center_matches_stage_position(self):
+        """When the chamber lands exactly at the image center, the microscope
+        position should equal stage_position (zero correction)."""
+        image_shape = (600, 800)  # height, width -> center = (400, 300)
+        chamber_center_pixels = np.array([400.0, 300.0])
+        stage_position = {"x": 1234.5, "y": -678.9}
+        pixel_size = 0.065789
+
+        pos_xy, _z = compute_microscope_position(
+            chamber_center_pixels, stage_position, pixel_size, image_shape
+        )
+
+        self.assertAlmostEqual(pos_xy[0], stage_position["x"], places=6)
+        self.assertAlmostEqual(pos_xy[1], stage_position["y"], places=6)
 
 
 class TestProcessCalibrationImage(unittest.TestCase):

@@ -15,8 +15,11 @@ JSON config format:
         "meta_csv_path": "/path/to/meta.csv",
         "pixel_size": 0.065789,
         "model_path": "artifacts/models/v26_detect_s_imgsz1280.pt",
-        "structure_library_path": "artifacts/chamber_structure.json"
+        "chip_config_path": "artifacts/chips/sak.json"
     }
+
+    Provide "chip_config_path" (unified chip JSON, preferred) or the legacy
+    "structure_library_path". This must match what the map was calibrated with.
 """
 
 import argparse
@@ -38,9 +41,9 @@ from dart_mlci.calibration.validation import (
     ValidationSummary,
     process_validation_image,
 )
-from dart_mlci.constants import ensure_default_model, ensure_default_structure_library
+from dart_mlci.chip import create_structure_library
+from dart_mlci.constants import ensure_default_model
 from dart_mlci.map import Map
-from dart_mlci.mask import SAKRoIStructureLibrary
 from dart_mlci.script_utils import load_json_config, validate_validation_config
 
 
@@ -76,11 +79,12 @@ def run_validation_cli(
     else:
         model_path = Path(model_path)
 
-    # Set default structure library path
+    # Structure geometry: prefer the unified chip config (chip_config_path),
+    # fall back to the legacy structure library JSON. This must match whatever
+    # was used to calibrate the map being validated.
+    chip_config_path = config.get("chip_config_path")
     structure_library_path = config.get("structure_library_path")
-    if structure_library_path is None:
-        structure_library_path = ensure_default_structure_library()
-    else:
+    if structure_library_path is not None:
         structure_library_path = Path(structure_library_path)
 
     device = config.get("device")
@@ -122,9 +126,10 @@ def run_validation_cli(
         print()
 
     # Initialize structure library and detection step
-    structure_library = SAKRoIStructureLibrary(
-        lookup_path=structure_library_path,
+    structure_library = create_structure_library(
         pixel_size=pixel_size,
+        chip_config_path=chip_config_path,
+        structure_library_path=structure_library_path,
     )
 
     detection_step = MarkerDetectionStep(str(model_path), device=device, verbose=False)
@@ -279,11 +284,11 @@ def plot_error_histogram(
     summary: ValidationSummary,
     output_path: Path,
     figsize: tuple[float, float] = (10, 6),
-    label_fontsize: float = 12,
-    title_fontsize: float = 14,
-    tick_fontsize: float = 10,
-    legend_fontsize: float = 10,
-    stats_fontsize: float = 10,
+    label_fontsize: float = 24,
+    title_fontsize: float = 28,
+    tick_fontsize: float = 20,
+    legend_fontsize: float = 20,
+    stats_fontsize: float = 20,
     font_family: str | None = None,
     dpi: int = 150,
 ) -> None:
@@ -370,9 +375,9 @@ def plot_error_histogram(
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=dpi, bbox_inches=None)
+    plt.savefig(output_path, dpi=dpi, bbox_inches="tight")
     svg_path = output_path.with_suffix(".svg")
-    plt.savefig(svg_path, bbox_inches=None)
+    plt.savefig(svg_path, bbox_inches="tight")
     plt.close()
 
 
@@ -380,11 +385,11 @@ def plot_error_histogram_pixels(
     summary: ValidationSummary,
     output_path: Path,
     figsize: tuple[float, float] = (10, 6),
-    label_fontsize: float = 12,
-    title_fontsize: float = 14,
-    tick_fontsize: float = 10,
-    legend_fontsize: float = 10,
-    stats_fontsize: float = 10,
+    label_fontsize: float = 24,
+    title_fontsize: float = 28,
+    tick_fontsize: float = 20,
+    legend_fontsize: float = 20,
+    stats_fontsize: float = 20,
     font_family: str | None = None,
     dpi: int = 150,
 ) -> None:
@@ -462,8 +467,8 @@ def plot_error_histogram_pixels(
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=dpi, bbox_inches=None)
-    plt.savefig(output_path.with_suffix(".svg"), bbox_inches=None)
+    plt.savefig(output_path, dpi=dpi, bbox_inches="tight")
+    plt.savefig(output_path.with_suffix(".svg"), bbox_inches="tight")
     plt.close()
 
 
@@ -471,13 +476,13 @@ def plot_error_map(
     summary: ValidationSummary,
     output_path: Path,
     figsize: tuple[float, float] | None = None,
-    label_fontsize: float = 12,
-    title_fontsize: float = 14,
-    colorbar_fontsize: float = 12,
+    label_fontsize: float = 24,
+    title_fontsize: float = 28,
+    colorbar_fontsize: float = 24,
     marker_size: float = 100,
     marker_linewidth: float = 2,
-    tick_fontsize: float = 10,
-    colorbar_tick_fontsize: float = 10,
+    tick_fontsize: float = 20,
+    colorbar_tick_fontsize: float = 20,
     font_family: str | None = None,
     dpi: int = 150,
     invert_xaxis: bool = True,
@@ -569,9 +574,9 @@ def plot_error_map(
     ax.grid(True, alpha=0.3)
 
     plt.tight_layout()
-    plt.savefig(output_path, dpi=dpi, bbox_inches=None)
+    plt.savefig(output_path, dpi=dpi, bbox_inches="tight")
     svg_path = output_path.with_suffix(".svg")
-    plt.savefig(svg_path, bbox_inches=None)
+    plt.savefig(svg_path, bbox_inches="tight")
     plt.close()
 
 
@@ -603,7 +608,7 @@ def plot_validation_debug(
     # Draw markers if available
     if debug_data.markers:
         colors = {"cross": "red", "circle": "blue"}
-        marker_symbols = {"cross": "x", "circle": "o"}
+        marker_symbols = {"cross": "+", "circle": "o"}
 
         for i, marker in enumerate(debug_data.markers):
             center = marker["bbox_center"]
@@ -619,7 +624,7 @@ def plot_validation_debug(
                 (center[0], center[1]),
                 xytext=(10, 10),
                 textcoords="offset points",
-                fontsize=8,
+                fontsize=16,
                 color=color,
                 bbox={"boxstyle": "round,pad=0.3", "facecolor": "white", "alpha": 0.7},
             )
@@ -721,28 +726,24 @@ def plot_validation_debug(
             zorder=8,
         )
 
-    # Add microscope position label near the measured center
+    # Add microscope position label below the measured-center star. Uses the
+    # corrected measured position (image-center convention) so it matches the
+    # "Measured (µm)" line in the info box.
     if (
-        debug_data.stage_position is not None
-        and debug_data.chamber_center_pixels is not None
-        and debug_data.pixel_size is not None
+        debug_data.chamber_center_pixels is not None
+        and result.measured_x is not None
+        and result.measured_y is not None
     ):
-        microscope_x = (
-            debug_data.stage_position["x"]
-            + debug_data.chamber_center_pixels[0] * debug_data.pixel_size
-        )
-        microscope_y = (
-            debug_data.stage_position["y"]
-            + debug_data.chamber_center_pixels[1] * debug_data.pixel_size
-        )
         ax.annotate(
-            f"({microscope_x:.1f}, {microscope_y:.1f}) um",
+            f"({result.measured_x:.1f}, {result.measured_y:.1f}) um",
             xy=(debug_data.chamber_center_pixels[0], debug_data.chamber_center_pixels[1]),
-            xytext=(10, -10),
+            xytext=(0, -18),
             textcoords="offset points",
-            fontsize=9,
+            fontsize=18,
             color="gold",
             fontweight="bold",
+            horizontalalignment="center",
+            verticalalignment="top",
             bbox=dict(facecolor="black", alpha=0.7, pad=2),
             zorder=11,
         )
@@ -767,14 +768,19 @@ def plot_validation_debug(
         info_lines.append(f"Rotation: {debug_data.rotation_angle:.2f}°")
 
     if info_lines:
+        # Place the detailed table BELOW the image (in axes-fraction coords) so it
+        # can be cropped away cleanly when only the image is needed.
         ax.text(
-            10,
-            30,
+            0.0,
+            -0.02,
             "\n".join(info_lines),
-            fontsize=10,
+            transform=ax.transAxes,
+            fontsize=20,
             color="white",
             bbox={"facecolor": "black", "alpha": 0.7, "pad": 5},
             verticalalignment="top",
+            horizontalalignment="left",
+            clip_on=False,
         )
 
     # Title
@@ -785,14 +791,17 @@ def plot_validation_debug(
         title += f" (Error: {debug_data.error_microns:.3f} µm)"
     else:
         title += f" - FAILED: {result.error_message}"
-    ax.set_title(title, fontsize=14)
+    ax.set_title(title, fontsize=28)
 
     # Add legend
-    ax.legend(loc="upper right")
+    ax.legend(loc="upper right", fontsize=20)
 
+    ax.invert_yaxis()
     ax.axis("off")
     plt.tight_layout()
-    plt.savefig(output_path, dpi=150, bbox_inches=None)
+    # bbox_inches="tight" so the info table placed below the axes is included in
+    # the saved figure (as a bottom band the user can crop off if unwanted).
+    plt.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close()
 
 
@@ -818,7 +827,8 @@ def validate_map(
             - pixel_size: Pixel size in microns
             Optional keys:
             - model_path: Path to the detection model
-            - structure_library_path: Path to the structure library JSON
+            - chip_config_path: Path to the unified chip config JSON (preferred)
+            - structure_library_path: Path to the legacy structure library JSON
             - device: Device to run on (can also be passed as argument)
         output_dir: Directory for outputs (histogram, map, CSV)
         device: Device to run on (e.g., 'cuda:0', 'cpu'). Overrides config if provided.
@@ -1000,20 +1010,20 @@ JSON config format:
     parser.add_argument(
         "--label-fontsize",
         type=float,
-        default=12,
-        help="Font size for axis labels (default: 12)",
+        default=24,
+        help="Font size for axis labels (default: 24)",
     )
     parser.add_argument(
         "--title-fontsize",
         type=float,
-        default=14,
-        help="Font size for the title (default: 14)",
+        default=28,
+        help="Font size for the title (default: 28)",
     )
     parser.add_argument(
         "--colorbar-fontsize",
         type=float,
-        default=12,
-        help="Font size for colorbar label (default: 12)",
+        default=24,
+        help="Font size for colorbar label (default: 24)",
     )
     parser.add_argument(
         "--marker-size",
@@ -1024,14 +1034,14 @@ JSON config format:
     parser.add_argument(
         "--tick-fontsize",
         type=float,
-        default=10,
-        help="Font size for axis tick labels (default: 10)",
+        default=20,
+        help="Font size for axis tick labels (default: 20)",
     )
     parser.add_argument(
         "--colorbar-tick-fontsize",
         type=float,
-        default=10,
-        help="Font size for colorbar tick labels (default: 10)",
+        default=20,
+        help="Font size for colorbar tick labels (default: 20)",
     )
     parser.add_argument(
         "--font-family",

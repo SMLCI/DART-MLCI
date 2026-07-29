@@ -33,13 +33,15 @@ from dart_mlci.chip import create_structure_library as create_structure_library
 from dart_mlci.chip import load_chip_config as load_chip_config
 from dart_mlci.constants import ARTIFACTS_DIR as ARTIFACTS_DIR
 from dart_mlci.constants import DEFAULT_CHIP_CONFIG_PATH as DEFAULT_CHIP_CONFIG_PATH
-from dart_mlci.constants import DEFAULT_MARKER_TOLERANCE_PX as DEFAULT_MARKER_TOLERANCE_PX
+from dart_mlci.constants import DEFAULT_MARKER_TOLERANCE_UM as DEFAULT_MARKER_TOLERANCE_UM
+from dart_mlci.constants import DEFAULT_MAX_ANGLE_DEVIATION_DEG as DEFAULT_MAX_ANGLE_DEVIATION_DEG
 from dart_mlci.constants import DEFAULT_MODEL_PATH as DEFAULT_MODEL_PATH
 from dart_mlci.constants import DEFAULT_PIXEL_SIZE_UM as DEFAULT_PIXEL_SIZE_UM
 from dart_mlci.constants import DEFAULT_STRUCTURE_LIBRARY_PATH as DEFAULT_STRUCTURE_LIBRARY_PATH
 from dart_mlci.constants import ensure_default_chip_config as ensure_default_chip_config
 from dart_mlci.constants import ensure_default_model as ensure_default_model
 from dart_mlci.constants import ensure_default_structure_library as ensure_default_structure_library
+from dart_mlci.constants import marker_tolerance_px as marker_tolerance_px
 from dart_mlci.detection import MarkerDetectionModel as MarkerDetectionModel
 from dart_mlci.detection import extract_data as extract_data
 from dart_mlci.experiment import absolutize_image_paths as absolutize_image_paths
@@ -75,7 +77,8 @@ from dart_mlci.types import StackResult as StackResult
 __all__ = [
     "ARTIFACTS_DIR",
     "DEFAULT_CHIP_CONFIG_PATH",
-    "DEFAULT_MARKER_TOLERANCE_PX",
+    "DEFAULT_MARKER_TOLERANCE_UM",
+    "DEFAULT_MAX_ANGLE_DEVIATION_DEG",
     "DEFAULT_MODEL_PATH",
     "DEFAULT_PIXEL_SIZE_UM",
     "DEFAULT_STRUCTURE_LIBRARY_PATH",
@@ -122,6 +125,7 @@ __all__ = [
     "load_cells_data",
     "load_chip_config",
     "load_tif_frame",
+    "marker_tolerance_px",
     "resolve_chamber_type_from_folder_config",
     "resolve_time_column",
     "sample_path",

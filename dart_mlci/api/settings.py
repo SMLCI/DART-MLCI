@@ -1,9 +1,50 @@
 """Environment configuration for the DART API."""
 
 import os
+import subprocess
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
+
+# Written by the Dockerfile's git-info build stage (see Dockerfile).
+_GIT_COMMIT_SHA_FILE = Path("/app/git-commit-sha")
+_GIT_COMMIT_MESSAGE_FILE = Path("/app/git-commit-message")
+
+# Repo root when running outside Docker (dart_mlci/api/settings.py -> repo root).
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _detect_git_commit_sha() -> str | None:
+    """Commit SHA of the running code: env override, baked-in file, or live git."""
+    if sha := os.environ.get("GIT_COMMIT_SHA"):
+        return sha
+    if _GIT_COMMIT_SHA_FILE.exists():
+        return _GIT_COMMIT_SHA_FILE.read_text().strip() or None
+    return _run_git("rev-parse", "HEAD")
+
+
+def _detect_git_commit_message() -> str | None:
+    """Commit subject of the running code: env override, baked-in file, or live git."""
+    if message := os.environ.get("GIT_COMMIT_MESSAGE"):
+        return message
+    if _GIT_COMMIT_MESSAGE_FILE.exists():
+        return _GIT_COMMIT_MESSAGE_FILE.read_text().strip() or None
+    return _run_git("log", "-1", "--format=%s")
+
+
+def _run_git(*args: str) -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=_REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=True,
+        )
+        return result.stdout.strip() or None
+    except (OSError, subprocess.SubprocessError):
+        return None
 
 
 @dataclass
@@ -39,6 +80,8 @@ class Settings:
     segmentation_filter_threshold: float = field(
         default_factory=lambda: float(os.environ.get("DART_SEGMENTATION_FILTER_THRESHOLD", "0.5"))
     )
+    git_commit_sha: str | None = field(default_factory=_detect_git_commit_sha)
+    git_commit_message: str | None = field(default_factory=_detect_git_commit_message)
 
     def __post_init__(self):
         """Validate paths exist where required."""

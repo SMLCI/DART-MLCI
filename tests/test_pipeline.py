@@ -74,7 +74,7 @@ class TestFullPipeline(unittest.TestCase):
 
         # build the pipeline
         step1 = MarkerDetectionStep(DEFAULT_MODEL_PATH)
-        step2 = MarkerMatchingStep(marker_group_pixels, tolerance=60)
+        step2 = MarkerMatchingStep(marker_group_pixels, pixel_size=pixel_size)
         step3 = ImageRotationStep()
         step4 = RoIMaskingStep(marker_group_pixels, roi_polygon)
 

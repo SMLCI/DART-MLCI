@@ -1,3 +1,15 @@
+# Extract the commit this image is built from, so /health can report it
+# without requiring callers to pass --build-arg. Runs as its own stage so
+# the .git directory (needed only to read the commit) never lands in the
+# final image.
+FROM python:3.12-slim AS git-info
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY .git ./.git
+RUN git log -1 --format=%H > /git-commit-sha \
+    && git log -1 --format=%s > /git-commit-message
+
 FROM python:3.12-slim
 
 # Install system dependencies for OpenCV
@@ -27,6 +39,8 @@ RUN pip install --no-cache-dir -e ".[api,segmentation]"
 
 # Copy artifacts (model, structure library, blueprint map)
 COPY artifacts/ /app/artifacts/
+
+COPY --from=git-info /git-commit-sha /git-commit-message /app/
 
 # Set environment variables for default paths
 ENV DART_MODEL_PATH=/app/artifacts/models/v26_detect_s_imgsz1280.pt

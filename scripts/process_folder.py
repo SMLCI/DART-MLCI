@@ -56,6 +56,8 @@ from dart_mlci import (
     create_segmenter as _create_segmenter,
 )
 from dart_mlci.constants import ARTIFACTS_DIR
+from dart_mlci.constants import CHAMBER_TYPE_NUMBERS as _CHAMBER_NUMBERS
+from dart_mlci.constants import CHAMBER_TYPE_ORDER as _CHAMBER_ORDER
 from dart_mlci.mask import filter_segmentation_by_area, filter_segmentation_by_mask
 from dart_mlci.script_utils import load_json_config
 from dart_mlci.types import PipelineTimings
@@ -63,20 +65,6 @@ from dart_mlci.types import StackResult as _StackResult
 from dart_mlci.utils import normalize_image
 from dart_mlci.utils import to_hwc_numpy as _to_hwc_numpy
 from dart_mlci.visualization.rendering import render_cell_visualization
-
-# Preferred display order for chamber types in timing tables (numbers skip 4)
-_CHAMBER_ORDER = [
-    "NormaleBox-inner",
-    "BigBox-inner",
-    "OpenBox-inner",
-    "NormaleBox-pillar-inner",
-    "BigBox-pillar-inner",
-    "OpenBox-collector-inner",
-    "Mothermachine-2x-inner",
-]
-_CHAMBER_NUMBERS = {
-    name: num for name, num in zip(_CHAMBER_ORDER, [1, 2, 3, 5, 6, 7, 8], strict=False)
-}
 
 SEGMENTER_CHOICES = ["cellpose-sam", "omnipose"]
 
@@ -203,7 +191,7 @@ def process_stack(
     roi_polygon = chip_lib.polygon_library[chamber_type]
     marker_group = chip_lib.marker_group_configs[chamber_type]
 
-    matching_step = MarkerMatchingStep(marker_group, tolerance=60)
+    matching_step = MarkerMatchingStep(marker_group, pixel_size=pixel_size)
     rotation_step = ImageRotationStep()
     masking_step = RoIMaskingStep(marker_group, roi_polygon, allow_truncation=allow_truncation)
 
@@ -224,6 +212,8 @@ def process_stack(
             "timepoint": t,
             "success": False,
             "rotation_result": None,
+            "rotation_angle": float("nan"),
+            "crop_bbox": None,
             "n_cells": 0,
             "cell_areas": [],
             "dx": 0.0,
@@ -251,6 +241,7 @@ def process_stack(
             timings.rotation = time.perf_counter() - t0
 
             frame_info["rotation_result"] = rot_result
+            frame_info["rotation_angle"] = rot_result.get("angle", float("nan"))
             frame_info["success"] = True
         except Exception as e:
             frame_info["error"] = str(e)
@@ -354,11 +345,12 @@ def process_stack(
             rot_result = fd["rotation_result"]
 
             t0 = time.perf_counter()
-            mask_result = masking_step(rot_result)
+            mask_result = masking_step(rot_result, return_bbox=True)
             timings.masking = time.perf_counter() - t0
 
             cropped_image = mask_result["image"]
             chamber_mask = mask_result["mask"]
+            fd["crop_bbox"] = mask_result.get("crop_bbox")
 
             # Ensure HWC format
             if cropped_image.ndim == 3 and cropped_image.shape[0] <= 4:
@@ -527,11 +519,17 @@ def _save_meta(output_dir: Path, frame_data: list[dict], n_frames: int):
     """Save per-frame metadata CSV including pipeline step timings."""
     rows = []
     for fd in frame_data:
+        bbox = fd.get("crop_bbox") or (None, None, None, None)
         row = {
             "timepoint": fd["timepoint"],
             "success": fd["success"],
             "n_cells": fd["n_cells"],
             "error": fd["error"],
+            "rotation_angle": fd.get("rotation_angle", float("nan")),
+            "crop_minx": bbox[0],
+            "crop_miny": bbox[1],
+            "crop_maxx": bbox[2],
+            "crop_maxy": bbox[3],
             "dx": fd["dx"],
             "dy": fd["dy"],
             "reg_score": fd["reg_score"],
@@ -1117,21 +1115,29 @@ def _plot_pipeline_timing_chart(
     if use_broken:
         # Set tick labels on the left-most axis
         bax.axs[0].set_yticks(y_pos)
-        bax.axs[0].set_yticklabels(step_labels)
+        bax.axs[0].set_yticklabels(step_labels, fontsize=15)
         for ax in bax.axs:
             ax.xaxis.grid(True, alpha=0.3)
             ax.set_axisbelow(True)
+            ax.tick_params(labelsize=15)
         # Add explicit x-ticks to left panel
         left_ax = bax.axs[0]
         tick_step = 10 if fast_upper <= 50 else 20
         left_ax.set_xticks(np.arange(0, fast_upper + 1, tick_step))
     else:
         bax.set_yticks(y_pos)
-        bax.set_yticklabels(step_labels)
+        bax.set_yticklabels(step_labels, fontsize=15)
         bax.xaxis.grid(True, alpha=0.3)
         bax.set_axisbelow(True)
+        bax.tick_params(labelsize=15)
 
-    bax.set_xlabel("Time (ms)")
+    # X-label centered below each panel (brokenaxes' own set_xlabel places a
+    # single label in the gap between the two axes).
+    if use_broken:
+        for ax in bax.axs:
+            ax.set_xlabel("Time (ms)", fontsize=15)
+    else:
+        bax.set_xlabel("Time (ms)", fontsize=15)
 
     # Add value annotations on bars
     if use_broken:
@@ -1146,7 +1152,7 @@ def _plot_pipeline_timing_chart(
                 f"{m:.1f} ms",
                 va="center",
                 ha="left",
-                fontsize=8,
+                fontsize=12,
                 color="black",
             )
         # Segmentation: label inside the bar on the right axis
@@ -1158,7 +1164,7 @@ def _plot_pipeline_timing_chart(
             f"{means[seg_idx]:.1f} ms",
             va="center",
             ha="left",
-            fontsize=8,
+            fontsize=12,
             color="white",
             fontweight="bold",
         )
@@ -1173,7 +1179,7 @@ def _plot_pipeline_timing_chart(
                     f"{m:.1f} ms",
                     va="center",
                     ha="left",
-                    fontsize=8,
+                    fontsize=12,
                     color="white",
                     fontweight="bold",
                 )
@@ -1184,7 +1190,7 @@ def _plot_pipeline_timing_chart(
                     f"{m:.1f} ms",
                     va="center",
                     ha="left",
-                    fontsize=8,
+                    fontsize=12,
                     color="black",
                 )
 

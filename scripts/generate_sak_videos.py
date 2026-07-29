@@ -24,7 +24,7 @@ except ImportError:
 
 from dart_mlci import DEFAULT_MODEL_PATH, MarkerDetectionModel
 from dart_mlci.chip import ChipStructureLibrary
-from dart_mlci.constants import ARTIFACTS_DIR, DEFAULT_PIXEL_SIZE_UM
+from dart_mlci.constants import ARTIFACTS_DIR, DEFAULT_PIXEL_SIZE_UM, marker_tolerance_px
 from dart_mlci.mask import apply_mask, filter_segmentation_by_mask
 from dart_mlci.match import match_markers
 from dart_mlci.rotation import compute_marker_group_angles, rotate_image_and_markers
@@ -200,7 +200,9 @@ def generate_pipeline_video(
 
     # Run pipeline
     markers = model.predict_markers(image)
-    matched_indices = match_markers(markers, marker_group=marker_group_pixels, tolerance=60)
+    pixel_size = getattr(args, "pixel_size", None) or DEFAULT_PIXEL_SIZE_UM
+    tolerance = marker_tolerance_px(pixel_size)
+    matched_indices = match_markers(markers, marker_group=marker_group_pixels, tolerance=tolerance)
 
     if len(matched_indices) == 0:
         print(f"  WARNING: No markers matched for {chamber_name}, skipping.")

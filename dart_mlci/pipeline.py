@@ -5,7 +5,13 @@ from __future__ import annotations
 import numpy as np
 import torch
 
-from dart_mlci.constants import DEFAULT_MARKER_TOLERANCE_PX, ensure_default_model
+from dart_mlci.constants import (
+    DEFAULT_MARKER_TOLERANCE_UM,
+    DEFAULT_MAX_ANGLE_DEVIATION_DEG,
+    DEFAULT_PIXEL_SIZE_UM,
+    ensure_default_model,
+    marker_tolerance_px,
+)
 from dart_mlci.detection import MarkerDetectionModel
 from dart_mlci.mask import apply_mask
 from dart_mlci.match import match_markers
@@ -63,11 +69,25 @@ class MarkerDetectionStep:
 
 
 class MarkerMatchingStep:
-    """Match markers into pairs."""
+    """Match markers into pairs.
 
-    def __init__(self, marker_group_pixel, tolerance=60, max_angle_deviation=5.0):
+    The matching tolerance is specified in microns (camera-independent) and
+    converted to pixels internally using ``pixel_size``, so the same
+    ``tolerance_um`` yields consistent physical behavior across cameras with
+    different resolutions.
+    """
+
+    def __init__(
+        self,
+        marker_group_pixel,
+        pixel_size: float = DEFAULT_PIXEL_SIZE_UM,
+        tolerance_um: float = DEFAULT_MARKER_TOLERANCE_UM,
+        max_angle_deviation: float = DEFAULT_MAX_ANGLE_DEVIATION_DEG,
+    ):
         self.marker_group_pixel = marker_group_pixel
-        self.tolerance = tolerance
+        self.pixel_size = pixel_size
+        self.tolerance_um = tolerance_um
+        self.tolerance = marker_tolerance_px(pixel_size, tolerance_um)
         self.max_angle_deviation = max_angle_deviation
 
     def __call__(self, data):
@@ -195,7 +215,8 @@ class ChamberPipelineCache:
     def __init__(
         self,
         structure_library,
-        tolerance: int = DEFAULT_MARKER_TOLERANCE_PX,
+        pixel_size: float = DEFAULT_PIXEL_SIZE_UM,
+        tolerance_um: float = DEFAULT_MARKER_TOLERANCE_UM,
         allow_truncation: bool = False,
     ):
         """Initialize the cache.
@@ -203,11 +224,14 @@ class ChamberPipelineCache:
         Args:
             structure_library: ChipStructureLibrary or SAKRoIStructureLibrary
                 providing polygon_library and marker_group_configs.
-            tolerance: Pixel tolerance for marker matching.
+            pixel_size: Size of one pixel in microns. Used to convert
+                tolerance_um to pixels for marker matching.
+            tolerance_um: Marker matching tolerance in microns.
             allow_truncation: Allow ROI mask beyond image boundaries.
         """
         self.structure_library = structure_library
-        self.tolerance = tolerance
+        self.pixel_size = pixel_size
+        self.tolerance_um = tolerance_um
         self.allow_truncation = allow_truncation
         self._cache: dict[str, dict] = {}
 
@@ -235,7 +259,9 @@ class ChamberPipelineCache:
             self._cache[structure_name] = {
                 "roi_polygon": roi_polygon,
                 "marker_group": marker_group,
-                "matching_step": MarkerMatchingStep(marker_group, tolerance=self.tolerance),
+                "matching_step": MarkerMatchingStep(
+                    marker_group, pixel_size=self.pixel_size, tolerance_um=self.tolerance_um
+                ),
                 "rotation_step": ImageRotationStep(),
                 "masking_step": RoIMaskingStep(
                     marker_group, roi_polygon, allow_truncation=self.allow_truncation

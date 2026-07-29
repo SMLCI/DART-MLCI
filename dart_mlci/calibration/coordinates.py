@@ -93,16 +93,20 @@ class ImageToStageTransform:
     """Translate from image-relative to stage-absolute coordinates.
 
     When an image is captured, the microscope stage is at a known position.
-    This position represents the top-left corner of the image in stage coordinates.
-    To convert any point in the image (in microns) to stage coordinates,
-    we add the stage position.
+    ``stage_position`` is the stage coordinate of the image's reference point.
+    Elsewhere in this package (``calibration.core``), that reference point is
+    the center of the field of view: images are captured with the chamber
+    already positioned near the center of the FoV, so stage coordinates and
+    image-relative offsets from that center are directly additive. To convert
+    any point in the image (in microns, relative to the same reference point)
+    to stage coordinates, we add the stage position.
 
     Attributes:
-        stage_position: (x, y) position of image top-left in stage coords
+        stage_position: (x, y) stage coordinate of the image's reference point
 
     Example:
         >>> transform = ImageToStageTransform(stage_position=np.array([6802.4, -4272.9]))
-        >>> image_pos = np.array([32.89, 19.74])  # microns from top-left
+        >>> image_pos = np.array([32.89, 19.74])  # microns from the reference point
         >>> stage_pos = transform(image_pos)
         >>> print(stage_pos)  # [6835.29, -4253.16]
     """
@@ -113,7 +117,8 @@ class ImageToStageTransform:
         """Transform image-relative coordinates to stage coordinates.
 
         Args:
-            image_microns: Position in image coordinates (microns from top-left)
+            image_microns: Position in image coordinates (microns from the
+                image's reference point)
 
         Returns:
             Position in stage coordinates
@@ -127,7 +132,8 @@ class ImageToStageTransform:
             stage_microns: Position in stage coordinates
 
         Returns:
-            Position in image coordinates (microns from top-left)
+            Position in image coordinates (microns from the image's reference
+            point)
         """
         return stage_microns - self.stage_position
 

@@ -33,6 +33,15 @@ class CalibrateConfig(BaseModel):
     )
 
 
+class DetectedMarker(BaseModel):
+    """A single detected alignment marker in image pixel coordinates."""
+
+    x: float = Field(description="Marker center X in pixel coordinates")
+    y: float = Field(description="Marker center Y in pixel coordinates")
+    label: str = Field(description="Marker type, e.g. 'cross' or 'circle'")
+    conf: float = Field(description="Detection confidence")
+
+
 class ImageResultInfo(BaseModel):
     """Per-image result from calibration."""
 
@@ -40,6 +49,14 @@ class ImageResultInfo(BaseModel):
     success: bool
     error_message: str | None = None
     microscope_position: list[float] | None = None
+    markers: list[DetectedMarker] | None = Field(
+        default=None,
+        description="Raw detected markers in image pixel coordinates",
+    )
+    matched_indices: list[list[int]] | None = Field(
+        default=None,
+        description="Matched (cross_idx, circle_idx) pairs into `markers`",
+    )
 
 
 class CalibratedROIPosition(BaseModel):
@@ -75,6 +92,12 @@ class CalibrateResponse(BaseModel):
         default_factory=list, description="Per-image processing results"
     )
     error_message: str | None = None
+    git_commit_sha: str | None = Field(
+        default=None, description="Git commit SHA the running image was built from"
+    )
+    git_commit_message: str | None = Field(
+        default=None, description="Git commit subject line the running image was built from"
+    )
 
 
 class ProcessImageResponse(BaseModel):
@@ -100,6 +123,12 @@ class HealthResponse(BaseModel):
     device: str = Field(description="e.g., 'cuda:0' or 'cpu'")
     segmenter_loaded: bool = False
     segmenter: str | None = None
+    git_commit_sha: str | None = Field(
+        default=None, description="Git commit SHA the running image was built from"
+    )
+    git_commit_message: str | None = Field(
+        default=None, description="Git commit subject line the running image was built from"
+    )
 
 
 class ChamberType(BaseModel):

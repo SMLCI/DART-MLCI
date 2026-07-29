@@ -15,13 +15,18 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
+from dart_mlci.constants import DEFAULT_MAX_ANGLE_DEVIATION_DEG
 from dart_mlci.io import load_image
 from dart_mlci.map import Map
 from dart_mlci.mask import RoIPolygon
 from dart_mlci.pipeline import MarkerDetectionStep, MarkerMatchingStep
 from dart_mlci.rotation import compute_marker_group_angles
 
-from .core import compute_chamber_center, filter_matched_pairs_by_bounds
+from .core import (
+    compute_chamber_center,
+    compute_microscope_position,
+    filter_matched_pairs_by_bounds,
+)
 
 
 @dataclass
@@ -146,7 +151,7 @@ def process_validation_image(
     verbose: bool = False,
     collect_debug: bool = False,
     conf_threshold: float = 0.5,
-    max_angle_deviation: float = 5.0,
+    max_angle_deviation: float = DEFAULT_MAX_ANGLE_DEVIATION_DEG,
 ) -> ValidationResult:
     """Process a single validation image and compute error against expected position.
 
@@ -176,7 +181,7 @@ def process_validation_image(
             print(f"    - Chamber type: {structure_name}")
 
         # 2. Create matching step for this chamber type
-        matching_step = MarkerMatchingStep(marker_group_pixels, tolerance=60)
+        matching_step = MarkerMatchingStep(marker_group_pixels, pixel_size=pixel_size)
 
         # 3. Load and process image
         image = load_image(image_path)
@@ -296,20 +301,23 @@ def process_validation_image(
         chamber_center_pixels = compute_chamber_center(
             markers, matched_indices, marker_group_pixels, roi_polygon, rotation_angle
         )
+        image_shape = image.shape[:2]
+        im_height, im_width = image_shape
+        image_center_pixels = np.array([im_width / 2, im_height / 2])
 
         if collect_debug:
             debug_data.chamber_center_pixels = chamber_center_pixels
             expected_offset_microns = expected_position - np.array(
                 [stage_position["x"], stage_position["y"]]
             )
-            debug_data.expected_center_pixels = expected_offset_microns / pixel_size
+            debug_data.expected_center_pixels = (
+                image_center_pixels + expected_offset_microns / pixel_size
+            )
 
-        # 7. Convert to microns
-        chamber_center_microns = chamber_center_pixels * pixel_size
-
-        # 8. Compute measured microscope position
-        measured_x = stage_position["x"] + chamber_center_microns[0]
-        measured_y = stage_position["y"] + chamber_center_microns[1]
+        # 7-8. Compute measured microscope position
+        (measured_x, measured_y), _z = compute_microscope_position(
+            chamber_center_pixels, stage_position, pixel_size, image_shape
+        )
 
         # 9. Compute L2 error
         error = float(
@@ -361,7 +369,7 @@ def run_validation(
     max_images: int | None = None,
     collect_debug: bool = False,
     conf_threshold: float = 0.5,
-    max_angle_deviation: float = 5.0,
+    max_angle_deviation: float = DEFAULT_MAX_ANGLE_DEVIATION_DEG,
 ) -> ValidationSummary:
     """Run the full validation pipeline.
 
