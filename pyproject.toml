@@ -152,6 +152,9 @@ allow_dirty = false
 
 [[tool.bumpversion.files]]
 filename = "pyproject.toml"
+# regex, so the leading \n is a real newline: it anchors the match to the start
+# of a line and keeps `current_version = "..."` above from matching too.
+regex = true
 search = '\nversion = "{current_version}"'
 replace = '\nversion = "{new_version}"'
 
