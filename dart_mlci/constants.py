@@ -64,6 +64,27 @@ DEFAULT_STRUCTURE_LIBRARY_PATH: Path = ARTIFACTS_DIR / DEFAULT_STRUCTURE_LIBRARY
 """Default path to the legacy chamber structure JSON file (deprecated)."""
 
 
+# Canonical display order/numbering (1-8) for SAK chip chamber types, shared
+# across scripts (timing tables, growth-rate summaries). Matches the "SAK RoI
+# dimensions" reference table: (1) NormaleBox-inner 60x60, (2) BigBox-inner
+# 60x100, (3) OpenBox-inner 60x80, (4) Mothermachine-inner 15x1x80,
+# (5) NormaleBox-pillar-inner 60x60, (6) BigBox-pillar-inner 60x100,
+# (7) OpenBox-collector-inner 60x80, (8) Mothermachine-2x-inner 7x2x80 [um^2].
+CHAMBER_TYPE_ORDER: list[str] = [
+    "NormaleBox-inner",
+    "BigBox-inner",
+    "OpenBox-inner",
+    "Mothermachine-inner",
+    "NormaleBox-pillar-inner",
+    "BigBox-pillar-inner",
+    "OpenBox-collector-inner",
+    "Mothermachine-2x-inner",
+]
+CHAMBER_TYPE_NUMBERS: dict[str, int] = dict(
+    zip(CHAMBER_TYPE_ORDER, range(1, len(CHAMBER_TYPE_ORDER) + 1), strict=False)
+)
+
+
 def ensure_default_model() -> Path:
     """Return the default model path, auto-downloading on first call."""
     return ensure_artifact(DEFAULT_MODEL_RELPATH)

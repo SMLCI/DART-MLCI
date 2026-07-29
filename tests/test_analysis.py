@@ -8,6 +8,7 @@ import pytest
 
 from dart_mlci.analysis import (
     ExponentialFitResult,
+    GroupSummary,
     LogisticFitResult,
     compute_growth_stats,
     discover_cells_csvs,
@@ -15,6 +16,9 @@ from dart_mlci.analysis import (
     fit_exponential_growth,
     fit_logistic_growth,
     load_cells_data,
+    occupancy_cutoff_timepoint,
+    summarize_by_group,
+    truncate_at_cutoff,
 )
 
 # ---------------------------------------------------------------------------
@@ -282,3 +286,102 @@ class TestFitLogisticGrowth:
         counts = K / (1.0 + ((K - n0) / n0) * np.exp(-r * t))
         result = fit_logistic_growth(t, counts)
         np.testing.assert_allclose(result.carrying_capacity, K, rtol=0.05)
+
+
+# ---------------------------------------------------------------------------
+# TestOccupancyCutoffTimepoint
+# ---------------------------------------------------------------------------
+
+
+class TestOccupancyCutoffTimepoint:
+    def test_reaches_threshold(self):
+        """Returns the first timepoint whose occupied fraction reaches the threshold."""
+        stats = pd.DataFrame(
+            {
+                "timepoint": [0, 1, 2, 3],
+                "total_area_um2": [100.0, 300.0, 750.0, 900.0],
+            }
+        )
+        # chamber_area_um2 = 1000 -> fractions 0.1, 0.3, 0.75, 0.9
+        cutoff = occupancy_cutoff_timepoint(stats, chamber_area_um2=1000.0, threshold=0.7)
+        assert cutoff == 2
+
+    def test_never_reaches_threshold(self):
+        """Returns None if the occupied fraction never reaches the threshold."""
+        stats = pd.DataFrame(
+            {
+                "timepoint": [0, 1, 2],
+                "total_area_um2": [10.0, 20.0, 30.0],
+            }
+        )
+        cutoff = occupancy_cutoff_timepoint(stats, chamber_area_um2=1000.0, threshold=0.7)
+        assert cutoff is None
+
+    def test_invalid_chamber_area(self):
+        """Non-positive chamber area should raise ValueError."""
+        stats = pd.DataFrame({"timepoint": [0], "total_area_um2": [10.0]})
+        with pytest.raises(ValueError, match="positive"):
+            occupancy_cutoff_timepoint(stats, chamber_area_um2=0.0)
+
+
+# ---------------------------------------------------------------------------
+# TestTruncateAtCutoff
+# ---------------------------------------------------------------------------
+
+
+class TestTruncateAtCutoff:
+    def test_truncates_inclusive(self):
+        t = np.array([0.0, 10.0, 20.0, 30.0])
+        values = np.array([1.0, 2.0, 3.0, 4.0])
+        t_out, v_out = truncate_at_cutoff(t, values, cutoff=20.0)
+        np.testing.assert_array_equal(t_out, [0.0, 10.0, 20.0])
+        np.testing.assert_array_equal(v_out, [1.0, 2.0, 3.0])
+
+    def test_none_cutoff_is_noop(self):
+        t = np.array([0.0, 10.0])
+        values = np.array([1.0, 2.0])
+        t_out, v_out = truncate_at_cutoff(t, values, cutoff=None)
+        np.testing.assert_array_equal(t_out, t)
+        np.testing.assert_array_equal(v_out, values)
+
+
+# ---------------------------------------------------------------------------
+# TestSummarizeByGroup
+# ---------------------------------------------------------------------------
+
+
+class TestSummarizeByGroup:
+    def test_mean_and_ci_multi_sample(self):
+        values_by_group = {"A": [1.0, 2.0, 3.0, 4.0, 5.0]}
+        summaries = summarize_by_group(values_by_group)
+        assert len(summaries) == 1
+        s = summaries[0]
+        assert isinstance(s, GroupSummary)
+        assert s.group == "A"
+        assert s.n == 5
+        np.testing.assert_allclose(s.mean, 3.0)
+        assert s.ci_low < s.mean < s.ci_high
+
+    def test_single_value_has_no_ci_spread(self):
+        summaries = summarize_by_group({"A": [7.0]})
+        s = summaries[0]
+        assert s.n == 1
+        assert s.mean == 7.0
+        assert s.ci_low == s.mean
+        assert s.ci_high == s.mean
+
+    def test_multiple_groups(self):
+        summaries = summarize_by_group({"A": [1.0, 2.0], "B": [10.0, 20.0, 30.0]})
+        by_group = {s.group: s for s in summaries}
+        assert set(by_group) == {"A", "B"}
+        np.testing.assert_allclose(by_group["A"].mean, 1.5)
+        np.testing.assert_allclose(by_group["B"].mean, 20.0)
+
+    def test_ci_width_narrows_with_confidence(self):
+        values_by_group = {"A": [1.0, 2.0, 3.0, 4.0, 5.0]}
+        wide = summarize_by_group(values_by_group, confidence=0.99)[0]
+        narrow = summarize_by_group(values_by_group, confidence=0.5)[0]
+        assert (wide.ci_high - wide.ci_low) > (narrow.ci_high - narrow.ci_low)
+
+    def test_empty_input(self):
+        assert summarize_by_group({}) == []

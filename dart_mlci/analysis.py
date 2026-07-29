@@ -7,6 +7,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from scipy import stats as scipy_stats
 from scipy.optimize import curve_fit
 
 CELLS_CSV_REQUIRED_COLUMNS = {"timepoint", "cell_id", "area_px", "area_um2"}
@@ -224,3 +225,90 @@ def fit_logistic_growth(
         r_squared=r_squared,
         fitted_values=fitted_all,
     )
+
+
+def occupancy_cutoff_timepoint(
+    stats: pd.DataFrame,
+    chamber_area_um2: float,
+    threshold: float = 0.7,
+) -> float | None:
+    """First timepoint at which the occupied chamber-area fraction reaches *threshold*.
+
+    Occupied fraction is ``total_area_um2 / chamber_area_um2`` per timepoint, as
+    produced by :func:`compute_growth_stats`. Once a chamber is this full, cells
+    are increasingly likely to be crowded out or lost/gained at the chamber
+    walls, so growth-rate fits should stop before this point.
+
+    Returns ``None`` if the fraction never reaches *threshold*.
+    """
+    if chamber_area_um2 <= 0:
+        raise ValueError("chamber_area_um2 must be positive")
+
+    occupied_fraction = stats["total_area_um2"] / chamber_area_um2
+    reached = stats.loc[occupied_fraction >= threshold, "timepoint"]
+    return float(reached.iloc[0]) if not reached.empty else None
+
+
+def truncate_at_cutoff(
+    timepoints: np.ndarray,
+    values: np.ndarray,
+    cutoff: float | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Restrict *timepoints*/*values* to points at or before *cutoff* (inclusive).
+
+    Returns the inputs unchanged when *cutoff* is ``None``.
+    """
+    if cutoff is None:
+        return timepoints, values
+    mask = timepoints <= cutoff
+    return timepoints[mask], values[mask]
+
+
+@dataclasses.dataclass
+class GroupSummary:
+    """Mean and confidence interval of a metric across replicates in a group."""
+
+    group: str
+    n: int
+    mean: float
+    ci_low: float
+    ci_high: float
+    values: list[float]
+
+
+def summarize_by_group(
+    values_by_group: dict[str, list[float]],
+    confidence: float = 0.95,
+) -> list[GroupSummary]:
+    """Compute the mean and a t-distribution confidence interval per group.
+
+    Intended for comparing a per-replicate metric (e.g. fitted growth rate)
+    across groups (e.g. chamber designs) with few replicates each. Groups
+    with fewer than 2 values have no defined CI, so ``ci_low``/``ci_high``
+    are both set to the mean.
+    """
+    summaries = []
+    for group, values in values_by_group.items():
+        arr = np.asarray(values, dtype=float)
+        n = len(arr)
+        mean = float(np.mean(arr))
+        if n < 2:
+            summaries.append(
+                GroupSummary(
+                    group=group, n=n, mean=mean, ci_low=mean, ci_high=mean, values=list(arr)
+                )
+            )
+            continue
+        sem = scipy_stats.sem(arr)
+        margin = sem * scipy_stats.t.ppf((1 + confidence) / 2.0, n - 1)
+        summaries.append(
+            GroupSummary(
+                group=group,
+                n=n,
+                mean=mean,
+                ci_low=mean - margin,
+                ci_high=mean + margin,
+                values=list(arr),
+            )
+        )
+    return summaries

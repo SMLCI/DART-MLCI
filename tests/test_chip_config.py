@@ -10,7 +10,7 @@ from typing import ClassVar
 import numpy as np
 
 import dart_mlci
-from dart_mlci.chip import ChipConfig, ChipStructureLibrary, load_chip_config
+from dart_mlci.chip import ChipConfig, ChipStructureLibrary, chamber_area_um2, load_chip_config
 from dart_mlci.map import Map
 from dart_mlci.mask import SAKRoIStructureLibrary
 
@@ -355,6 +355,30 @@ class TestDeprecationWarnings(unittest.TestCase):
                 pixel_size=1.0,
             )
         self.assertIn("deprecated", str(ctx.warning).lower())
+
+
+class TestChamberAreaUm2(unittest.TestCase):
+    """Tests for chamber_area_um2."""
+
+    def setUp(self):
+        self.config = load_chip_config(SAK_CONFIG_PATH)
+
+    def test_returns_positive_area_for_all_chamber_types(self):
+        for name in self.config.chamber_types:
+            area = chamber_area_um2(self.config, name)
+            self.assertIsInstance(area, float)
+            self.assertGreater(area, 0)
+
+    def test_matches_shapely_area(self):
+        from shapely.geometry import shape
+
+        name = "NormaleBox-inner"
+        expected = shape(self.config.chamber_types[name].polygon).area
+        self.assertAlmostEqual(chamber_area_um2(self.config, name), expected)
+
+    def test_unknown_structure_type_raises(self):
+        with self.assertRaises(KeyError):
+            chamber_area_um2(self.config, "not-a-real-type")
 
 
 if __name__ == "__main__":

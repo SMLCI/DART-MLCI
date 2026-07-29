@@ -8,7 +8,7 @@ services:
     image: dart:latest
     container_name: dart-api
     ports:
-      - "8000:8000"
+      - "8022:8000"
     environment:
       - DART_MODEL_PATH=/app/artifacts/models/v26_detect_s_imgsz1280.pt
       - DART_STRUCTURE_LIBRARY_PATH=/app/artifacts/chamber_structure.json
@@ -17,14 +17,13 @@ services:
       - DART_PIXEL_SIZE=0.065789
       # Optional: specify device (cuda:0 or cpu)
       # - DART_DEVICE=cpu
-    # Uncomment for GPU support (requires nvidia-docker)
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
