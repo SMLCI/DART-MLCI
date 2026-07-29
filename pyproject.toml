@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dart-mlci"
-version = "0.2.2"
+version = "0.3.0"
 description = "DART: Real-time microfluidic chamber masking library with marker detection, rotation, cropping, and masking capabilities"
 readme = "README.md"
 license = "MIT"
@@ -145,7 +145,7 @@ exclude_lines = [
 ]
 
 [tool.bumpversion]
-current_version = "0.2.2"
+current_version = "0.3.0"
 commit = false
 tag = false
 allow_dirty = false
