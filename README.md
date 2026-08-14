@@ -2,8 +2,9 @@
 [![codecov](https://codecov.io/gh/SMLCI/DART-MLCI/branch/main/graph/badge.svg)](https://codecov.io/gh/SMLCI/DART-MLCI)
 [![PyPI](https://img.shields.io/pypi/v/dart-mlci.svg)](https://pypi.org/project/dart-mlci/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21934814.svg)](https://doi.org/10.5281/zenodo.21934814)
 
-# DART-MLCI: Aligning Blueprint and Physical Microfluidic Chip for Design-Aware and Real-Time Capable Live-Cell Image Analysis
+# DART-MLCI: A design-aware microfluidic chip paradigm for real-time live-cell image analysis
 
 **Real-time microfluidic RoI image processing.** DART-MLCI takes a raw
 microscopy frame, detects alignment markers, rotates and crops the RoI,
@@ -249,6 +250,7 @@ If you use DART-MLCI in your research, please cite:
   author  = {Seiffarth, Johannes and Pesch, Matthias and Scholtes, Lukas and Kohlheyer, Dietrich and Scharr, Hanno and N{\"o}h, Katharina},
   title   = {DART-MLCI: A design-aware microfluidic chip paradigm for real-time live-cell image analysis},
   year    = {2026},
-  url     = {https://github.com/SMLCI/DART-MLCI}
+  doi     = {10.5281/zenodo.21934814},
+  url     = {https://doi.org/10.5281/zenodo.21934814}
 }
 ```
