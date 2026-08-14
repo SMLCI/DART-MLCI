@@ -1,12 +1,33 @@
 cff-version: 1.2.0
-title: "DART: Aligning Blueprint and Physical Microfluidic Chip for Design-Aware and Real-Time Capable Live-Cell Image Analysis"
+title: "DART-MLCI: A design-aware microfluidic chip paradigm for real-time live-cell image analysis"
 message: "If you use this software, please cite it as below."
 type: software
 authors:
   - given-names: Johannes
     family-names: Seiffarth
-    affiliation: Forschungszentrum Jülich GmbH
+    affiliation: "Institute for Bio- and Geosciences, IBG-1: Biotechnology, Forschungszentrum Jülich, Jülich, Germany"
+    orcid: "https://orcid.org/0000-0002-2087-9847"
     email: j.seiffarth@fz-juelich.de
+  - given-names: Matthias
+    family-names: Pesch
+    affiliation: "Institute for Bio- and Geosciences, IBG-1: Biotechnology, Forschungszentrum Jülich, Jülich, Germany; Computational Systems Biotechnology (AVT.CSB), RWTH Aachen University, Aachen, Germany"
+    orcid: "https://orcid.org/0000-0001-8260-1245"
+  - given-names: Lukas
+    family-names: Scholtes
+    affiliation: "Institute for Advanced Simulation, IAS-8: Data Analytics and Machine Learning, Forschungszentrum Jülich, Jülich, Germany"
+    orcid: "https://orcid.org/0000-0002-3959-733X"
+  - given-names: Dietrich
+    family-names: Kohlheyer
+    affiliation: "Institute for Bio- and Geosciences, IBG-1: Biotechnology, Forschungszentrum Jülich, Jülich, Germany"
+    orcid: "https://orcid.org/0000-0001-6215-1857"
+  - given-names: Hanno
+    family-names: Scharr
+    affiliation: "Institute for Advanced Simulation, IAS-8: Data Analytics and Machine Learning, Forschungszentrum Jülich, Jülich, Germany"
+    orcid: "https://orcid.org/0000-0002-8555-6416"
+  - given-names: Katharina
+    family-names: Nöh
+    affiliation: "Institute for Bio- and Geosciences, IBG-1: Biotechnology, Forschungszentrum Jülich, Jülich, Germany"
+    orcid: "https://orcid.org/0000-0002-5407-2275"
 version: 0.2.2
 date-released: 2026-05-22
 license: MIT

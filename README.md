@@ -247,7 +247,7 @@ If you use DART-MLCI in your research, please cite:
 ```bibtex
 @software{dart-mlci,
   author  = {Seiffarth, Johannes and Pesch, Matthias and Scholtes, Lukas and Kohlheyer, Dietrich and Scharr, Hanno and N{\"o}h, Katharina},
-  title   = {DART: Aligning Blueprint and Physical Microfluidic Chip for Design-Aware and Real-Time Capable Live-Cell Image Analysis},
+  title   = {DART-MLCI: A design-aware microfluidic chip paradigm for real-time live-cell image analysis},
   year    = {2026},
   url     = {https://github.com/SMLCI/DART-MLCI}
 }

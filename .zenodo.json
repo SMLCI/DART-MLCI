@@ -1,0 +1,64 @@
+{
+  "title": "DART-MLCI: A design-aware microfluidic chip paradigm for real-time live-cell image analysis",
+  "description": "<p>DART-MLCI performs real-time microfluidic region-of-interest (RoI) image processing: it takes a raw microscopy frame, detects alignment markers, rotates and crops the RoI, masks the region of interest, and segments cells automatically for any chip design described by a single JSON config (fine alignment).</p><p>It further provides time-constant microfluidic chip mapping: several RoI positions on the microfluidic chip are recorded while it is on the microscope stage, and the microfluidic blueprint is aligned to stage coordinates, yielding all RoI positions for any chip design described by a single JSON config (coarse alignment).</p>",
+  "upload_type": "software",
+  "license": "MIT",
+  "access_right": "open",
+  "creators": [
+    {
+      "name": "Seiffarth, Johannes",
+      "affiliation": "Institute for Bio- and Geosciences, IBG-1: Biotechnology, Forschungszentrum Jülich, Jülich, Germany",
+      "orcid": "0000-0002-2087-9847"
+    },
+    {
+      "name": "Pesch, Matthias",
+      "affiliation": "Institute for Bio- and Geosciences, IBG-1: Biotechnology, Forschungszentrum Jülich, Jülich, Germany; Computational Systems Biotechnology (AVT.CSB), RWTH Aachen University, Aachen, Germany",
+      "orcid": "0000-0001-8260-1245"
+    },
+    {
+      "name": "Scholtes, Lukas",
+      "affiliation": "Institute for Advanced Simulation, IAS-8: Data Analytics and Machine Learning, Forschungszentrum Jülich, Jülich, Germany",
+      "orcid": "0000-0002-3959-733X"
+    },
+    {
+      "name": "Kohlheyer, Dietrich",
+      "affiliation": "Institute for Bio- and Geosciences, IBG-1: Biotechnology, Forschungszentrum Jülich, Jülich, Germany",
+      "orcid": "0000-0001-6215-1857"
+    },
+    {
+      "name": "Scharr, Hanno",
+      "affiliation": "Institute for Advanced Simulation, IAS-8: Data Analytics and Machine Learning, Forschungszentrum Jülich, Jülich, Germany",
+      "orcid": "0000-0002-8555-6416"
+    },
+    {
+      "name": "Nöh, Katharina",
+      "affiliation": "Institute for Bio- and Geosciences, IBG-1: Biotechnology, Forschungszentrum Jülich, Jülich, Germany",
+      "orcid": "0000-0002-5407-2275"
+    }
+  ],
+  "keywords": [
+    "microfluidics",
+    "live-cell imaging",
+    "image processing",
+    "computer vision",
+    "marker detection",
+    "image segmentation",
+    "chip alignment",
+    "Python"
+  ],
+  "language": "eng",
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/SMLCI/DART-MLCI",
+      "relation": "isSupplementTo",
+      "resource_type": "software",
+      "scheme": "url"
+    },
+    {
+      "identifier": "https://pypi.org/project/dart-mlci/",
+      "relation": "isIdenticalTo",
+      "resource_type": "software",
+      "scheme": "url"
+    }
+  ]
+}
