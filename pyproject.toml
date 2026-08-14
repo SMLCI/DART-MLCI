@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "dart-mlci"
-version = "0.3.0"
+version = "0.3.1"
 description = "DART: Real-time microfluidic chamber masking library with marker detection, rotation, cropping, and masking capabilities"
 readme = "README.md"
 license = "MIT"
@@ -145,7 +145,7 @@ exclude_lines = [
 ]
 
 [tool.bumpversion]
-current_version = "0.3.0"
+current_version = "0.3.1"
 commit = false
 tag = false
 allow_dirty = false
@@ -162,3 +162,14 @@ replace = '\nversion = "{new_version}"'
 filename = "dart_mlci/__init__.py"
 search = '__version__ = "{current_version}"'
 replace = '__version__ = "{new_version}"'
+
+[[tool.bumpversion.files]]
+filename = "CITATION.cff"
+search = 'version: {current_version}'
+replace = 'version: {new_version}'
+
+[[tool.bumpversion.files]]
+filename = "CITATION.cff"
+regex = true
+search = 'date-released: \d{{4}}-\d{{2}}-\d{{2}}'
+replace = 'date-released: {now:%Y-%m-%d}'
